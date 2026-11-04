@@ -72,6 +72,18 @@ jobs:
       - name: Generate binary
         if: ${{matrix.cfg.dist}}
         run: cd main/build && cpack
+
+      # ship the ffmpeg library symlinks as real files: exFAT/NTFS drives
+      # can't hold symlinks, so the archive wouldn't extract there
+      - name: Dereference symlinks in the archive
+        if: ${{matrix.cfg.dist}}
+        run: |
+          cd main/build
+          for f in *.tar.gz; do
+            mkdir unpack && tar xzf "$f" -C unpack
+            (cd unpack && tar czhf "../$f" *)
+            rm -rf unpack
+          done
       
       - name: Upload Binary
         if: ${{matrix.cfg.dist}}
