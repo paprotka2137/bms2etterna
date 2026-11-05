@@ -11,6 +11,7 @@
 #include "Etterna/Singletons/NetworkSyncManager.h"
 #include "AdjustSync.h"
 #include "Etterna/Singletons/ScoreManager.h"
+#include "Etterna/Singletons/SongManager.h"
 #include "Etterna/Singletons/DownloadManager.h"
 #include "Etterna/Models/Songs/Song.h"
 #include "Core/Services/Locator.hpp"
@@ -544,9 +545,23 @@ FillInHighScore(const PlayerStageStats& pss,
 		auto po = ps.m_PlayerOptions.GetStage();
 		if (pss.m_iBMSClearGauge >= 0 && pss.m_iBMSClearGauge < NUM_BMSGauge)
 			po.m_BMSGauge = static_cast<BMSGauge>(pss.m_iBMSClearGauge);
+		// a song of a dan course was played on the course gauge, not the
+		// chosen one: say so, lamps treat it as a play without a clear
+		const auto inBMSCourse = SONGMAN->InBMSCourse();
+		if (inBMSCourse) {
+			po.m_BMSGauge = BMSGauge_Normal; // writes no gauge
+			po.m_bBMSAutoShift = false;
+		}
 		auto sPlayerOptions = po.GetString();
 		if (!sPlayerOptions.empty()) {
 			asModifiers.push_back(sPlayerOptions);
+		}
+		if (inBMSCourse) {
+			static const char* names[] = { "ClassGauge",
+										   "ExClassGauge",
+										   "ExHardClassGauge" };
+			asModifiers.push_back(
+			  names[std::clamp(SONGMAN->bmsCourse.classGauge, 0, 2)]);
 		}
 		auto sSongOptions = GAMESTATE->m_SongOptions.GetStage().GetString();
 		if (!sSongOptions.empty()) {
@@ -780,6 +795,10 @@ StageStats::FinalizeScores()
 		// compressed input data
 		hs.WriteInputData();
 	}
+
+	// BMS 7k ranking site: send the play (replay included) when logged in
+	if (m_bLivePlay)
+		DLMAN->BMSUploadScore(hs, pSteps, GAMESTATE->m_pCurSong);
 
 	profile->SetAnyAchievedGoals(GAMESTATE->m_pCurSteps->GetChartKey(),
 							 GAMESTATE->m_SongOptions.GetCurrent().m_fMusicRate,

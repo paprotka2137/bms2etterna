@@ -38,8 +38,9 @@ enum DisplayScoreboard
 
 AutoScreenMessage(SM_DoneConnecting);
 
-Preference<std::string> g_sLastServer("LastConnectedMultiServer",
-									  "multi.etternaonline.com");
+Preference<std::string> g_sLastServer(
+  "LastConnectedMultiServer",
+  "wss://bms7k-ranking.bms2etterna.workers.dev/multi");
 
 REGISTER_SCREEN_CLASS(ScreenNetworkOptions);
 

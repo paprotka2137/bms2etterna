@@ -18,7 +18,12 @@ local gauges = {
 	Easy = {low = color("0.25,0.9,0.3"), high = red, border = 80},
 	Normal = {low = color("0.2,0.6,1"), high = red, border = 80},
 	Hard = {low = red, high = red, border = 0},
-	Death = {low = color("0.85,0.1,0.35"), high = color("0.85,0.1,0.35"), border = 0}
+	ExHard = {low = color("1,0.85,0.1"), high = color("1,0.85,0.1"), border = 0},
+	Death = {low = color("0.85,0.1,0.35"), high = color("0.85,0.1,0.35"), border = 0},
+	-- dan course gauges
+	Class = {low = red, high = red, border = 0},
+	ExClass = {low = red, high = red, border = 0},
+	ExHardClass = {low = color("1,0.85,0.1"), high = color("1,0.85,0.1"), border = 0}
 }
 
 local gauge = gauges.Normal
@@ -60,7 +65,8 @@ local t = Def.ActorFrame {
 		if stream ~= nil then
 			stream:visible(false)
 		end
-		gauge = gauges[meter:GetBMSGauge() or "Normal"] or gauges.Normal
+		local classGauge = meter.GetBMSClassGauge and meter:GetBMSClassGauge()
+		gauge = gauges[classGauge or meter:GetBMSGauge() or "Normal"] or gauges.Normal
 		life = meter:GetLife() * 100
 		lit = math.floor(life / 2 + 0.0001)
 		for i = 1, segments do

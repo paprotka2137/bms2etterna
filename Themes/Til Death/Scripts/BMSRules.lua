@@ -7,12 +7,12 @@ end
 -- judge rank and gauge, in the order they are picked from song select
 local bmsOptionValues = {
 	JudgeRank = {"Easy", "Normal", "Hard", "VeryHard"},
-	Gauge = {"Easy", "Normal", "Hard", "Death"},
+	Gauge = {"Easy", "Normal", "Hard", "ExHard", "Death"},
 	Arrange = {"Off", "Mirror", "Random", "RRandom", "SRandom", "HRandom", "Custom"},
 }
 local bmsOptionNames = {
 	JudgeRank = {"JudgeRankEasy", "JudgeRankNormal", "JudgeRankHard", "JudgeRankVeryHard"},
-	Gauge = {"GaugeEasy", "GaugeGroove", "GaugeHard", "GaugeDeath"},
+	Gauge = {"GaugeEasy", "GaugeGroove", "GaugeHard", "GaugeExHard", "GaugeDeath"},
 	Arrange = {"ArrangeOff", "ArrangeMirror", "ArrangeRandom", "ArrangeRRandom", "ArrangeSRandom", "ArrangeHRandom", "ArrangeCustom"},
 }
 local bmsOptionEnums = {

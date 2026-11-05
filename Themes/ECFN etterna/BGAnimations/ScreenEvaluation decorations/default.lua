@@ -4,6 +4,8 @@
 local t
 if hideMSD() then
 	t = LoadActor("ecfn.lua")
+	-- result of a dan course on top
+	t = Def.ActorFrame {t, LoadActor("dancourse.lua")}
 else
 	t = LoadActor("td.lua")
 end

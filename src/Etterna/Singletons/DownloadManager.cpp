@@ -738,15 +738,18 @@ DownloadManager::Update(float fDeltaSeconds)
 {
 	if (!initialized)
 		Init();
-	if (gameplay)
+	if (gameplay) {
+		// only requests marked duringGameplay (BMS chat polls) finish now
+		UpdateHTTP(fDeltaSeconds);
 		return;
+	}
 	UpdatePacks(fDeltaSeconds);
 	UpdateHTTP(fDeltaSeconds);
 }
 void
 DownloadManager::UpdateHTTP(float fDeltaSeconds)
 {
-	if (HTTPRequests.empty() || gameplay)
+	if (HTTPRequests.empty())
 		return;
 
 	static std::vector<std::pair<CURL*, RequestResult>> result_handles;
@@ -754,6 +757,8 @@ DownloadManager::UpdateHTTP(float fDeltaSeconds)
 		const std::lock_guard<std::mutex> lock(G_MTX_HTTP_RESULT_HANDLES);
 		G_HTTP_RESULT_HANDLES.swap(result_handles);
 	}
+	// results that have to wait for the end of gameplay
+	std::vector<std::pair<CURL*, RequestResult>> held;
 	for (auto& pair : result_handles) {
 		CURL* handle = pair.first;
 		RequestResultStatus res = pair.second.status;
@@ -762,6 +767,10 @@ DownloadManager::UpdateHTTP(float fDeltaSeconds)
 		int idx_to_delete = -1;
 		for (size_t i = 0; i < HTTPRequests.size(); ++i) {
 			if (handle == HTTPRequests[i]->handle) {
+				if (gameplay && !HTTPRequests[i]->duringGameplay) {
+					held.push_back(pair);
+					break;
+				}
 				// The CURL handle is freed by the other thread, for easier
 				// debugging set it to null
 				HTTPRequests[i]->handle = nullptr;
@@ -794,6 +803,11 @@ DownloadManager::UpdateHTTP(float fDeltaSeconds)
 			HTTPRequests.erase(HTTPRequests.begin() + idx_to_delete);
 	}
 	result_handles.clear();
+	if (!held.empty()) {
+		const std::lock_guard<std::mutex> lock(G_MTX_HTTP_RESULT_HANDLES);
+		G_HTTP_RESULT_HANDLES.insert(
+		  G_HTTP_RESULT_HANDLES.begin(), held.begin(), held.end());
+	}
 }
 void
 DownloadManager::UpdatePacks(float fDeltaSeconds)
@@ -6503,6 +6517,124 @@ DownloadablePack::GetThumbnailTexture()
 }
 
 // lua start
+// ---------------------------------------------------------------------------
+// BMS 7k ranking site
+// ---------------------------------------------------------------------------
+#include "Etterna/Models/StepsAndStyles/Steps.h"
+#include "Etterna/Models/HighScore/ReplayConstantsAndTypes.h"
+#include "MessageManager.h"
+#include "PrefsManager.h"
+
+static Preference<std::string> bmsRankingURL(
+  "BMSRankingURL",
+  "https://bms7k-ranking.bms2etterna.workers.dev");
+static Preference<std::string> bmsRankingToken("BMSRankingToken", "");
+static Preference<std::string> bmsRankingName("BMSRankingName", "");
+
+bool
+DownloadManager::BMSLoggedIn() const
+{
+	return !bmsRankingToken.Get().empty();
+}
+
+std::string
+DownloadManager::BMSLoginName() const
+{
+	return bmsRankingName.Get();
+}
+
+std::string
+DownloadManager::BMSLoginToken() const
+{
+	return bmsRankingToken.Get();
+}
+
+void
+DownloadManager::BMSRankingRequest(
+  const std::string& method,
+  const std::string& path,
+  std::vector<std::pair<std::string, std::string>> params,
+  std::function<void(long, const std::string&)> done,
+  bool duringGameplay)
+{
+	auto url = bmsRankingURL.Get();
+	while (!url.empty() && url.back() == '/')
+		url.pop_back();
+	url += path;
+	const auto post = method == "POST";
+	if (post) {
+		// the site knows who is asking from the token
+		if (!bmsRankingToken.Get().empty())
+			params.emplace_back("token", bmsRankingToken.Get());
+	} else {
+		for (auto& param : params)
+			param.second = UrlEncode(param.second);
+	}
+	auto* req = SendRequestToURL(
+	  url,
+	  "bmsranking",
+	  params,
+	  [done](HTTPRequest& r) { done(r.response_code, r.result); },
+	  false,
+	  post ? RequestMethod::POST : RequestMethod::GET,
+	  false,
+	  true,
+	  false);
+	// no connection: the callback still runs, with status 0
+	if (req != nullptr) {
+		req->Failed = [done](HTTPRequest& r) { done(0, ""); };
+		req->duringGameplay = duringGameplay;
+	}
+}
+
+void
+DownloadManager::BMSUploadScore(const HighScore& hs,
+								const Steps* steps,
+								const Song* song)
+{
+	if (!BMSLoggedIn() || steps == nullptr || song == nullptr)
+		return;
+	if (steps->m_StepsType != StepsType_kb7_single)
+		return;
+	if (std::fabs(hs.GetMusicRate() - 1.F) > 0.001F)
+		return; // like LR2, only 1.0x counts
+	std::string replay;
+	GetFileContents(FULL_REPLAY_DIR + hs.GetScoreKey(), replay);
+
+	const auto num = [](int n) { return std::to_string(n); };
+	std::vector<std::pair<std::string, std::string>> params = {
+		{ "score_key", hs.GetScoreKey() },
+		{ "chart_key", hs.GetChartKey() },
+		{ "pack", song->m_sGroupName },
+		{ "song", song->GetDisplayFullTitle() },
+		{ "steps", DifficultyToString(steps->GetDifficulty()) },
+		{ "rate", "1" },
+		{ "grade", GradeToString(hs.GetWifeGrade()) },
+		{ "w1", num(hs.GetTapNoteScore(TNS_W1)) },
+		{ "w2", num(hs.GetTapNoteScore(TNS_W2)) },
+		{ "w3", num(hs.GetTapNoteScore(TNS_W3)) },
+		{ "w4", num(hs.GetTapNoteScore(TNS_W4)) },
+		{ "w5", num(hs.GetTapNoteScore(TNS_W5)) },
+		{ "miss", num(hs.GetTapNoteScore(TNS_Miss)) },
+		{ "letgo", num(hs.GetHoldNoteScore(HNS_LetGo)) },
+		{ "missedhold", num(hs.GetHoldNoteScore(HNS_Missed)) },
+		{ "max_combo", std::to_string(hs.GetMaxCombo()) },
+		{ "modifiers", hs.GetModifiers() },
+		{ "datetime", hs.GetDateTime().GetString() },
+		{ "replay_raw", replay },
+	};
+	const auto key = hs.GetChartKey();
+	BMSRankingRequest(
+	  "POST", "/api/game/score", params, [key](long code, const std::string& body) {
+		  Locator::getLogger()->info("BMS ranking upload: {} {}", code, body);
+		  Message msg("BMSScoreUploaded");
+		  msg.SetParam("ok", code == 200);
+		  msg.SetParam("chartkey", key);
+		  msg.SetParam("response", body);
+		  MESSAGEMAN->Broadcast(msg);
+	  });
+}
+
 #include "Etterna/Models/Lua/LuaBinding.h"
 #include "LuaManager.h"
 /** @brief Allow Lua to have access to the ProfileManager. */
@@ -6617,6 +6749,75 @@ class LunaDownloadManager : public Luna<DownloadManager>
 	{
 		lua_pushboolean(L, p->LoggedIn());
 		return 1;
+	}
+	// DLMAN:BMSRequest("GET"|"POST", "/api/game/...", {k = v}, function(status, body) end, duringGameplay)
+	// duringGameplay = true: the answer comes even in the middle of a song
+	static int BMSRequest(T* p, lua_State* L)
+	{
+		const std::string method = SArg(1);
+		const std::string path = SArg(2);
+		std::vector<std::pair<std::string, std::string>> params;
+		if (lua_istable(L, 3)) {
+			lua_pushnil(L);
+			while (lua_next(L, 3) != 0) {
+				// copies, so lua_tostring does not change the keys lua_next walks
+				lua_pushvalue(L, -2);
+				lua_pushvalue(L, -2);
+				const char* k = lua_tostring(L, -2);
+				const char* v = lua_tostring(L, -1);
+				if (k != nullptr && v != nullptr)
+					params.emplace_back(k, v);
+				lua_pop(L, 3);
+			}
+		}
+		LuaReference ref;
+		if (lua_isfunction(L, 4)) {
+			lua_pushvalue(L, 4);
+			ref.SetFromStack(L);
+		}
+		const bool duringGameplay = lua_toboolean(L, 5) != 0;
+		p->BMSRankingRequest(
+		  method, path, params, [ref](long code, const std::string& body) {
+			  if (ref.IsNil() || !ref.IsSet())
+				  return;
+			  auto* L = LUA->Get();
+			  ref.PushSelf(L);
+			  if (!lua_isnil(L, -1)) {
+				  std::string Error = "Error running BMSRequest callback: ";
+				  lua_pushnumber(L, static_cast<double>(code));
+				  lua_pushlstring(L, body.data(), body.size());
+				  LuaHelpers::RunScriptOnStack(L, Error, 2, 0, true);
+			  } else {
+				  lua_pop(L, 1);
+			  }
+			  LUA->Release(L);
+		  },
+		  duringGameplay);
+		return 0;
+	}
+	static int BMSIsLoggedIn(T* p, lua_State* L)
+	{
+		lua_pushboolean(L, p->BMSLoggedIn());
+		return 1;
+	}
+	static int BMSGetName(T* p, lua_State* L)
+	{
+		lua_pushstring(L, bmsRankingName.Get().c_str());
+		return 1;
+	}
+	static int BMSGetURL(T* p, lua_State* L)
+	{
+		lua_pushstring(L, bmsRankingURL.Get().c_str());
+		return 1;
+	}
+	// remembers the login from /api/game/login (name, token), "" logs out
+	static int BMSSetLogin(T* p, lua_State* L)
+	{
+		bmsRankingName.Set(SArg(1));
+		bmsRankingToken.Set(SArg(2));
+		PREFSMAN->SavePrefsToDisk();
+		MESSAGEMAN->Broadcast("BMSLoginChanged");
+		return 0;
 	}
 	static int Login(T* p, lua_State* L)
 	{
@@ -7104,6 +7305,11 @@ class LunaDownloadManager : public Luna<DownloadManager>
 		ADD_METHOD(ShowPackPage);
 		ADD_METHOD(ShowUserPage);
 		ADD_METHOD(ShowScorePage);
+		ADD_METHOD(BMSRequest);
+		ADD_METHOD(BMSIsLoggedIn);
+		ADD_METHOD(BMSGetName);
+		ADD_METHOD(BMSGetURL);
+		ADD_METHOD(BMSSetLogin);
 	}
 };
 LUA_REGISTER_CLASS(DownloadManager)

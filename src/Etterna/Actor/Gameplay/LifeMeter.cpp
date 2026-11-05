@@ -41,8 +41,8 @@ class LunaLifeMeter : public Luna<LifeMeter>
 		return 1;
 	}
 
-	// the BMS gauge in effect ("Easy", "Normal", "Hard", "Death"), nil
-	// when the bar is not a BMS gauge
+	// the BMS gauge in effect ("Easy", "Normal", "Hard", "ExHard",
+	// "Death"), nil when the bar is not a BMS gauge
 	static int GetBMSGauge(T* p, lua_State* L)
 	{
 		const auto g = p->GetBMSGauge();
@@ -53,8 +53,22 @@ class LunaLifeMeter : public Luna<LifeMeter>
 		return 1;
 	}
 
+	// in a BMS dan course the course gauge ("Class", "ExClass",
+	// "ExHardClass") played instead of the chosen one, nil otherwise
+	static int GetBMSClassGauge(T* p, lua_State* L)
+	{
+		static const char* names[] = { "Class", "ExClass", "ExHardClass" };
+		const auto g = p->GetBMSClassGauge();
+		if (g < 0 || g > 2)
+			lua_pushnil(L);
+		else
+			lua_pushstring(L, names[g]);
+		return 1;
+	}
+
 	LunaLifeMeter()
 	{
+		ADD_METHOD(GetBMSClassGauge);
 		ADD_METHOD(GetLife);
 		ADD_METHOD(IsInDanger);
 		ADD_METHOD(IsHot);

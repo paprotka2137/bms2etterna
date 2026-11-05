@@ -33,6 +33,10 @@ class LifeMeterBar : public LifeMeter
 	bool IsFailingAtEnd() const override;
 	bool IsBMSGauge() const override { return m_bBMS; }
 	int GetBMSGauge() const override { return m_bBMS ? m_BMSGauge : -1; }
+	int GetBMSClassGauge() const override
+	{
+		return m_bBMS ? m_iBMSClassGauge : -1;
+	}
 	float GetLife() const override { return m_fLifePercentage; }
 
 	void FillForHowToPlay(int NumT2s, int NumMisses);
@@ -77,6 +81,12 @@ class LifeMeterBar : public LifeMeter
 	bool m_bBMSTracked[NUM_BMSGauge]{};
 	float m_fBMSValue[NUM_BMSGauge]{};
 	float m_fBMSChange[NUM_BMSGauge][NUM_BMSJudge]{};
+	// BMS dan course: one course gauge (CLASS / EX CLASS / EX HARD CLASS)
+	// instead of the chosen one, its value carried over the songs since the
+	// life meter lives for the whole course. -1 outside a course.
+	int m_iBMSClassGauge{ -1 };
+	float m_fBMSClassValue{ 100.f };
+	void ChangeBMSClassLife(BMSJudge judge);
 	float m_fBMSMin{ 0.f };
 	float m_fBMSBorder{ 0.f };
 

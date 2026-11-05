@@ -161,6 +161,7 @@ end
 -- LR2 lamps, used for 7k where the game plays by LR2 gauge rules
 local bmsLamps = {
 	{"FullCombo", "FC", "#66ffff"},
+	{"ExHardClear", "EXH", "#ffd91a"},
 	{"HardClear", "HARD", "#ff4444"},
 	{"NormalClear", "CLEAR", "#ffdd33"},
 	{"EasyClear", "EASY", "#66ff66"},
@@ -182,18 +183,26 @@ end
 -- the gauge a score was played on is kept in its modifiers
 local function getBMSGaugeLamp(score)
 	local mods = string.lower(score:GetModifiers() or "")
-	if mods:find("hardgauge", 1, true) or mods:find("deathgauge", 1, true) then
+	-- "exhardgauge" contains "hardgauge", check it first
+	if mods:find("exhardgauge", 1, true) or mods:find("deathgauge", 1, true) then
 		return 2
+	elseif mods:find("hardgauge", 1, true) then
+		return 3
 	elseif mods:find("easygauge", 1, true) then
-		return 4
+		return 5
 	end
-	return 3
+	return 4
 end
 
--- lamp index of a score, 1 (full combo) is the best and 5 (failed) the worst
+-- lamp index of a score, 1 (full combo) is the best and 6 (failed) the worst
 function getBMSLampFromScore(score)
 	if score:GetWifeGrade() == "Grade_Failed" then
-		return 5
+		return 6
+	end
+	-- a song played inside a dan course (course gauge) gives no lamp,
+	-- like LR2 / beatoraja: it only counts as played
+	if string.lower(score:GetModifiers() or ""):find("classgauge", 1, true) then
+		return 6
 	end
 	local tns = function(x) return score:GetTapNoteScore("TapNoteScore_" .. x) end
 	local hns = function(x) return score:GetHoldNoteScore("HoldNoteScore_" .. x) end
@@ -229,7 +238,7 @@ function getBestBMSLamp(chartKey)
 		for _, s in ipairs(hsl:GetScores()) do
 			if countsForLamp(s) then
 				local lamp = getBMSLampFromScore(s)
-				if lamp < 5 and (best == nil or lamp < best or
+				if lamp < 6 and (best == nil or lamp < best or
 						(lamp == best and s:GetWifeScore() > bestScore:GetWifeScore())) then
 					best = lamp
 					bestScore = s

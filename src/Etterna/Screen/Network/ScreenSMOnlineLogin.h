@@ -14,6 +14,7 @@ class ScreenSMOnlineLogin : public ScreenWithMenuElements
   private:
 	int m_iPlayer = 0;
 	std::string username;
+	bool triedSiteLogin = false;
 };
 
 #endif

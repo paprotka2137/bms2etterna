@@ -1,5 +1,28 @@
 local t = Def.ActorFrame {}
 
+-- 7k: the ECFN song select background, no Til Death frame or wheel bar
+if hideMSD() then
+	local dir = THEME:GetCurrentThemeDirectory()
+	if dir:sub(1, 1) ~= "/" then
+		dir = "/" .. dir
+	end
+	t[#t + 1] = Def.Quad {
+		InitCommand = function(self)
+			self:halign(0):valign(0):zoomto(SCREEN_WIDTH, SCREEN_HEIGHT):diffuse(color("0,0,0,1"))
+		end,
+		BeginCommand = function(self)
+			SCREENMAN:GetTopScreen():AddInputCallback(MPinput)
+		end,
+	}
+	t[#t + 1] = Def.Sprite {
+		Texture = dir .. "BGAnimations/ScreenSelectMusic decorations/ecfn/background.png",
+		InitCommand = function(self)
+			self:halign(0):valign(0):zoomto(SCREEN_WIDTH, SCREEN_HEIGHT)
+		end,
+	}
+	return t
+end
+
 --bg
 t[#t + 1] = LoadActor(THEME:GetPathG("", "_OptionsScreen")) ..  {
 	OnCommand = function(self)

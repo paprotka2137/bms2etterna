@@ -481,6 +481,25 @@ local t = Def.ActorFrame {
 	end,
 }
 
+-- the decide screen's pictures, loaded here (never shown) so that screen
+-- comes up without waiting for them
+do
+	local decide = THEME:GetCurrentThemeDirectory()
+	if decide:sub(1, 1) ~= "/" then
+		decide = "/" .. decide
+	end
+	decide = decide .. "BGAnimations/ScreenStageInformation decorations/"
+	local preload = Def.ActorFrame {
+		InitCommand = function(self)
+			self:visible(false)
+		end,
+	}
+	for _, f in ipairs({"smoke0 3x5.png", "smoke1 3x5.png", "smoke2 3x5.png", "smoke3 3x5.png", "background.png"}) do
+		preload[#preload + 1] = Def.Sprite {Texture = decide .. f}
+	end
+	t[#t + 1] = preload
+end
+
 -- the vignette over the wheel
 t[#t + 1] = Def.Sprite {
 	Texture = dir .. "shadow.png",
@@ -522,19 +541,17 @@ do
 end
 
 local tabWindows
--- the Til Death tab panels sit on gray ECFN windows (the SCORE DATA window
--- stretched without its label), their own backgrounds are see-through on 7k
--- (getMainColor "tabs"). The window header gets the tab's name where the tab
--- leaves room for it.
+-- the Til Death tab panels sit on the same backdrop as the Dan window
+-- (dan.lua, which draws its own): near-opaque dark blue from under the top
+-- bar down to just above the window strip. Their own backgrounds are
+-- see-through on 7k (getMainColor "tabs").
 do
 	local wide = SCREEN_WIDTH * 0.56
 	local narrow = capWideScale(360, 400)
-	local panels = {
-		[2] = {"win_scores", 10, 40, wide, 368},
-		[4] = {"win_profile", 10, 45, narrow, 350, "PROFILE DATA"},
-		[6] = {"win_goals", 10, 50, wide, 352, "GOALS"},
-		[7] = {"win_profile", 10, 45, narrow, 350, "PLAYLISTS"},
-		[9] = {"win_profile", 10, 45, narrow, 350, "TAGS"},
+	local top, bottom = 41, SCREEN_HEIGHT - 82
+	local widths = {
+		[2] = wide, -- Scores
+		[10] = narrow, -- Ranking (Profile, Goals, Playlists and Dan draw their own)
 	}
 	local f = Def.ActorFrame {
 		BeginCommand = function(self)
@@ -544,16 +561,17 @@ do
 			self:playcommand("Place")
 		end,
 	}
-	-- a dark backing under the window so the panels behind only show faintly
+	-- slides in and out with the Til Death panel on it (bouncebegin 0.2 from
+	-- 500 to the left)
 	f[#f + 1] = Def.Quad {
 		InitCommand = function(self)
 			self:visible(false):halign(0):valign(0)
 		end,
 		PlaceCommand = function(self)
-			local r = panels[getTabIndex()]
-			if r then
-				self:stoptweening():visible(true):zoomto(r[4] + 4, r[5] + 4):xy(r[2] - 2 - 500, r[3] - 2)
-				self:diffuse(color("0.05,0.06,0.08,0")):bouncebegin(0.2):x(r[2] - 2):diffusealpha(0.82)
+			local w = widths[getTabIndex()]
+			if w then
+				self:stoptweening():visible(true):zoomto(w, bottom - top):xy(10 - 500, top)
+				self:diffuse(color("0.02,0.03,0.06,0")):bouncebegin(0.2):x(10):diffusealpha(0.92)
 			elseif self:GetVisible() then
 				self:stoptweening():bouncebegin(0.2):addx(-500):diffusealpha(0)
 				self:sleep(0.04):queuecommand("Hide")
@@ -561,46 +579,6 @@ do
 		end,
 		HideCommand = function(self)
 			self:visible(false)
-		end,
-	}
-	for _, name in ipairs({"win_scores", "win_search", "win_profile", "win_goals"}) do
-		f[#f + 1] = Def.Sprite {
-			Texture = dir .. name .. ".png",
-			-- slides in and out with the Til Death panel on it (bouncebegin 0.2
-			-- from 500 to the left)
-			PlaceCommand = function(self)
-				local r = panels[getTabIndex()]
-				if r and r[1] == name then
-					self:stoptweening():visible(true):halign(0):valign(0)
-					self:zoomto(r[4] + 8, r[5] + 8):xy(r[2] - 4 - 500, r[3] - 4):diffusealpha(0)
-					self:bouncebegin(0.2):x(r[2] - 4):diffusealpha(1)
-				elseif self:GetVisible() then
-					self:stoptweening():bouncebegin(0.2):addx(-500):diffusealpha(0)
-					self:sleep(0.04):queuecommand("Hide")
-				end
-			end,
-			HideCommand = function(self)
-				self:visible(false)
-			end,
-			InitCommand = function(self)
-				self:visible(false)
-			end,
-		}
-	end
-	f[#f + 1] = LoadFont("Common Normal") .. {
-		InitCommand = function(self)
-			self:halign(0):valign(0.5):zoom(0.3):diffuse(color("#ffffff"))
-			self:shadowlength(1):shadowcolor(color("0,0,0,1"))
-		end,
-		PlaceCommand = function(self)
-			local r = panels[getTabIndex()]
-			self:stoptweening()
-			if r and r[6] then
-				self:visible(true):xy(r[2] + 2 - 500, r[3] + 1):settext(r[6]):diffusealpha(0)
-				self:bouncebegin(0.2):x(r[2] + 2):diffusealpha(1)
-			else
-				self:visible(false)
-			end
 		end,
 	}
 	tabWindows = f

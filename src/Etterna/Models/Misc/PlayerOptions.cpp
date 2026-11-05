@@ -35,6 +35,7 @@ static const char* BMSGaugeNames[] = {
 	"Easy",
 	"Normal",
 	"Hard",
+	"ExHard",
 	"Death",
 };
 XToString(BMSGauge);
@@ -390,6 +391,9 @@ PlayerOptions::GetMods(std::vector<std::string>& AddTo, bool bForceNoteSkin) con
 		case BMSGauge_Hard:
 			AddTo.push_back("HardGauge");
 			break;
+		case BMSGauge_ExHard:
+			AddTo.push_back("ExHardGauge");
+			break;
 		case BMSGauge_Death:
 			AddTo.push_back("DeathGauge");
 			break;
@@ -653,12 +657,14 @@ PlayerOptions::FromOneModString(const std::string& sOneMod,
 		m_DrainType = DrainType_Normal;
 	} else if ((sBit == "easygauge" || sBit == "normalgauge" ||
 				sBit == "groovegauge" || sBit == "hardgauge" ||
-				sBit == "deathgauge") &&
+				sBit == "exhardgauge" || sBit == "deathgauge") &&
 			   (forReplay || !DLMAN->InGameplay())) {
 		if (sBit == "easygauge")
 			m_BMSGauge = BMSGauge_Easy;
 		else if (sBit == "hardgauge")
 			m_BMSGauge = BMSGauge_Hard;
+		else if (sBit == "exhardgauge")
+			m_BMSGauge = BMSGauge_ExHard;
 		else if (sBit == "deathgauge")
 			m_BMSGauge = BMSGauge_Death;
 		else

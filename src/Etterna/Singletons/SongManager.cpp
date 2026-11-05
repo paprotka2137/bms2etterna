@@ -1610,6 +1610,12 @@ SongManager::WasLoadedFromAdditionalSongs(const Song* pSong) -> bool
 }
 
 auto
+SongManager::InBMSCourse() const -> bool
+{
+	return bmsCourse.active && GAMESTATE->IsPlaylistCourse();
+}
+
+auto
 SongManager::GetSongFromDir(std::string dir) const -> Song*
 {
 	ensure_slash_at_end(dir);
@@ -1828,6 +1834,63 @@ SongManager::SaveCalcTestXmlToDir() const
 class LunaSongManager : public Luna<SongManager>
 {
   public:
+	// the BMS dan course being played or played last, nil before any:
+	// {id, name, active, finished, cleared, gauge, classGauge ("Class",
+	// "ExClass", "ExHardClass"), songsPlayed, songsTotal, maxCombo, notes,
+	// judges = {pg, gr, gd, bd, pr, ep}, gauges = {after song 1, ...},
+	// scoreKeys = {...}}
+	static auto GetBMSCourseResult(T* p, lua_State* L) -> int
+	{
+		const auto& c = p->bmsCourse;
+		if (c.id.empty()) {
+			lua_pushnil(L);
+			return 1;
+		}
+		static const char* gauges[] = { "Class", "ExClass", "ExHardClass" };
+		lua_newtable(L);
+		auto setS = [L](const char* k, const std::string& v) {
+			lua_pushstring(L, v.c_str());
+			lua_setfield(L, -2, k);
+		};
+		auto setN = [L](const char* k, double v) {
+			lua_pushnumber(L, v);
+			lua_setfield(L, -2, k);
+		};
+		auto setB = [L](const char* k, bool v) {
+			lua_pushboolean(L, v);
+			lua_setfield(L, -2, k);
+		};
+		setS("id", c.id);
+		setS("name", c.name);
+		setB("active", p->InBMSCourse());
+		setB("finished", c.finished);
+		setB("cleared", c.cleared);
+		setN("gauge", c.gauge);
+		setS("classGauge", gauges[std::clamp(c.classGauge, 0, 2)]);
+		setN("songsPlayed", c.songsPlayed);
+		setN("songsTotal", c.songsTotal);
+		setN("maxCombo", c.maxCombo);
+		setN("notes", c.notes);
+		lua_newtable(L);
+		for (auto i = 0; i < 6; i++) {
+			lua_pushnumber(L, c.judges[i]);
+			lua_rawseti(L, -2, i + 1);
+		}
+		lua_setfield(L, -2, "judges");
+		lua_newtable(L);
+		for (size_t i = 0; i < c.gaugeAfterSong.size(); i++) {
+			lua_pushnumber(L, c.gaugeAfterSong[i]);
+			lua_rawseti(L, -2, static_cast<int>(i) + 1);
+		}
+		lua_setfield(L, -2, "gauges");
+		lua_newtable(L);
+		for (size_t i = 0; i < c.scoreKeys.size(); i++) {
+			lua_pushstring(L, c.scoreKeys[i].c_str());
+			lua_rawseti(L, -2, static_cast<int>(i) + 1);
+		}
+		lua_setfield(L, -2, "scoreKeys");
+		return 1;
+	}
 	static auto GetAllSongs(T* p, lua_State* L) -> int
 	{
 		const auto& v = p->GetAllSongs();
@@ -2021,6 +2084,7 @@ class LunaSongManager : public Luna<SongManager>
 	LunaSongManager()
 	{
 		ADD_METHOD(GetAllSongs);
+		ADD_METHOD(GetBMSCourseResult);
 		ADD_METHOD(DifferentialReload);
 		ADD_METHOD(GetNumSongs);
 		ADD_METHOD(GetNumAdditionalSongs);

@@ -28,6 +28,11 @@ NetworkSyncManager* NSMAN;
 extern Preference<std::string> g_sLastServer;
 Preference<unsigned int> autoConnectMultiplayer("AutoConnectMultiplayer", 1);
 
+// The live spectating stream (one message per keypress, miss and hold) is
+// off: the BMS 7k server does not use it and on the free Cloudflare plan
+// every message counts against the daily request limit.
+static constexpr bool SEND_REPLAY_STREAM = false;
+
 
 static LocalizedString CONNECTION_SUCCESSFUL("NetworkSyncManager",
 											 "Connection to '%s' successful.");
@@ -137,20 +142,18 @@ NetworkSyncManager::PostStartUp(const std::string& ServerIP)
 	unsigned short iPort;
 	m_startupStatus = NSMANStartupStatus::NOT_SUCCESSFUL;
 
-	size_t cLoc = ServerIP.find(':');
-
-	auto tmp = ServerIP;
-	if (ServerIP.starts_with("wss://")) {
-		tmp = ServerIP.substr(6);
-	} else if (ServerIP.starts_with("ws://")) {
-		tmp = ServerIP.substr(5);
-	}
-
-	if (tmp.find(':') != std::string::npos) {
-		sAddress = tmp.substr(0, cLoc);
+	// "ws://host[:port][/path]" and "wss://..." are used as they are (the
+	// BMS 7k server lives at wss://<ranking site>/multi); a bare
+	// "host[:port]" keeps the old plain ws:// on port 8765
+	if (ServerIP.starts_with("wss://") || ServerIP.starts_with("ws://")) {
+		sAddress = ServerIP;
+		iPort = 0;
+	} else if (ServerIP.find(':') != std::string::npos) {
+		const size_t cLoc = ServerIP.find(':');
+		sAddress = ServerIP.substr(0, cLoc);
 		char* cEnd;
 		errno = 0;
-		auto sub = tmp.substr(cLoc + 1);
+		auto sub = ServerIP.substr(cLoc + 1);
 		iPort = static_cast<unsigned short>(strtol(sub.c_str(), &cEnd, 10));
 		if (*cEnd != 0 || errno != 0) {
 			Locator::getLogger()->warn("Invalid port {}", sub);
@@ -211,6 +214,11 @@ NetworkSyncManager::StartUp()
 {
 	std::string ServerIP;
 
+	// EtternaOnline's multiplayer server is gone, move old settings over
+	// to this build's server
+	if (g_sLastServer.Get().find("etternaonline.com") != std::string::npos)
+		g_sLastServer.Set(g_sLastServer.GetDefault());
+
 	if (GetCommandlineArgument("netip", &ServerIP))
 		PostStartUp(ServerIP);
 	else if (autoConnectMultiplayer)
@@ -253,7 +261,7 @@ NetworkSyncManager::ReportReplayInput(bool isPress,
 									  int tapNoteType,
 									  int tapNoteSubType)
 {
-	if (ShouldSendMessage(true) && !spectating)
+	if (SEND_REPLAY_STREAM && ShouldSendMessage(true) && !spectating)
 		curProtocol->ReportReplayInput(this,
 									   isPress,
 									   col,
@@ -270,7 +278,7 @@ NetworkSyncManager::ReportReplayMiss(int col,
 									 int tapNoteType,
 									 int tapNoteSubType)
 {
-	if (ShouldSendMessage(true) && !spectating)
+	if (SEND_REPLAY_STREAM && ShouldSendMessage(true) && !spectating)
 		curProtocol->ReportReplayMiss(
 		  this, col, row, tapNoteType, tapNoteSubType);
 }
@@ -278,14 +286,14 @@ NetworkSyncManager::ReportReplayMiss(int col,
 void
 NetworkSyncManager::ReportReplayHold(int col, int row, int subType)
 {
-	if (ShouldSendMessage(true) && !spectating)
+	if (SEND_REPLAY_STREAM && ShouldSendMessage(true) && !spectating)
 		curProtocol->ReportReplayHold(this, col, row, subType);
 }
 
 void
 NetworkSyncManager::ReportReplayMine(int row, int col)
 {
-	if (ShouldSendMessage(true) && !spectating)
+	if (SEND_REPLAY_STREAM && ShouldSendMessage(true) && !spectating)
 		curProtocol->ReportReplayMine(this, row, col);
 }
 
@@ -295,7 +303,7 @@ NetworkSyncManager::ReportV2Data(int col,
 								 float offset,
 								 int tapNoteType)
 {
-	if (ShouldSendMessage(true) && !spectating)
+	if (SEND_REPLAY_STREAM && ShouldSendMessage(true) && !spectating)
 		curProtocol->ReportV2Data(col, row, offset, tapNoteType);
 }
 

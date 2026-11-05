@@ -375,7 +375,10 @@ ScreenGameplay::InitSongQueues()
 		m_apSongsQueue.clear();
 		GetPlayerInfo()->m_vpStepsQueue.clear();
 
-		auto& pl = SongManager::GetPlaylists()[SONGMAN->playlistcourse];
+		// a BMS dan course keeps its own playlist, not a profile one
+		auto& pl = SONGMAN->InBMSCourse()
+					 ? SONGMAN->bmsCourse.playlist
+					 : SongManager::GetPlaylists()[SONGMAN->playlistcourse];
 		for (auto& ch : pl.chartlist) {
 			m_apSongsQueue.emplace_back(ch.songptr);
 			GetPlayerInfo()->m_vpStepsQueue.emplace_back(ch.stepsptr);
@@ -1066,6 +1069,11 @@ ScreenGameplay::Update(float fDeltaTime)
 	if (failtype == FailType_Off && GetPlayerInfo()->m_pLifeMeter != nullptr &&
 		GetPlayerInfo()->m_pLifeMeter->IsBMSGauge()) {
 		failtype = FailType_ImmediateContinue;
+	}
+	// a dan course is over the moment the course gauge empties
+	if (SONGMAN->InBMSCourse() && GetPlayerInfo()->m_pLifeMeter != nullptr &&
+		GetPlayerInfo()->m_pLifeMeter->IsBMSGauge()) {
+		failtype = FailType_Immediate;
 	}
 	// update GameState HealthState
 	auto& hs = GetPlayerInfo()->GetPlayerState()->m_HealthState;
@@ -1782,7 +1790,9 @@ ScreenGameplay::HandleScreenMessage(const ScreenMessage& SM)
 			GetPlayerInfo()->GetPlayerStageStats()->m_iSongsPassed++;
 			if (lifeMeter != nullptr)
 				GetPlayerInfo()->GetPlayerStageStats()->m_iBMSClearGauge =
-				  lifeMeter->GetBMSGauge();
+				  lifeMeter->GetBMSClassGauge() >= 0
+					? -1
+					: lifeMeter->GetBMSGauge();
 		}
 
 		// set a life record at the point of failure
@@ -1795,6 +1805,44 @@ ScreenGameplay::HandleScreenMessage(const ScreenMessage& SM)
 		 * bFailedEarlier): */
 		const auto bAllReallyFailed = STATSMAN->m_CurStageStats.Failed();
 		const auto bIsLastSong = m_apSongsQueue.size() == 1;
+
+		// BMS dan course: add this song to the course result. A failed song
+		// ends the course, the songs after it are not played.
+		const auto bInBMSCourse = SONGMAN->InBMSCourse();
+		const auto bBMSCourseFailed =
+		  bInBMSCourse && GetPlayerInfo()->GetPlayerStageStats()->m_bFailed;
+		if (bInBMSCourse) {
+			auto& c = SONGMAN->bmsCourse;
+			const auto* pss = GetPlayerInfo()->GetPlayerStageStats();
+			c.songsPlayed++;
+			c.judges[0] += pss->m_iTapNoteScores[TNS_W1];
+			c.judges[1] += pss->m_iTapNoteScores[TNS_W2];
+			c.judges[2] += pss->m_iTapNoteScores[TNS_W3];
+			c.judges[3] += pss->m_iTapNoteScores[TNS_W4] +
+						   pss->m_iTapNoteScores[TNS_W5];
+			c.judges[4] += pss->m_iTapNoteScores[TNS_Miss] +
+						   pss->m_iHoldNoteScores[HNS_LetGo];
+			c.judges[5] += pss->m_iEmptyPoors;
+			c.maxCombo = std::max(c.maxCombo, pss->GetMaxCombo().m_cnt);
+			if (GAMESTATE->m_pCurSteps != nullptr)
+				c.notes += static_cast<int>(
+				  GAMESTATE->m_pCurSteps->GetRadarValues()[RadarCategory_Notes]);
+			c.gauge = lifeMeter != nullptr && !pss->m_bFailed
+						? lifeMeter->GetLife() * 100.F
+						: 0.F;
+			c.gaugeAfterSong.push_back(c.gauge);
+			if (bBMSCourseFailed || bIsLastSong) {
+				c.finished = true;
+				c.cleared = !bBMSCourseFailed && c.songsPlayed == c.songsTotal;
+			}
+			Locator::getLogger()->info(
+			  "BMS course {}: song {}/{} {}, gauge {:.1f}",
+			  c.name,
+			  c.songsPlayed,
+			  c.songsTotal,
+			  pss->m_bFailed ? "failed" : "passed",
+			  c.gauge);
+		}
 
 		Locator::getLogger()->info("bAllReallyFailed = {} bIsLastSong = {}, m_gave_up = {}",
 				   bAllReallyFailed,
@@ -1810,7 +1858,7 @@ ScreenGameplay::HandleScreenMessage(const ScreenMessage& SM)
 			ratesqueue.erase(ratesqueue.begin(), ratesqueue.begin() + 1);
 
 			this->StageFinished(false);
-			if (!m_apSongsQueue.empty()) {
+			if (!m_apSongsQueue.empty() && !bBMSCourseFailed) {
 				GAMESTATE->m_SongOptions.GetCurrent().m_fMusicRate =
 				  ratesqueue[0];
 				GAMESTATE->m_SongOptions.GetSong().m_fMusicRate = ratesqueue[0];
@@ -1823,9 +1871,12 @@ ScreenGameplay::HandleScreenMessage(const ScreenMessage& SM)
 			}
 			playlistscorekeys.emplace_back(
 			  STATSMAN->m_CurStageStats.mostrecentscorekey);
+			if (bInBMSCourse)
+				SONGMAN->bmsCourse.scoreKeys.emplace_back(
+				  STATSMAN->m_CurStageStats.mostrecentscorekey);
 		}
 
-		if (!bIsLastSong) {
+		if (!bIsLastSong && !bBMSCourseFailed) {
 			// Load the next song in the course.
 			HandleScreenMessage(SM_StartLoadingNextSong);
 			return;
@@ -1864,7 +1915,7 @@ ScreenGameplay::HandleScreenMessage(const ScreenMessage& SM)
 		Message msg("SongFinished");
 		MESSAGEMAN->Broadcast(msg);
 
-		if (GAMESTATE->IsPlaylistCourse()) {
+		if (GAMESTATE->IsPlaylistCourse() && !SONGMAN->InBMSCourse()) {
 			SongManager::GetPlaylists()[SONGMAN->playlistcourse]
 			  .courseruns.emplace_back(playlistscorekeys);
 		}

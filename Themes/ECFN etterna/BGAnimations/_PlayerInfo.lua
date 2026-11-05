@@ -274,6 +274,8 @@ t[#t + 1] = Def.ActorFrame {
 		Name = "loginlogout",
 		InitCommand = function(self)
 			self:xy(middleX, AvatarY + 8):halign(0.5):zoom(0.45):diffuse(ButtonColor)
+			-- 7k logs in on the Ranking window, not to EtternaOnline
+			self:visible(not ecfn)
 		end,
 		BeginCommand = function(self)
 			self:queuecommand("Set")
@@ -336,6 +338,9 @@ t[#t + 1] = Def.ActorFrame {
 			ms.ok(translated_info["LoginFailed"] .. " -- " .. params.why)
 		end,
 		LoginHotkeyPressedMessageCommand = function(self)
+			if ecfn then
+				return -- no EtternaOnline login on 7k (Ctrl+L)
+			end
 			if DLMAN:IsLoggedIn() then
 				self:queuecommand("LogOut")
 			else
@@ -350,6 +355,8 @@ t[#t + 1] = Def.ActorFrame {
 		Name = "LoggedInAs",
 		InitCommand = function(self)
 			self:xy(middleX, AvatarY + 23.5):halign(0.5):zoom(0.45):diffuse(ButtonColor)
+			-- 7k logs in on the Ranking window, not to EtternaOnline
+			self:visible(not ecfn)
 		end,
 		BeginCommand = function(self)
 			self:queuecommand("Set")

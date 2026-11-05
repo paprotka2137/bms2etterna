@@ -10,6 +10,7 @@
 #include "ScreenSMOnlineLogin.h"
 #include "Etterna/Screen/Others/ScreenTextEntry.h"
 #include "Etterna/Singletons/ThemeManager.h"
+#include "Etterna/Singletons/DownloadManager.h"
 
 REGISTER_SCREEN_CLASS(ScreenSMOnlineLogin);
 
@@ -93,7 +94,15 @@ ScreenSMOnlineLogin::HandleScreenMessage(const ScreenMessage& SM)
 
 		PREFSMAN->SavePrefsToDisk();
 		PROFILEMAN->LoadLocalProfileFromMachine(PLAYER_1);
-
+		// logged in to the ranking site in the game: use that account,
+		// the username prompt only shows if the server says no
+		if (!triedSiteLogin && DLMAN->BMSLoggedIn() &&
+			!DLMAN->BMSLoginName().empty()) {
+			triedSiteLogin = true;
+			NSMAN->Login(DLMAN->BMSLoginName(),
+						 "token:" + DLMAN->BMSLoginToken());
+			return;
+		}
 		sLoginQuestion = ENTER_USERNAME.GetValue();
 		ScreenTextEntry::s_bMustResetInputRedirAtClose = true;
 		ScreenTextEntry::TextEntry(SM_UsernameDone,

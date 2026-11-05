@@ -49,6 +49,7 @@ enum BMSGauge
 	BMSGauge_Easy,
 	BMSGauge_Normal,
 	BMSGauge_Hard,
+	BMSGauge_ExHard,
 	BMSGauge_Death,
 	NUM_BMSGauge,
 	BMSGauge_Invalid

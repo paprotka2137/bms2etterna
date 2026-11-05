@@ -413,7 +413,7 @@ class LunaRoomWheel : public Luna<RoomWheel>
 		lua_newtable(L);
 
 		for (size_t i = 0; i < (*p->allRooms).size(); i++) {
-			lua_createtable(L, 0, 5);
+			lua_createtable(L, 0, 6);
 
 			auto& z = (*p->allRooms)[i];
 
@@ -431,6 +431,13 @@ class LunaRoomWheel : public Luna<RoomWheel>
 
 			lua_pushboolean(L, z.HasPassword());
 			lua_setfield(L, -2, "passworded");
+
+			lua_createtable(L, static_cast<int>(z.players.size()), 0);
+			for (size_t j = 0; j < z.players.size(); j++) {
+				lua_pushstring(L, z.players[j].c_str());
+				lua_rawseti(L, -2, static_cast<int>(j + 1));
+			}
+			lua_setfield(L, -2, "players");
 
 			lua_rawseti(L, -2, i + 1);
 		}

@@ -403,6 +403,8 @@ class HTTPRequest
 	std::function<void(HTTPRequest&)> Done;
 	std::function<void(HTTPRequest&)> Failed;
 	bool requiresLogin = false;
+	// finished even during gameplay (the BMS chat), other requests wait
+	bool duringGameplay = false;
 };
 enum class RequestMethod
 {
@@ -565,6 +567,23 @@ class DownloadManager
 	  const DateTime start = DateTime::GetFromString("1990-01-01 12:00:00"),
 	  const DateTime end = DateTime::GetFromString("2100-01-01 12:00:00"));
 	void DownloadPlaylist(const std::string& name);
+
+	// BMS 7k ranking site (leaderboard/ in this repo), separate from
+	// EtternaOnline. Talks plain text, see the site's /api/game routes.
+	void BMSRankingRequest(
+	  const std::string& method,
+	  const std::string& path,
+	  std::vector<std::pair<std::string, std::string>> params,
+	  std::function<void(long, const std::string&)> done,
+	  bool duringGameplay = false);
+	// sends a 7k play at 1.0x right after the song when logged in there
+	void BMSUploadScore(const HighScore& hs,
+						const class Steps* steps,
+						const class Song* song);
+	[[nodiscard]] bool BMSLoggedIn() const;
+	// the site login, the multiplayer server accepts it instead of a password
+	[[nodiscard]] std::string BMSLoginName() const;
+	[[nodiscard]] std::string BMSLoginToken() const;
 
 	// Score upload functions
 	void UploadScore(HighScore* hs,

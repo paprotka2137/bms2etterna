@@ -3,9 +3,14 @@ if not NSMAN:IsETTP() then
 	t[#t + 1] = LoadActor("../_chatbox")
 end
 
-t[#t + 1] = LoadActor("../ScreenSelectMusic decorations/profile")
-t[#t + 1] = LoadActor("roomsearch")
-t[#t + 1] = LoadActor("tabs")
+if hideMSD() then
+	-- 7k: the ECFN lobby panel instead of the Til Death tabs and room search
+	t[#t + 1] = LoadActor("ecfn")
+else
+	t[#t + 1] = LoadActor("../ScreenSelectMusic decorations/profile")
+	t[#t + 1] = LoadActor("roomsearch")
+	t[#t + 1] = LoadActor("tabs")
+end
 
 local g =
 	Def.ActorFrame {

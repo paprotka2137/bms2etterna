@@ -13,6 +13,7 @@
 #include "Etterna/Models/StepsAndStyles/Style.h"
 #include "Etterna/Singletons/CryptManager.h"
 #include "Etterna/Singletons/ScreenManager.h"
+#include "Etterna/Singletons/SongManager.h"
 #include "Core/Services/Locator.hpp"
 #include "RageUtil/File/RageFileManager.h"
 
@@ -217,11 +218,27 @@ static const BMSGaugeProperty BMS_GAUGES[NUM_BMSGauge] = {
 	  { 1.f, 1.f, .5f, -4.f, -6.f, -2.f }, 0.f, 1.f },
 	{ true, 0.f, 100.f, 0.f, 2.f,
 	  { .1f, .1f, .05f, -6.f, -10.f, -2.f }, 32.f, .6f },
+	// EX HARD: hard with double BAD/POOR damage and no relief at low gauge
+	{ true, 0.f, 100.f, 0.f, 2.f,
+	  { .1f, .1f, .05f, -12.f, -20.f, -2.f }, 0.f, 1.f },
 	{ true, 0.f, 100.f, 0.f, 2.f,
 	  { .15f, .06f, 0.f, -100.f, -100.f, -10.f }, 0.f, 1.f },
 };
 
-// LR2 hard gauge damage multiplier from TOTAL and note count (Endless
+// LR2 course (dan) gauges, as beatoraja / Endless Dream have them
+// (GaugeProperty.LR2 CLASS_LR2, EXCLASS_LR2, EXHARDCLASS_LR2): start full,
+// never scaled by TOTAL or note count, a survival gauge for the whole
+// course. CLASS and EX CLASS take 60% damage below 30%.
+static const BMSGaugeProperty BMS_CLASS_GAUGES[3] = {
+	{ true, 0.f, 100.f, 0.f, 2.f,
+	  { .1f, .1f, .05f, -2.f, -3.f, -2.f }, 30.f, .6f },
+	{ true, 0.f, 100.f, 0.f, 2.f,
+	  { .1f, .1f, .05f, -6.f, -10.f, -2.f }, 30.f, .6f },
+	{ true, 0.f, 100.f, 0.f, 2.f,
+	  { .1f, .1f, .05f, -12.f, -20.f, -2.f }, 0.f, 1.f },
+};
+
+// LR2 hard and EX hard gauge damage multiplier from TOTAL and note count (Endless
 // Dream's GaugeModifier.MODIFY_DAMAGE)
 static float
 LR2DamageScale(float total, float notes)
@@ -750,6 +767,21 @@ LifeMeterBar::LoadBMSGauge()
 		m_BMSGauge = BMSGauge_Normal;
 	m_bBMSAutoShift = po.m_bBMSAutoShift;
 
+	// dan course: the course gauge decides everything, no auto shift
+	m_iBMSClassGauge = -1;
+	if (SONGMAN != nullptr && SONGMAN->InBMSCourse()) {
+		m_iBMSClassGauge = std::clamp(SONGMAN->bmsCourse.classGauge, 0, 2);
+		m_bBMSAutoShift = false;
+		m_fBMSClassValue = BMS_CLASS_GAUGES[m_iBMSClassGauge].init;
+		m_fBMSMin = BMS_CLASS_GAUGES[m_iBMSClassGauge].min;
+		m_fBMSBorder = BMS_CLASS_GAUGES[m_iBMSClassGauge].border;
+		m_fLifePercentage = m_fBMSClassValue / 100.f;
+		static const char* names[] = { "CLASS", "EX CLASS", "EX HARD CLASS" };
+		Locator::getLogger()->info("BMS course gauge: {}",
+								   names[m_iBMSClassGauge]);
+		return;
+	}
+
 	auto notes = 0.f;
 	if (GAMESTATE->m_pCurSteps != nullptr)
 		notes = GAMESTATE->m_pCurSteps->GetRadarValues()[RadarCategory_Notes];
@@ -770,7 +802,9 @@ LifeMeterBar::LoadBMSGauge()
 		  g == m_BMSGauge || (m_bBMSAutoShift && g < m_BMSGauge);
 		const auto& prop = BMS_GAUGES[g];
 		const auto damageScale =
-		  g == BMSGauge_Hard ? LR2DamageScale(total, notes) : 1.f;
+		  g == BMSGauge_Hard || g == BMSGauge_ExHard
+			? LR2DamageScale(total, notes)
+			: 1.f;
 		for (auto i = 0; i < NUM_BMSJudge; i++) {
 			auto f = prop.change[i];
 			if (f > 0 && !prop.survival)
@@ -809,10 +843,33 @@ LifeMeterBar::PickBMSAutoShiftGauge() const
 }
 
 void
+LifeMeterBar::ChangeBMSClassLife(BMSJudge judge)
+{
+	const auto& prop = BMS_CLASS_GAUGES[m_iBMSClassGauge];
+	auto& value = m_fBMSClassValue;
+	if (value <= 0.f)
+		return;
+	auto inc = prop.change[judge];
+	if (inc < 0 && value < prop.gutsBelow)
+		inc *= prop.gutsScale;
+	value = std::clamp(value + inc, prop.min, 100.f);
+	if (value < prop.death)
+		value = 0.f;
+	const auto InitialLife = m_fLifePercentage;
+	m_fLifePercentage = value / 100.f;
+	if (InitialLife != m_fLifePercentage)
+		AfterLifeChanged();
+}
+
+void
 LifeMeterBar::ChangeBMSLife(BMSJudge judge)
 {
 	if (m_pPlayerStageStats->m_bFailed)
 		return;
+	if (m_iBMSClassGauge >= 0) {
+		ChangeBMSClassLife(judge);
+		return;
+	}
 	for (auto g = 0; g < NUM_BMSGauge; g++) {
 		auto& value = m_fBMSValue[g];
 		// hard gauges stay dead once they hit 0
@@ -1012,9 +1069,15 @@ LifeMeterBar::ChangeLife(float fDeltaLife)
 		const auto InitialLife = m_fLifePercentage;
 		m_fLifePercentage =
 		  std::clamp(m_fLifePercentage + fDeltaLife, m_fBMSMin / 100.f, 1.f);
-		if (m_fLifePercentage * 100.f < BMS_GAUGES[m_BMSGauge].death)
+		const auto death = m_iBMSClassGauge >= 0
+							 ? BMS_CLASS_GAUGES[m_iBMSClassGauge].death
+							 : BMS_GAUGES[m_BMSGauge].death;
+		if (m_fLifePercentage * 100.f < death)
 			m_fLifePercentage = 0.f;
-		m_fBMSValue[m_BMSGauge] = m_fLifePercentage * 100.f;
+		if (m_iBMSClassGauge >= 0)
+			m_fBMSClassValue = m_fLifePercentage * 100.f;
+		else
+			m_fBMSValue[m_BMSGauge] = m_fLifePercentage * 100.f;
 		if (InitialLife != m_fLifePercentage)
 			AfterLifeChanged();
 		return;

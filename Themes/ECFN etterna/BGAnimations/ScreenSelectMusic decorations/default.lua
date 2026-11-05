@@ -10,12 +10,21 @@ t[#t + 1] = LoadActor("wifetwirl")
 t[#t + 1] = LoadActor("msd")
 t[#t + 1] = LoadActor("songsearch")
 t[#t + 1] = LoadActor("score")
-t[#t + 1] = LoadActor("profile")
 t[#t + 1] = LoadActor("filter")
-t[#t + 1] = LoadActor("goaltracker")
-t[#t + 1] = LoadActor("playlists")
 t[#t + 1] = LoadActor("downloads")
-t[#t + 1] = LoadActor("tags")
+if hideMSD() then
+	-- 7k: Profile, Goals and Playlists in the Dan window's look, no Tags
+	t[#t + 1] = LoadActor("ranking")
+	t[#t + 1] = LoadActor("profile7k")
+	t[#t + 1] = LoadActor("goals7k")
+	t[#t + 1] = LoadActor("playlists7k")
+	t[#t + 1] = LoadActor("dan")
+else
+	t[#t + 1] = LoadActor("profile")
+	t[#t + 1] = LoadActor("goaltracker")
+	t[#t + 1] = LoadActor("playlists")
+	t[#t + 1] = LoadActor("tags")
+end
 t[#t + 1] = LoadActor("stepsdisplay")
 
 t[#t + 1] = LoadActor("../_mousewheelscroll")

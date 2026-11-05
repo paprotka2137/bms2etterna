@@ -79,8 +79,16 @@ end
 
 local function scoreGaugeName(s)
 	local mods = string.lower(s:GetModifiers() or "")
-	if mods:find("deathgauge", 1, true) then
+	-- a dan course song (course gauge) is drawn as the nearest survival
+	-- gauge; the course result panel shows the real course gauge
+	if mods:find("exhardclassgauge", 1, true) then
+		return "ExHard"
+	elseif mods:find("classgauge", 1, true) then
+		return "Hard"
+	elseif mods:find("deathgauge", 1, true) then
 		return "Death"
+	elseif mods:find("exhardgauge", 1, true) then
+		return "ExHard"
 	elseif mods:find("hardgauge", 1, true) then
 		return "Hard"
 	elseif mods:find("easygauge", 1, true) then
@@ -96,7 +104,7 @@ local function lampFrame(s)
 		return 0
 	end
 	local lamp = getBMSLampFromScore(s)
-	if lamp == 5 then
+	if lamp == 6 then
 		return 1
 	elseif lamp == 1 then
 		local c = judgeCounts(s)
@@ -105,8 +113,10 @@ local function lampFrame(s)
 		end
 		return 8
 	elseif lamp == 2 then
-		return scoreGaugeName(s) == "Death" and 7 or 6
+		return 7
 	elseif lamp == 3 then
+		return 6
+	elseif lamp == 4 then
 		return 5
 	end
 	return 4
@@ -477,44 +487,220 @@ local gaugeName = scoreGaugeName(score)
 local gx, gy, gw, gh = 41, 71, 519, 259
 t[#t + 1] = Img("groove_main.png", 13, 55, 565, 309)
 
+local gaugeOrder = {"Easy", "Groove", "Hard", "ExHard", "Death"}
+local gaugeIndex = {Easy = 1, Groove = 2, Hard = 3, ExHard = 4, Death = 5}
+local usedGAS = string.lower(score:GetModifiers() or ""):find("gas", 1, true) ~= nil
+
+-- with gauge auto shift the engine's life record follows whichever gauge is
+-- shown at the moment, so it saw-tooths between gauges. The graph then shows
+-- the gauge the play ended on: the cleared one, or the bottom one (EASY) when
+-- every gauge failed, each gauge replayed on its own from the judgments.
+local shownGauge = gaugeName
+if usedGAS and not cleared then
+	shownGauge = "Easy"
+end
+
+-- LR2 gauge tables (same as LifeMeterBar.cpp BMS_GAUGES):
+-- survival, min, init, border, death, change PG GR GD BD PR, guts below/scale
+local gaugeProps = {
+	Easy = {false, 2, 20, 80, 0, {1.2, 1.2, 0.6, -3.2, -4.8}, 0, 1},
+	Groove = {false, 2, 20, 80, 0, {1.0, 1.0, 0.5, -4.0, -6.0}, 0, 1},
+	Hard = {true, 0, 100, 0, 2, {0.1, 0.1, 0.05, -6.0, -10.0}, 32, 0.6},
+	ExHard = {true, 0, 100, 0, 2, {0.1, 0.1, 0.05, -12.0, -20.0}, 0, 1},
+	Death = {true, 0, 100, 0, 2, {0.15, 0.06, 0, -100.0, -100.0}, 0, 1},
+}
+
+-- LR2 survival gauge damage multiplier from TOTAL and notes
+local function lr2DamageScale(total, n)
+	local fix1 = 10 / math.min(10, math.max(1, math.floor(total / 16) - 5))
+	local fix2
+	if n <= 20 then
+		fix2 = 10
+	elseif n < 30 then
+		fix2 = 8 + 0.2 * (30 - n)
+	elseif n < 60 then
+		fix2 = 5 + 0.2 * (60 - n) / 3
+	elseif n < 125 then
+		fix2 = 4 + (125 - n) / 65
+	elseif n < 250 then
+		fix2 = 3 + 0.008 * (250 - n)
+	elseif n < 500 then
+		fix2 = 2 + 0.004 * (500 - n)
+	elseif n < 1000 then
+		fix2 = 1 + 0.002 * (1000 - n)
+	else
+		fix2 = 1
+	end
+	return math.max(fix1, fix2)
+end
+
+-- replays a gauge over the judgments of the replay, returns samples 0..1.
+-- Empty POORs and dropped long notes aren't in the replay, so this can end a
+-- bit higher than the real gauge did.
+local function simulateGauge(name, samples)
+	local p = gaugeProps[name]
+	local total = steps:GetBMSTotal() or 0
+	if total <= 0 then
+		total = 160 + (notes + math.max(0, math.min(200, notes - 400))) * 0.16
+	end
+	local change = {}
+	for j = 1, 5 do
+		local f = p[6][j]
+		if f > 0 and not p[1] then
+			f = f * total / notes
+		elseif f < 0 and (name == "Hard" or name == "ExHard") then
+			f = f * lr2DamageScale(total, notes)
+		end
+		change[j] = f
+	end
+	local order = {}
+	for i, tp in ipairs(taps) do
+		order[i] = tp
+	end
+	table.sort(order, function(x, y) return x[1] < y[1] end)
+	local out = {}
+	local value = p[3]
+	local k = 1
+	for i = 1, samples do
+		local tEnd = (i / samples) * finalSecond
+		while k <= #order and order[k][1] <= tEnd do
+			if value > 0 or not p[1] then
+				local inc = change[order[k][3]]
+				if inc < 0 and value < p[7] then
+					inc = inc * p[8]
+				end
+				value = math.max(p[2], math.min(100, value + inc))
+				if p[1] and value < p[5] then
+					value = 0
+				end
+			end
+			k = k + 1
+		end
+		out[i] = value / 100
+	end
+	return out
+end
+
 -- beatoraja gauge graph colors
 local gaugeBG = {
 	Easy = {color("#004444aa"), color("#440000aa")},
 	Groove = {color("#004400aa"), color("#440000aa")},
 	Hard = {color("#440000aa"), color("#440000aa")},
+	ExHard = {color("#444400aa"), color("#444400aa")},
 	Death = {color("#444444aa"), color("#444444aa")},
 }
 local gaugeLine = {
 	Easy = {color("#00ffff"), color("#ff0000")},
 	Groove = {color("#00ff00"), color("#ff0000")},
 	Hard = {color("#ff0000"), color("#ff0000")},
+	ExHard = {color("#ffff00"), color("#ffff00")},
 	Death = {color("#cccccc"), color("#cccccc")},
 }
-local border = (gaugeName == "Easy" or gaugeName == "Groove") and 0.8 or 0
+-- gauges the graph can show, + and - switch between them: with auto shift
+-- the ones that ran (the picked one and everything below), else all of them
+local viewGauges = {}
+if usedGAS then
+	for g = 1, gaugeIndex[gaugeName] or 2 do
+		viewGauges[#viewGauges + 1] = gaugeOrder[g]
+	end
+else
+	viewGauges = gaugeOrder
+end
+local viewIndex = 1
+for i, name in ipairs(viewGauges) do
+	if name == shownGauge then
+		viewIndex = i
+	end
+end
 
-t[#t + 1] = Quads(gx, gy, function(v)
-	local bg = gaugeBG[gaugeName]
+local lifeCache = {}
+local function gaugeLife(name, samples)
+	if lifeCache[name] then
+		return lifeCache[name]
+	end
+	local life
+	-- without auto shift the engine's own record of the played gauge is
+	-- exact (it has empty POORs and dropped long notes), but it only exists
+	-- for the play that just happened
+	if not usedGAS and name == gaugeName and isCurrentPlay then
+		-- the life record is kept in real seconds (chart time / rate)
+		local rate = score:GetMusicRate()
+		rate = rate > 0 and rate or 1
+		life = pss:GetLifeRecord(finalSecond / rate, samples)
+		-- the record starts with the engine's default life before the BMS
+		-- gauge is set up, so everything before the first judgment takes the
+		-- value right after it instead of sloping up from that default
+		local firstTap = finalSecond
+		for _, tp in ipairs(taps) do
+			firstTap = math.min(firstTap, tp[1])
+		end
+		local firstSample = math.min(samples, math.floor(firstTap / finalSecond * (samples - 1)) + 2)
+		for i = 1, firstSample - 1 do
+			life[i] = life[firstSample]
+		end
+	else
+		life = simulateGauge(name, samples)
+	end
+	lifeCache[name] = life
+	return life
+end
+
+local function buildGaugeGraph(v, name)
+	local border = (name == "Easy" or name == "Groove") and 0.8 or 0
+	local bg = gaugeBG[name]
 	local by = gh * (1 - border)
 	quad(v, 0, by, gw, gh, bg[1])
 	if border > 0 then
 		quad(v, 0, 0, gw, by, bg[2])
 		quad(v, 0, by - 1, gw, by + 1, color("#440000aa"))
 	end
-	-- the life record only exists for the play that just happened
-	if not isCurrentPlay then
-		return
-	end
 	local samples = gw
-	local life = pss:GetLifeRecord(finalSecond, samples)
-	local lc = gaugeLine[gaugeName]
+	-- keep a full gauge visible under the frame's top edge
+	local function lifeY(l)
+		l = math.max(0, math.min(1, l or 0))
+		return math.max(2, math.min(gh - 2, gh * (1 - l))), l
+	end
+	local life = gaugeLife(name, samples)
+	local lc = gaugeLine[name]
 	for i = 1, samples do
-		local l = math.max(0, math.min(1, life[i] or 0))
-		local y = gh * (1 - l)
+		local y, l = lifeY(life[i])
 		local c = l >= border and border > 0 and lc[2] or lc[1]
-		local prev = i > 1 and gh * (1 - math.max(0, math.min(1, life[i - 1] or 0))) or y
+		local prev = i > 1 and lifeY(life[i - 1]) or y
 		quad(v, i - 1, math.min(y, prev) - 1, i, math.max(y, prev) + 1, c)
 	end
-end, 200)
+end
+
+local plusKeys = {["DeviceButton_="] = 1, ["DeviceButton_KP +"] = 1, ["DeviceButton_-"] = -1, ["DeviceButton_KP -"] = -1}
+t[#t + 1] = Def.ActorMultiVertex {
+	InitCommand = function(self)
+		self:xy(gx, gy)
+		self:playcommand("Redraw")
+	end,
+	OnCommand = function(self)
+		fadeIn(self, 200, 200)
+		if #viewGauges > 1 then
+			SCREENMAN:GetTopScreen():AddInputCallback(function(event)
+				if event.type ~= "InputEventType_FirstPress" then
+					return
+				end
+				local d = plusKeys[event.DeviceInput.button]
+				if d then
+					viewIndex = (viewIndex - 1 + d) % #viewGauges + 1
+					MESSAGEMAN:Broadcast("ECFNGaugeView")
+				end
+			end)
+		end
+	end,
+	RedrawCommand = function(self)
+		local verts = {}
+		buildGaugeGraph(verts, viewGauges[viewIndex])
+		self:SetVertices(verts)
+		self:SetDrawState {Mode = "DrawMode_Quads", First = 1, Num = #verts}
+	end,
+	ECFNGaugeViewMessageCommand = function(self)
+		self:playcommand("Redraw")
+	end,
+}
 t[#t + 1] = Img("gauge_frame.png", 37, 67, 527, 267, {
 	OnCommand = function(self)
 		self:diffusealpha(0):cropbottom(0.5):croptop(0.5):sleep(0.1):decelerate(0.2):diffusealpha(1):cropbottom(0):croptop(0)
@@ -537,22 +723,33 @@ do
 	customLanes = mods:match("Lanes(%d%d%d%d%d%d%d)")
 end
 if customLanes then
-	t[#t + 1] = Text(38, 349, 13, 0, 200, "LANES " .. customLanes)
+	t[#t + 1] = Text(38, 349, 12, 0, 140, "LANES " .. customLanes)
 else
 	t[#t + 1] = Frame("random_op 1x10.png", arrange, 38, 343, 130, 12, true, 100)
 end
 do
-	local gaugeText = ({Easy = "EASY", Groove = "GROOVE", Hard = "HARD", Death = "DEATH"})[gaugeName] .. " GAUGE"
-	local mods = string.lower(score:GetModifiers() or "")
-	if mods:find("gas", 1, true) then
-		gaugeText = gaugeText .. " (GAS)"
+	local names = {Easy = "EASY", Groove = "GROOVE", Hard = "HARD", ExHard = "EX-HARD", Death = "DEATH"}
+	local function gaugeText()
+		local text = names[gaugeName] .. " GAUGE"
+		if usedGAS then
+			text = text .. " (GAS)"
+		end
+		local view = viewGauges[viewIndex]
+		if view ~= gaugeName then
+			text = text .. " > " .. names[view]
+		end
+		text = text .. "  /  " .. string.upper(getBMSJudgeRankFromScore(score)) .. " JUDGE"
+		local rate = score:GetMusicRate()
+		if math.abs(rate - 1) > 0.001 then
+			text = text .. "  /  " .. getRateString(notShit.round(rate, 3))
+		end
+		return text
 	end
-	gaugeText = gaugeText .. "  /  " .. string.upper(getBMSJudgeRankFromScore(score)) .. " JUDGE"
-	local rate = score:GetMusicRate()
-	if math.abs(rate - 1) > 0.001 then
-		gaugeText = gaugeText .. "  /  " .. getRateString(notShit.round(rate, 3))
+	local label = Text(560, 349, 12, 1, 360, gaugeText(), color("1,1,1,0.85"))
+	label.ECFNGaugeViewMessageCommand = function(self)
+		self:settext(gaugeText())
 	end
-	t[#t + 1] = Text(560, 349, 13, 1, 380, gaugeText, color("1,1,1,0.85"))
+	t[#t + 1] = label
 end
 
 -- big DJ level over the graph
@@ -878,6 +1075,10 @@ end
 -- local ranking in place of the internet ranking: every local score on this
 -- chart by EX score, the summary line is best rank > this play's rank, total
 do
+	-- drawn on its own frame so the BMS 7k ranking (below) can take its place
+	local outer = t
+	local t = Def.ActorFrame {Name = "LocalRanking"}
+	outer[#outer + 1] = t
 	local curPos, bestPos
 	for i, s in ipairs(localScores) do
 		if s:GetScoreKey() == score:GetScoreKey() then
@@ -921,6 +1122,235 @@ do
 		t[#t + 1] = Num("num_white 11x1.png", 1717, y + 7, 18, 20, 4, exScore(s))
 		t[#t + 1] = Diff("num_plus 12x1.png", "num_minus 12x1.png", 1804, y + 7, 18, 20, 5, curEx - exScore(s))
 	end
+end
+
+-- the BMS 7k ranking site in the same place when logged in from the game
+-- (Ranking window on song select). Clicking the header switches between it
+-- and the local ranking. The game sends this play right after the song, the
+-- board is asked again once the site has it.
+if BMSRanking and BMSRanking.loggedIn() then
+	local R = BMSRanking
+	local ck = steps:GetChartKey()
+	local board
+
+	-- bitmap number that changes: digits slots, dim 0s in front, like Num
+	local function LiveNum(file, x, y, gw, gh, digits, signed)
+		local f = Def.ActorFrame {
+			InitCommand = function(self)
+				self:xy(x, y)
+			end,
+			SetNumCommand = function(self, p)
+				local v = p.value
+				self:visible(v ~= nil)
+				if v == nil then
+					return
+				end
+				local slots = signed and digits - 1 or digits
+				local str = tostring(math.floor(math.abs(v) + 0.5))
+				if #str > slots then
+					str = str:sub(-slots)
+				end
+				local first = slots - #str + 1
+				for i = 1, slots do
+					local g = i >= first and tonumber(str:sub(i - first + 1, i - first + 1)) or 10
+					self:GetChild("d" .. i):setstate(g)
+				end
+			end,
+		}
+		local col = 0
+		if signed then
+			f[#f + 1] = Def.Sprite {
+				Texture = dir .. file,
+				InitCommand = function(self)
+					self:animate(false):setstate(11):halign(0):valign(0):zoomto(gw, gh)
+				end,
+			}
+			col = 1
+		end
+		for i = 1, signed and digits - 1 or digits do
+			local cx = (col + i - 1) * gw
+			f[#f + 1] = Def.Sprite {
+				Name = "d" .. i,
+				Texture = dir .. file,
+				InitCommand = function(self)
+					self:animate(false):setstate(10):halign(0):valign(0):x(cx):zoomto(gw, gh)
+				end,
+			}
+		end
+		return f
+	end
+
+	local function setNum(actor, v)
+		actor:playcommand("SetNum", {value = v})
+	end
+
+	local ir = Def.ActorFrame {
+		Name = "IRRanking",
+		BeginCommand = function(self)
+			R.forget(ck)
+			board = R.chart(ck)
+			self:playcommand("Show")
+		end,
+		BMSBoardLoadedMessageCommand = function(self, params)
+			if params.chartkey == ck then
+				board = R.cache[ck] and R.cache[ck].board
+				self:playcommand("Show")
+			end
+		end,
+		BMSScoreUploadedMessageCommand = function(self, params)
+			if params.chartkey == ck then
+				R.forget(ck)
+				board = R.chart(ck)
+				self:playcommand("Show")
+			end
+		end,
+	}
+	ir[#ir + 1] = Box(1380, 562, 200, 15, color("#1b1b24"))
+	ir[#ir + 1] = Text(1383, 570, 11, 0, 200, "IR RANKING", color("#9fe8ff"), 0)
+
+	-- this play's place: how many players have more EX, plus one
+	local function playPlace()
+		if not board or board.err then
+			return nil
+		end
+		local above = 0
+		for _, r in ipairs(board.rows) do
+			if r.ex > curEx and not (board.me == r) then
+				above = above + 1
+			end
+		end
+		return above + 1
+	end
+
+	ir[#ir + 1] = LiveNum("num_judge 11x1.png", 1424, 600, 22, 20, 4) .. {
+		OnCommand = function(self)
+			fadeIn(self, 100, 200)
+		end,
+		ShowCommand = function(self)
+			setNum(self, board and board.me and board.me.rank or nil)
+		end,
+	}
+	ir[#ir + 1] = LiveNum("num_judge 11x1.png", 1585, 600, 22, 20, 4) .. {
+		OnCommand = function(self)
+			fadeIn(self, 100, 200)
+		end,
+		ShowCommand = function(self)
+			setNum(self, playPlace())
+		end,
+	}
+	ir[#ir + 1] = LiveNum("num_judge 11x1.png", 1764, 600, 22, 20, 4) .. {
+		OnCommand = function(self)
+			fadeIn(self, 100, 200)
+		end,
+		ShowCommand = function(self)
+			setNum(self, board and not board.err and board.players or nil)
+		end,
+	}
+	-- loading, errors and empty boards
+	ir[#ir + 1] = Text(1641, 680, 15, 0.5, 500, "Loading...", color("1,1,1,0.8"), 0) .. {
+		ShowCommand = function(self)
+			if not board then
+				self:settext("Loading...")
+			elseif board.err then
+				self:settext(board.err)
+			elseif #board.rows == 0 then
+				self:settext("No scores yet, sending yours...")
+			else
+				self:settext("")
+			end
+		end,
+	}
+
+	-- ten places; the last one is you when you are further down
+	local function rowFor(k)
+		if not board or board.err then
+			return nil
+		end
+		if k == 10 and board.me and board.me.rank > 10 then
+			return board.me
+		end
+		return board.rows[k]
+	end
+	for k = 1, 10 do
+		local y = 663 + 35 * (k - 1)
+		local row = Def.ActorFrame {
+			ShowCommand = function(self)
+				local r = rowFor(k)
+				self:visible(r ~= nil)
+				if r then
+					self:playcommand("Row", {row = r})
+				end
+			end,
+		}
+		row[#row + 1] = Img("ir_frame.png", 1380, y, 522, 34, {
+			OnCommand = function(self)
+				fadeIn(self, 100 + 20 * k, 100)
+			end,
+		})
+		row[#row + 1] = Box(1382, y + 2, 518, 30, color("0.3,0.8,1,0.18")) .. {
+			RowCommand = function(self, p)
+				self:visible(board.me == p.row)
+			end,
+		}
+		row[#row + 1] = Box(1381, y + 4, 4, 26, color("#ffffff")) .. {
+			RowCommand = function(self, p)
+				self:diffuse(getBMSLampInfo(p.row.lamp, 2))
+			end,
+		}
+		row[#row + 1] = LiveNum("num_white 11x1.png", 1388, y + 7, 17, 20, 4) .. {
+			RowCommand = function(self, p)
+				setNum(self, p.row.rank)
+			end,
+		}
+		row[#row + 1] = Text(1474, y + 17, 15, 0, 235, "-", color("1,1,1,0.9"), 0) .. {
+			RowCommand = function(self, p)
+				self:settext(p.row.name .. "   " .. R.rate(board, p.row))
+				self:diffuse(board.me == p.row and color("#9fe8ff") or color("1,1,1,0.9"))
+			end,
+		}
+		row[#row + 1] = LiveNum("num_white 11x1.png", 1717, y + 7, 18, 20, 4) .. {
+			RowCommand = function(self, p)
+				setNum(self, p.row.ex)
+			end,
+		}
+		-- how far this play is from them, + and - sheets like the local list
+		row[#row + 1] = LiveNum("num_plus 12x1.png", 1804, y + 7, 18, 20, 5, true) .. {
+			RowCommand = function(self, p)
+				local d = curEx - p.row.ex
+				setNum(self, d >= 0 and d or nil)
+			end,
+		}
+		row[#row + 1] = LiveNum("num_minus 12x1.png", 1804, y + 7, 18, 20, 5, true) .. {
+			RowCommand = function(self, p)
+				local d = curEx - p.row.ex
+				setNum(self, d < 0 and d or nil)
+			end,
+		}
+		ir[#ir + 1] = row
+	end
+	t[#t + 1] = ir
+
+	-- clicking the header switches between the two lists, IR first
+	local showIR = true
+	t[#t + 1] = UIElements.QuadButton(1, 1) .. {
+		InitCommand = function(self)
+			self:halign(0):valign(0):xy(1380, 562):zoomto(200, 15):diffusealpha(0)
+		end,
+		BeginCommand = function(self)
+			self:playcommand("Switch")
+		end,
+		SwitchCommand = function(self)
+			local f = self:GetParent()
+			f:GetChild("IRRanking"):visible(showIR)
+			f:GetChild("LocalRanking"):visible(not showIR)
+		end,
+		MouseDownCommand = function(self, params)
+			if params.event == "DeviceButton_left mouse button" then
+				showIR = not showIR
+				self:playcommand("Switch")
+			end
+		end,
+	}
 end
 
 ---------------------------------------------------------------------------

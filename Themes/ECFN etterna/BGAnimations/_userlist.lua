@@ -75,7 +75,14 @@ local function userLabel(i)
 				else
 					self:settext("")
 				end
-				if qty < 8 then
+				if hideMSD() then
+					-- 7k: the free strip between the chart graph and the score
+					-- panels of the ECFN layout, 6 names per row
+					local s = ecfnScale()
+					self:x(ecfnX(25 + 150 * ((i-1) % 6)))
+					self:y((575 + math.floor((i-1) / 6) * 28) * s)
+					self:maxwidth(140 * s / usersZoom)
+				elseif qty < 8 then
 					self:x(usersX + (usersWidth + usersXGap) * ((i-1) % usersRowSize))
 					self:y(usersY + 6.5)
 					self:maxwidth(usersWidthZoom)

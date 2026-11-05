@@ -52,6 +52,9 @@ class LifeMeter : public ActorFrame
 	/** @brief The BMS gauge being played on (a BMSGauge), -1 for others. With
 	 * gauge auto shift it is the best gauge still alive. */
 	[[nodiscard]] virtual auto GetBMSGauge() const -> int { return -1; }
+	/** @brief In a BMS dan course: the course gauge (0 CLASS, 1 EX CLASS,
+	 * 2 EX HARD CLASS) that replaces the chosen gauge, -1 otherwise. */
+	[[nodiscard]] virtual auto GetBMSClassGauge() const -> int { return -1; }
 	[[nodiscard]] virtual auto GetLife() const -> float
 	{
 		return 0;

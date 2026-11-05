@@ -1002,11 +1002,17 @@ local enabledC = "#099948"
 local disabledC = "#ff6666"
 local force = false
 local ready = false
-local function toggleButton(textEnabled, textDisabled, msg, x, extrawidth, y, enabledF)
+local function toggleButton(textEnabled, textDisabled, msg, x, extrawidth, y, enabledF, ecfnPos)
 	local ison = false
 	return Def.ActorFrame {
 		InitCommand = function(self)
-			self:xy(10 - 115 + capWideScale(get43size(384), 384) + x, 66 + capWideScale(get43size(120), 120) + y)
+			if hideMSD() and ecfnPos then
+				-- 7k: this frame sits 2 screens to the left (see OnCommand), put
+				-- the button back on screen next to the user list
+				self:xy(SCREEN_WIDTH * 2 + ecfnX(ecfnPos[1]), ecfnPos[2] * ecfnScale())
+			else
+				self:xy(10 - 115 + capWideScale(get43size(384), 384) + x, 66 + capWideScale(get43size(120), 120) + y)
+			end
 			self.updatebutton = function()
 				if self.ison ~= nil then
 					ison = self.ison
@@ -1062,7 +1068,7 @@ local function toggleButton(textEnabled, textDisabled, msg, x, extrawidth, y, en
 		},
 	}
 end
-local forceStart = toggleButton(translated_info["UnForceStart"], translated_info["ForceStart"], "/force", -35, 30, 11) .. {
+local forceStart = toggleButton(translated_info["UnForceStart"], translated_info["ForceStart"], "/force", -35, 30, 11, nil, {960, 650}) .. {
 	Name = "ForceStart",
 }
 local readyButton = nil
@@ -1084,7 +1090,7 @@ do
 			error "Could not find ourselves in the userlist"
 		end
 	end
-	readyButton = toggleButton(translated_info["Unready"], translated_info["Ready"], "/ready", 50, 0, 11, areWeReadiedUp) .. {
+	readyButton = toggleButton(translated_info["Unready"], translated_info["Ready"], "/ready", 50, 0, 11, areWeReadiedUp, {960, 590}) .. {
 		Name = "Ready",
 		UsersUpdateMessageCommand = function(self)
 			self.ison = areWeReadiedUp()

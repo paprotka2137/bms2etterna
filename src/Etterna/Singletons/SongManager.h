@@ -137,6 +137,34 @@ class SongManager
 
 	std::string activeplaylist = "";
 	std::string playlistcourse = "";
+
+	// BMS dan course (段位認定, e.g. GENOSIDE 2018): the charts play back to
+	// back as a playlist course on one course gauge (LR2 CLASS / EX CLASS /
+	// EX HARD CLASS) carried from song to song, and the course is failed
+	// the moment that gauge empties. Started by the theme with
+	// ScreenSelectMusic:StartBMSCourse, the result stays for the eval screen
+	// (SONGMAN:GetBMSCourseResult) until the next course starts.
+	struct BMSCourse
+	{
+		bool active = false;
+		std::string id;
+		std::string name;
+		Playlist playlist;
+		int classGauge = 0; // 0 CLASS, 1 EX CLASS, 2 EX HARD CLASS
+		int songsTotal = 0;
+		int songsPlayed = 0; // songs whose notes ended (failed one included)
+		bool finished = false;
+		bool cleared = false;
+		float gauge = 100.F;	 // course gauge left, percent
+		int judges[6] = {};		 // PG GR GD BD PR (miss+dropped LN), empty POOR
+		int maxCombo = 0;		 // best combo of a single song
+		int notes = 0;
+		std::vector<std::string> scoreKeys;
+		std::vector<float> gaugeAfterSong;
+	};
+	BMSCourse bmsCourse;
+	// a BMS dan course is being played right now
+	[[nodiscard]] auto InBMSCourse() const -> bool;
 	void ReconcileChartKeysForReloadedSong(
 	  Song* reloadedSong,
 	  const std::vector<std::string>& oldChartkeys);

@@ -1,0 +1,684 @@
+{
+ "format": 1,
+ "set": "GENOSIDE 2018 段位認定",
+ "source": {
+  "maker": "GENOCIDE",
+  "page": "https://nekokan.dyndns.info/~lobsak/genocide/grade.html",
+  "course_file": "http://nekokan.dyndns.info/~lobsak/genoside/2018_course.zip",
+  "note": "md5 lists checked against Tachi bms-course-lookup and R-BMS courses.json; titles/artists from the GENOSIDE/insane/normal table data"
+ },
+ "courses": [
+  {
+   "id": "genoside2018_1",
+   "name": "GENOSIDE 2018 段位認定 発狂初段",
+   "short": "発狂初段",
+   "rank": 1,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "md5": "f872dd65dd08638b06d80470a3233fb9",
+     "title": "SOLROS",
+     "table_title": "SOLROS [MX]",
+     "artist": "Grand Thaw",
+     "level": "★2",
+     "local_title": "SOLROS [MX]"
+    },
+    {
+     "md5": "1b72e8f6439a698e78f94be16470b789",
+     "title": "Calamity Fortune",
+     "table_title": "Calamity Fortune [F]",
+     "artist": "ZUN remixed by LeaF Movie:Optie obj:Fender",
+     "level": "★4",
+     "local_title": "Calamity Fortune[F]"
+    },
+    {
+     "md5": "2371263af3b0d644fba62526c9f49481",
+     "title": "TURNDOWN",
+     "table_title": "TURNDOWN [F]",
+     "artist": "Ras obj:Fender",
+     "level": "★4",
+     "local_title": "TURNDOWN [F]"
+    },
+    {
+     "md5": "8a8a6c2f3511eb0876a6c9a2027d7bbe",
+     "title": "Dstorv",
+     "table_title": "Dstorv [false_fix]",
+     "artist": "Feryquitous movie:Sight / obj_jakko",
+     "level": "★4",
+     "local_title": "Dstorv[false_fix]"
+    }
+   ]
+  },
+  {
+   "id": "genoside2018_2",
+   "name": "GENOSIDE 2018 段位認定 発狂二段",
+   "short": "発狂二段",
+   "rank": 2,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "md5": "d70e2549e841819708d279d2478bb1e2",
+     "title": "Dai-katsugeki〔AMAZE Remix〕",
+     "table_title": "Dai-katsugeki〔AMAZE Remix〕 [ZOI]",
+     "artist": "minun♂ Remixed by AMAZE obj:SUZUKAZEΛ",
+     "level": "★5",
+     "local_title": "Dai-katsugeki〔AMAZE Remix〕[ZOI]"
+    },
+    {
+     "md5": "5e3711f2f576f3929156c9594b87efac",
+     "title": "Engine",
+     "table_title": "Engine [SP Insane]",
+     "artist": "Music : eFeL / BGA : 鑓田(Alpha complex)",
+     "level": "★6",
+     "local_title": "Engine[SP Insane]"
+    },
+    {
+     "md5": "a56ddb2169246817fb7527363fb9c687",
+     "title": "YAKUI",
+     "table_title": "YAKUI [Benzene]",
+     "artist": "はがね obj:B_K + Fender",
+     "level": "★5",
+     "local_title": "YAKUI [Benzene]"
+    },
+    {
+     "md5": "cefb4735c26f9488438021b4d7fdca31",
+     "title": "Meteor Lights",
+     "table_title": "Meteor Lights [JUDGMENT]",
+     "artist": "s-don / kkkfff2/obj.poly hi-low",
+     "level": "★7",
+     "local_title": "Meteor Lights[JUDGMENT]"
+    }
+   ]
+  },
+  {
+   "id": "genoside2018_3",
+   "name": "GENOSIDE 2018 段位認定 発狂三段",
+   "short": "発狂三段",
+   "rank": 3,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "md5": "19fbf62d711282d81208f97f7135e2a2",
+     "title": "Trahison [E]",
+     "table_title": "Trahison [E]",
+     "artist": "be5moti / うまるつふり obj:Fender",
+     "level": "★6",
+     "local_title": "Trahison [E]"
+    },
+    {
+     "md5": "3791d42c00cdfa135df3779eb0f78505",
+     "title": "Danse de Romani [Professional]",
+     "table_title": "Danse de Romani [Professional]",
+     "artist": "MUE / mov : Lyrebird Ferdinant obj:krg vs 秘密",
+     "level": "★7",
+     "local_title": "Danse de Romani [Professional]"
+    },
+    {
+     "md5": "b46b23fa8e2ad96e02763f687bb5a494",
+     "title": "UnFaked phantOm",
+     "table_title": "UnFaked phantOm [EXTRA]",
+     "artist": "sak",
+     "level": "★8",
+     "local_title": "UnFaked phantOm[EXTRA]"
+    },
+    {
+     "md5": "efae90d527a71d753ea7ad2847ec2006",
+     "title": "CO5M1C R4ILR0AD [ON3 M0RE 3XTR4]",
+     "table_title": "CO5M1C R4ILR0AD [ON3 M0RE 3XTR4]",
+     "artist": "kanone / obj.swa",
+     "level": "★9",
+     "local_title": "CO5M1C R4ILR0AD [ON3 M0RE 3XTR4]"
+    }
+   ]
+  },
+  {
+   "id": "genoside2018_4",
+   "name": "GENOSIDE 2018 段位認定 発狂四段",
+   "short": "発狂四段",
+   "rank": 4,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "md5": "47de06762f16d164426e3197c5de967c",
+     "title": "私のヒトミ",
+     "table_title": "私のヒトミ [Na]",
+     "artist": "nmk feat.橘花音 obj:naiya",
+     "level": "★10",
+     "local_title": "私のヒトミ[Na]"
+    },
+    {
+     "md5": "a718de9a2cd2f88deafbd40f5929abb4",
+     "title": "suffruti",
+     "table_title": "suffruti [BLOODY FATE]",
+     "artist": "Black Lotus obj:BAECON",
+     "level": "★10",
+     "local_title": "suffruti[BLOODY FATE]"
+    },
+    {
+     "md5": "5077cd14b4759d0e8d61e854eac4e88a",
+     "title": "Jack o' Lantern",
+     "table_title": "Jack o' Lantern [UltimateRAVE]",
+     "artist": "anubasu-anubasu/obj_jakko BGA by 出前",
+     "level": "★10",
+     "local_title": "Jack o' Lantern [UltimateRAVE]"
+    },
+    {
+     "md5": "c87682922d1b87622b34fe7a7ffba52c",
+     "title": "Le Reve",
+     "table_title": "Le Reve -Luminous Dream-",
+     "artist": "mossari obj:K-SPIN",
+     "level": "★11",
+     "local_title": "Le Reve -Luminous Dream-"
+    }
+   ]
+  },
+  {
+   "id": "genoside2018_5",
+   "name": "GENOSIDE 2018 段位認定 発狂五段",
+   "short": "発狂五段",
+   "rank": 5,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "md5": "e9fc0fbbde68bfd10f2d289751a1fc6a",
+     "title": "Y",
+     "table_title": "Y [F]",
+     "artist": "ヲルバ＝田中・ヴァニラ obj:Fender",
+     "level": "★12",
+     "local_title": "Y [F]"
+    },
+    {
+     "md5": "3a500560e6ace69e08b51736ff1be0ca",
+     "title": "Infinite Galaxy",
+     "table_title": "Infinite Galaxy [HARDEST]",
+     "artist": "NS-Factory×deadblue238×hi-low/差分 赤い人",
+     "level": "★11",
+     "local_title": "Infinite Galaxy[HARDEST]"
+    },
+    {
+     "md5": "8a8019d432ab4dd9bde4e65faf1b663f",
+     "title": "SCARY BANQUET",
+     "table_title": "SCARY BANQUET [BESESSENHEIT]",
+     "artist": "NIKITA / Optie obj:saaa",
+     "level": "★12",
+     "local_title": "SCARY BANQUET[BESESSENHEIT]"
+    },
+    {
+     "md5": "7fd4d1b5a767fd97343129157782a95f",
+     "title": "Toki (Sound piercer's Timesucker Remix)",
+     "table_title": "Toki (Sound piercer's Timesucker Remix) [Personality]",
+     "artist": "puru twk. sound piercer (feat.Hee Bun.D) /obj:BAECON vs みっと",
+     "level": "★13",
+     "local_title": "Toki (Sound piercer's Timesucker Remix) [Personality]"
+    }
+   ]
+  },
+  {
+   "id": "genoside2018_6",
+   "name": "GENOSIDE 2018 段位認定 発狂六段",
+   "short": "発狂六段",
+   "rank": 6,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "md5": "f96cf3af3d9356407bff483d27f4aecc",
+     "title": "IKAROS",
+     "table_title": "IKAROS [ODYSSEA]",
+     "artist": "ETIA. feat. Jenga Movie: HDLV / obj: swa",
+     "level": "★16",
+     "local_title": "IKAROS [ODYSSEA]"
+    },
+    {
+     "md5": "a29f9500cebd16cbb8d14b69ace79db1",
+     "title": "Fairytale",
+     "table_title": "Fairytale (Esimolp)",
+     "artist": "Chitose obj:秘密",
+     "level": "★15",
+     "local_title": "Fairytale(Esimolp)"
+    },
+    {
+     "md5": "871c6aed53c5dd3ac35686d9a92af4f4",
+     "title": "Wizdomiot",
+     "table_title": "Wizdomiot [ANOTHER]",
+     "artist": "ZUN remixed by LeaF Movie:Optie",
+     "level": "★15",
+     "local_title": "Wizdomiot[ANOTHER]"
+    },
+    {
+     "md5": "40673cc8ea628a9452f6ae9ac74d5817",
+     "title": "先天性エゴサ依存症候群",
+     "table_title": "先天性エゴサ依存症候群 [Hide]",
+     "artist": "ねこみりん feat.みゆ / obj:秘密 Illust:わんびぃ",
+     "level": "★15",
+     "local_title": "先天性エゴサ依存症候群 [Hide]"
+    }
+   ]
+  },
+  {
+   "id": "genoside2018_7",
+   "name": "GENOSIDE 2018 段位認定 発狂七段",
+   "short": "発狂七段",
+   "rank": 7,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "md5": "a4b59ca055a856b9a200ccfd1bf5c7bc",
+     "title": "Inherited World",
+     "table_title": "Inherited World [INSANE]",
+     "artist": "sak Movie:猫太郎 / obj:BAECON",
+     "level": "★17",
+     "local_title": "Inherited World[INSANE]"
+    },
+    {
+     "md5": "a0f48e96286e0ce275a33fd8cb851ff0",
+     "title": "We are the xxxx",
+     "table_title": "We are the xxxx",
+     "artist": "ikaruga_nex feat. Salita / obj:秘密",
+     "level": "★17",
+     "local_title": "We are the xxxx"
+    },
+    {
+     "md5": "c4134c29746e1ece168159ba4ae88d45",
+     "title": "ATHAZA",
+     "table_title": "ATHAZA [INSANE]",
+     "artist": "LeaF Movie:To7",
+     "level": "★18",
+     "local_title": "ATHAZA[INSANE]"
+    },
+    {
+     "md5": "67a76e7d26f3c3ea99fdc6f912f83021",
+     "title": "Dreadnought",
+     "table_title": "Dreadnought [Fragarach]",
+     "artist": "Mastermind(xi+nora2r) iimo / Obj. LAPIS vs Triforce",
+     "level": "★18",
+     "local_title": "Dreadnought [Fragarach]"
+    }
+   ]
+  },
+  {
+   "id": "genoside2018_8",
+   "name": "GENOSIDE 2018 段位認定 発狂八段",
+   "short": "発狂八段",
+   "rank": 8,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "md5": "f0feb9654ae044c0e95ebf68e2497c2e",
+     "title": "Lemuria",
+     "table_title": "Lemuria [Tyrfing]",
+     "artist": "Festa 鑓田(alpha complex) / Obj.Lapis vs Triforce",
+     "level": "★19",
+     "local_title": "Lemuria[Tyrfing]"
+    },
+    {
+     "md5": "51e0a29d5c7fc9cdf5e5e8eee1ad1124",
+     "title": "現実をカットアップしてみた",
+     "table_title": "現実をカットアップしてみた [Realism]",
+     "artist": "Yu^ta / obj:みっと",
+     "level": "★20",
+     "local_title": "現実をカットアップしてみた[Realism]"
+    },
+    {
+     "md5": "1cf2e138abd7199d6e4656447cfaed6c",
+     "title": "FIONA",
+     "table_title": "FIONA [Hi]",
+     "artist": "w_tre / obj:秘密 Lyrics by Sing_fUA",
+     "level": "★19",
+     "local_title": "FIONA [Hi]"
+    },
+    {
+     "md5": "8e0df85dbf59c4753346f1582e2d4422",
+     "title": "FUXXING YOUR BRAIN",
+     "table_title": "FUXXING YOUR BRAIN -Mind Blast-",
+     "artist": "q/stol あ",
+     "level": "★19",
+     "local_title": "FUXXING YOUR BRAIN-Mind Blast-"
+    }
+   ]
+  },
+  {
+   "id": "genoside2018_9",
+   "name": "GENOSIDE 2018 段位認定 発狂九段",
+   "short": "発狂九段",
+   "rank": 9,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "md5": "603aae2c3681cc2562b9b53b50408c69",
+     "title": "硬核機動",
+     "table_title": "硬核機動 -Assault X-",
+     "artist": "しらいし obj.sennko",
+     "level": "★20",
+     "local_title": "硬核機動 -Assault X-"
+    },
+    {
+     "md5": "79dc444b48299814462ff23a2bf3ab79",
+     "title": "ひつぎとふたご",
+     "table_title": "ひつぎとふたご [7KEY/LUNATIC]",
+     "artist": "plastic feat.サキト / yuyuko",
+     "level": "★20",
+     "local_title": "ひつぎとふたご [7KEY/LUNATIC]"
+    },
+    {
+     "md5": "ff5d7235ba643bc85b804a3df2778590",
+     "title": "hypocrite",
+     "table_title": "hypocrite",
+     "artist": "ああああ/ささささ",
+     "level": "★20",
+     "local_title": "hypocrite"
+    },
+    {
+     "md5": "451ed38cdba0323388027129f5929645",
+     "title": "CHMR",
+     "table_title": "CHMR -Automata-",
+     "artist": "TEKINA / obj:夢瑠",
+     "level": "★21",
+     "local_title": "CHMR -Automata-"
+    }
+   ]
+  },
+  {
+   "id": "genoside2018_10",
+   "name": "GENOSIDE 2018 段位認定 発狂十段",
+   "short": "発狂十段",
+   "rank": 10,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "md5": "d6fea1389a86fc14eb354fcc5e60e03e",
+     "title": "多重極展開",
+     "table_title": "多重極展開 [yumether]",
+     "artist": "Rocky / obj:夢瑠",
+     "level": "★22",
+     "local_title": "多重極展開[yumether]"
+    },
+    {
+     "md5": "e58e3f718d089ec37caa0f2c7149a54b",
+     "title": "Altale",
+     "table_title": "Altale [Mirage]",
+     "artist": "削除 / obj.siokaze",
+     "level": "★22",
+     "local_title": "Altale [Mirage]"
+    },
+    {
+     "md5": "1e049d189ef9bef79824f55764517a58",
+     "title": "3.14 (TT mix)",
+     "table_title": "3.14 (TT mix) [yumether]",
+     "artist": "ルゼ / obj:夢瑠",
+     "level": "★22",
+     "local_title": "3.14 (TT mix) [yumether]"
+    },
+    {
+     "md5": "fb975909eb0f60a9190c7a1007515d4b",
+     "title": "天空の城ヴェリエル",
+     "table_title": "天空の城ヴェリエル [SABOTHER]",
+     "artist": "うえつ氏 /さ",
+     "level": "★22",
+     "local_title": "天空の城ヴェリエル [SABOTHER]"
+    }
+   ]
+  },
+  {
+   "id": "genoside2018_kaiden",
+   "name": "GENOSIDE 2018 段位認定 発狂皆伝",
+   "short": "発狂皆伝",
+   "rank": 11,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "md5": "10420967a85371e65db57967e6c696cd",
+     "title": "Doppelganger",
+     "table_title": "Doppelganger [Hi]",
+     "artist": "LeaF / obj:秘密 Movie:To7",
+     "level": "★23",
+     "local_title": "Doppelganger[Hi]"
+    },
+    {
+     "md5": "ebc5946c3de24a01048d1c90cbd5c9d6",
+     "title": "ダークサンバランド",
+     "table_title": "ダークサンバランド -LAST BOSS-",
+     "artist": "ダークサンバマスター佐藤 -SATOH-",
+     "level": "★24",
+     "local_title": "ダークサンバランド -LAST BOSS-"
+    },
+    {
+     "md5": "45446f6c96bdb081a2054b80cd8f7208",
+     "title": "キミとボクへの葬送歌",
+     "table_title": "キミとボクへの葬送歌 [Maybe kill]",
+     "artist": "ROKINA/obj:仙人掌の人 BGA:REI-K",
+     "level": "★24",
+     "local_title": "キミとボクへの葬送歌 [Maybe kill]"
+    },
+    {
+     "md5": "39d0732ef7fee9ad0c8b044ccbe8a396",
+     "title": "Love & Justice",
+     "table_title": "Love & Justice [GOD]",
+     "artist": "フロン / ラズベリル / obj: black train",
+     "level": "★24",
+     "local_title": "Love & Justice [GOD]"
+    }
+   ]
+  },
+  {
+   "id": "genoside2018_overjoy",
+   "name": "GENOSIDE 2018 段位認定 Overjoy",
+   "short": "Overjoy",
+   "rank": 12,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "md5": "cfad3baadce9e02c45021963453d7c94",
+     "title": "Legend of Seeker"
+    },
+    {
+     "md5": "77d23be22b2370925c573d922276bce0",
+     "title": "リジットXXパラダイス"
+    },
+    {
+     "md5": "188a99f74ab71804f2e360dcf484545c",
+     "title": "運命論"
+    },
+    {
+     "md5": "c46a81cb184f5a804c119930d6eba748",
+     "title": "FREEDOM DiVE",
+     "table_title": "FREEDOM DiVE [FOUR DIMENSIONS]",
+     "artist": "xi / air",
+     "level": "★25",
+     "local_title": "FREEDOM DiVE [FOUR DIMENSIONS]"
+    }
+   ]
+  }
+ ]
+}

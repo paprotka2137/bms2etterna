@@ -77,12 +77,26 @@ FontManager::UnloadFont(Font* fp)
 
 		i->second->m_iRefCount--;
 
-		if (fp->m_iRefCount == 0) {
-			delete i->second;		  // free the texture
-			g_mapPathToFont.erase(i); // and remove the key in the map
-		}
+		/* 7k: keep a font cached when nothing uses it any more, instead of
+		 * freeing it and its page textures. The ECFN song select fonts carry
+		 * ~7500 glyphs on ~19 2048x2048 pages; freeing them on every trip to
+		 * gameplay made each return to song select reload them (~1.5-2 s).
+		 * Unused fonts are freed by PruneFonts() when the theme changes. */
 		return;
 	}
 
 	FAIL_M(ssprintf("Unloaded an unknown font (%p)", fp));
+}
+
+void
+FontManager::PruneFonts()
+{
+	for (auto i = g_mapPathToFont.begin(); i != g_mapPathToFont.end();) {
+		if (i->second->m_iRefCount == 0) {
+			delete i->second; // free the font and its page textures
+			i = g_mapPathToFont.erase(i);
+		} else {
+			++i;
+		}
+	}
 }

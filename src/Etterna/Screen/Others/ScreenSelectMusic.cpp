@@ -249,6 +249,8 @@ ScreenSelectMusic::BeginScreen()
 		GAMESTATE->isplaylistcourse = false;
 		SONGMAN->playlistcourse = "";
 	}
+	// a dan course's result was shown on the eval screen, forget it
+	SONGMAN->bmsCourse = SongManager::BMSCourse();
 
 	// Update the leaderboard for the file we may have just left
 	// If it was empty, just let the players request it themselves (to prevent a
@@ -1971,6 +1973,86 @@ class LunaScreenSelectMusic : public Luna<ScreenSelectMusic>
 		return 1;
 	}
 
+	// StartBMSCourse(id, name, {chartkey, ...}): plays a BMS dan course
+	// (LR2 / beatoraja 段位認定). Every chart at 1.0x, one course gauge
+	// carried over the songs (CLASS, or EX CLASS on HARD, EX HARD CLASS on
+	// EX HARD / DEATH), no lane random (mirror is allowed). Returns true, or
+	// false and the reason.
+	static int StartBMSCourse(T* p, lua_State* L)
+	{
+		const std::string id = SArg(1);
+		const std::string name = SArg(2);
+		auto fail = [L](const char* why) {
+			lua_pushboolean(L, false);
+			lua_pushstring(L, why);
+			return 2;
+		};
+		if (!lua_istable(L, 3))
+			return fail("no charts");
+		Playlist pl;
+		pl.name = name;
+		const auto n = static_cast<int>(lua_objlen(L, 3));
+		for (auto i = 1; i <= n; i++) {
+			lua_rawgeti(L, 3, i);
+			const char* ck = lua_tostring(L, -1);
+			lua_pop(L, 1);
+			if (ck == nullptr)
+				return fail("bad chart key");
+			Chart ch;
+			ch.FromKey(ck);
+			ch.rate = 1.F;
+			if (!ch.loaded || ch.songptr == nullptr || ch.stepsptr == nullptr)
+				return fail("a chart of the course is not loaded");
+			pl.Add(ch);
+		}
+		if (pl.chartlist.empty())
+			return fail("no charts");
+		if (GAMESTATE->GetGameplayMode() != GameplayMode_Normal)
+			return fail("not in practice or replay");
+
+		// grade_mirror: off or mirror only
+		const auto& po = GAMESTATE->m_pPlayerState->m_PlayerOptions.GetPreferred();
+		if (po.m_BMSArrange != BMSArrange_Off &&
+			po.m_BMSArrange != BMSArrange_Mirror)
+			return fail("random lanes are not allowed in a dan course (mirror is)");
+		for (auto t : { PlayerOptions::TURN_SHUFFLE,
+						PlayerOptions::TURN_SOFT_SHUFFLE,
+						PlayerOptions::TURN_SUPER_SHUFFLE,
+						PlayerOptions::TURN_HRAN_SHUFFLE }) {
+			if (po.m_bTurns[t])
+				return fail("shuffle is not allowed in a dan course");
+		}
+
+		auto& c = SONGMAN->bmsCourse;
+		c = SongManager::BMSCourse();
+		c.active = true;
+		c.id = id;
+		c.name = name;
+		c.playlist = pl;
+		c.songsTotal = static_cast<int>(pl.chartlist.size());
+		switch (po.m_BMSGauge) {
+			case BMSGauge_Hard:
+				c.classGauge = 1;
+				break;
+			case BMSGauge_ExHard:
+			case BMSGauge_Death:
+				c.classGauge = 2;
+				break;
+			default:
+				c.classGauge = 0;
+				break;
+		}
+
+		SONGMAN->playlistcourse = "";
+		GAMESTATE->isplaylistcourse = true;
+		p->GetMusicWheel()->SelectSong(pl.chartlist[0].songptr);
+		GAMESTATE->m_SongOptions.GetPreferred().m_fMusicRate = 1.F;
+		MESSAGEMAN->Broadcast("RateChanged");
+		p->SelectCurrent(PLAYER_1);
+		lua_pushboolean(L, true);
+		return 1;
+	}
+
 	static int StartPlaylistAsCourse(T* p, lua_State* L)
 	{
 		const std::string name = SArg(1);
@@ -2293,6 +2375,7 @@ class LunaScreenSelectMusic : public Luna<ScreenSelectMusic>
 		ADD_METHOD(SelectCurrent);
 		ADD_METHOD(GetSelectionState);
 		ADD_METHOD(StartPlaylistAsCourse);
+		ADD_METHOD(StartBMSCourse);
 		ADD_METHOD(PlayReplay);
 		ADD_METHOD(ShowEvalScreenForScore);
 		ADD_METHOD(SetSampleMusicPosition);

@@ -38,8 +38,7 @@ if ecfnDir:sub(1, 1) ~= "/" then
 	ecfnDir = "/" .. ecfnDir
 end
 ecfnDir = ecfnDir .. "BGAnimations/ScreenSelectMusic decorations/ecfn/"
--- 7k: a button in the look of the gray ECFN windows (dark outline, gray
--- gradient, light top edge), centered on its frame
+-- 7k: a flat button like the Dan window's, centered on its frame
 local function ecfnButtonBG(w, h)
 	return Def.ActorFrame {
 		InitCommand = function(self)
@@ -47,17 +46,7 @@ local function ecfnButtonBG(w, h)
 		end,
 		Def.Quad {
 			InitCommand = function(self)
-				self:zoomto(w + 2, h + 2):diffuse(color("0.05,0.06,0.07,0.9"))
-			end,
-		},
-		Def.Quad {
-			InitCommand = function(self)
-				self:zoomto(w, h):diffusetopedge(color("0.36,0.39,0.45,0.95")):diffusebottomedge(color("0.17,0.19,0.23,0.95"))
-			end,
-		},
-		Def.Quad {
-			InitCommand = function(self)
-				self:y(-h / 2 + 0.5):zoomto(w, 1):diffuse(color("0.70,0.74,0.82,0.7"))
+				self:zoomto(w, h):diffuse(color("1,1,1,0.08"))
 			end,
 		},
 	}
@@ -726,7 +715,7 @@ local function makeJudge(index, judge)
 	if ecfn then
 		t[#t + 1] = Def.Quad {
 			InitCommand = function(self)
-				self:halign(0):x(-4):zoomto(175, 17):diffuse(color("#b8c0d0")):diffusealpha(index % 2 == 0 and 0.06 or 0.14)
+				self:halign(0):x(-4):zoomto(175, 17):diffuse(color("#ffffff")):diffusealpha(index % 2 == 0 and 0.04 or 0.07)
 			end,
 		}
 	end

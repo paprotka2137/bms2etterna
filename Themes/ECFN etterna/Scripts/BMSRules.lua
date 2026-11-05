@@ -12,12 +12,12 @@ end
 -- judge rank and gauge, in the order they are picked from song select
 local bmsOptionValues = {
 	JudgeRank = {"Easy", "Normal", "Hard", "VeryHard"},
-	Gauge = {"Easy", "Normal", "Hard", "Death"},
+	Gauge = {"Easy", "Normal", "Hard", "ExHard", "Death"},
 	Arrange = {"Off", "Mirror", "Random", "RRandom", "SRandom", "HRandom", "Custom"},
 }
 local bmsOptionNames = {
 	JudgeRank = {"JudgeRankEasy", "JudgeRankNormal", "JudgeRankHard", "JudgeRankVeryHard"},
-	Gauge = {"GaugeEasy", "GaugeGroove", "GaugeHard", "GaugeDeath"},
+	Gauge = {"GaugeEasy", "GaugeGroove", "GaugeHard", "GaugeExHard", "GaugeDeath"},
 	Arrange = {"ArrangeOff", "ArrangeMirror", "ArrangeRandom", "ArrangeRRandom", "ArrangeSRandom", "ArrangeHRandom", "ArrangeCustom"},
 }
 local bmsOptionEnums = {
@@ -317,7 +317,7 @@ end
 -- 1 FAILED 4 E-CLEAR 5 CLEAR 6 H-CLEAR 7 EXH-CLEAR 8 F-COMBO 9 PERFECT 10 MAX
 function getBMSLampFrame(score)
 	local lamp = getBMSLampFromScore(score)
-	if lamp == 5 then
+	if lamp == 6 then
 		return 1
 	elseif lamp == 1 then
 		local tns = function(x) return score:GetTapNoteScore("TapNoteScore_" .. x) end
@@ -326,8 +326,10 @@ function getBMSLampFrame(score)
 		end
 		return 8
 	elseif lamp == 2 then
-		return string.lower(score:GetModifiers() or ""):find("deathgauge", 1, true) and 7 or 6
+		return 7
 	elseif lamp == 3 then
+		return 6
+	elseif lamp == 4 then
 		return 5
 	end
 	return 4

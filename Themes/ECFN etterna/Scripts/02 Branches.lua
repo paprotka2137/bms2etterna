@@ -19,6 +19,13 @@ Branch.StartGame = function()
 	end
 end
 Branch.MultiScreen = function()
+	-- not connected yet: try the last server (by default this build's own one)
+	-- once per session, the address prompt only shows when that fails.
+	-- metrics.ini reads this while building the title menu, so no retry loop
+	if not IsNetSMOnline() and not BMSMultiConnectTried then
+		BMSMultiConnectTried = true
+		ConnectToServer("")
+	end
 	if IsNetSMOnline() then
 		if not IsSMOnlineLoggedIn() then
 			return "ScreenNetSelectProfile"

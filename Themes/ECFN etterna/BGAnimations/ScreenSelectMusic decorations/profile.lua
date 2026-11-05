@@ -23,8 +23,7 @@ if ecfnDir:sub(1, 1) ~= "/" then
 	ecfnDir = "/" .. ecfnDir
 end
 ecfnDir = ecfnDir .. "BGAnimations/ScreenSelectMusic decorations/ecfn/"
--- 7k: a button in the look of the gray ECFN windows (dark outline, gray
--- gradient, light top edge), centered on its frame
+-- 7k: a flat button like the Dan window's, centered on its frame
 local function ecfnButtonBG(w, h)
 	return Def.ActorFrame {
 		InitCommand = function(self)
@@ -32,17 +31,7 @@ local function ecfnButtonBG(w, h)
 		end,
 		Def.Quad {
 			InitCommand = function(self)
-				self:zoomto(w + 2, h + 2):diffuse(color("0.05,0.06,0.07,0.9"))
-			end,
-		},
-		Def.Quad {
-			InitCommand = function(self)
-				self:zoomto(w, h):diffusetopedge(color("0.36,0.39,0.45,0.95")):diffusebottomedge(color("0.17,0.19,0.23,0.95"))
-			end,
-		},
-		Def.Quad {
-			InitCommand = function(self)
-				self:y(-h / 2 + 0.5):zoomto(w, 1):diffuse(color("0.70,0.74,0.82,0.7"))
+				self:zoomto(w, h):diffuse(color("1,1,1,0.08"))
 			end,
 		},
 	}
@@ -700,9 +689,9 @@ local function recentLabel(i)
 			DisplayProfileRankingLabelsMessageCommand = function(self) -- hacky
 				self:visible(true)
 				self:zoomto(frameWidth - capWideScale(14,10), scoreYspacing * .995)
-				-- 7k: rows on alternating gray like the ECFN ranking
+				-- 7k: faint rows like the Dan window
 				if hideMSD() then
-					self:diffuse(color("#b8c0d0")):diffusealpha(i % 2 == 0 and 0.06 or 0.14)
+					self:diffuse(color("#ffffff")):diffusealpha(i % 2 == 0 and 0.04 or 0.07)
 				end
 			end,
 			MouseDownCommand = function(self, params)
@@ -950,9 +939,9 @@ local function bestLabel(i)
 			end,
 			DisplayBestCommand = function(self)
 				self:zoomto(frameWidth - capWideScale(14,10), scoreYspacing * .995)
-				-- 7k: rows on alternating gray like the ECFN ranking
+				-- 7k: faint rows like the Dan window
 				if hideMSD() then
-					self:diffuse(color("#b8c0d0")):diffusealpha(i % 2 == 0 and 0.06 or 0.14)
+					self:diffuse(color("#ffffff")):diffusealpha(i % 2 == 0 and 0.04 or 0.07)
 				end
 			end,
 			MouseDownCommand = function(self, params)

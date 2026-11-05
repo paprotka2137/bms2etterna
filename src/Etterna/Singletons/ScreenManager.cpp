@@ -73,6 +73,7 @@
 #include "Etterna/Models/Misc/ScreenDimensions.h"
 #include "ScreenManager.h"
 #include "Etterna/Singletons/SongManager.h"
+#include "Etterna/Singletons/FontManager.h"
 #include "Etterna/Singletons/ThemeManager.h"
 #include "Etterna/Singletons/PrefsManager.h"
 #include "Etterna/Singletons/GameState.h"
@@ -299,6 +300,10 @@ ScreenManager::ThemeChanged()
 	SONGMAN->ResetGroupColors();
 
 	ReloadOverlayScreens();
+
+	// fonts stay cached while unused (FontManager::UnloadFont): drop the ones
+	// the old theme left behind now that the new overlays hold theirs
+	FONT->PruneFonts();
 
 	// force recreate of new BGA
 	SAFE_DELETE(g_pSharedBGA);

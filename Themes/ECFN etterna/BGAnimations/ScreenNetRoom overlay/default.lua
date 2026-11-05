@@ -15,6 +15,16 @@ t[#t + 1] =
 	end
 }
 
+if hideMSD() then
+	-- 7k: the ECFN bottom bar of the song select, the title is in decorations/ecfn.lua
+	t[#t + 1] = LoadActorWithParams("../_frame", {ecfn = true})
+	t[#t + 1] = LoadActorWithParams("../_PlayerInfo", {ecfn = true})
+	t[#t + 1] = LoadActor("../_cursor")
+	t[#t + 1] = LoadActor("../_mousewheelscroll")
+	t[#t + 1] = LoadActor("../_halppls")
+	return t
+end
+
 t[#t + 1] = LoadActor("../_frame")
 t[#t + 1] = LoadActor("../_PlayerInfo")
 t[#t + 1] = LoadActor("currentsort")

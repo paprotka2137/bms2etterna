@@ -213,12 +213,18 @@ ETTProtocol::Connect(NetworkSyncManager* n,
 			throw std::runtime_error("failed to initialize curl");
 		}
 
-		std::string url = fmt::format("{}{}:{}",
-									  address.starts_with("wss://")	  ? ""
-									  : address.starts_with("ws://") ? ""
-																	  : "ws://",
-									  address,
-									  port);
+		// a full ws:// or wss:// url (port 0) is used as it is, it may
+		// carry its own port and path
+		std::string url =
+		  (address.starts_with("wss://") || address.starts_with("ws://")) &&
+			  port == 0
+			? address
+			: fmt::format("{}{}:{}",
+						  address.starts_with("wss://")	  ? ""
+						  : address.starts_with("ws://") ? ""
+														  : "ws://",
+						  address,
+						  port);
 		auto res = curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
 		if (res != CURLE_OK) {
 			throw std::runtime_error(
@@ -230,6 +236,13 @@ ETTProtocol::Connect(NetworkSyncManager* n,
 			throw std::runtime_error(fmt::format(
 			  "curlopt_buffersize failed: {}", curl_easy_strerror(res)));
 		}
+
+#ifdef _WIN32
+		// Windows builds ship no CA bundle: check wss:// certificates
+		// against the Windows certificate store instead
+		curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, (long)CURLSSLOPT_NATIVE_CA);
+#endif
+		curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 8L);
 
 		res = curl_easy_setopt(curl, CURLOPT_CONNECT_ONLY, 2L);
 		if (res != CURLE_OK) {
@@ -734,6 +747,11 @@ ETTProtocol::handleLogin(rapidjson::Value& payload) {
 		NSMAN->loggedInUsername.clear();
 	} else {
 		NSMAN->loginResponse = "";
+		// the server may know us under a different spelling (logged in
+		// with an email or other letter case), the user lists use its name
+		if (payload.HasMember("name") && payload["name"].IsString() &&
+			payload["name"].GetStringLength() > 0)
+			NSMAN->loggedInUsername = payload["name"].GetString();
 	}
 	SCREENMAN->SendMessageToTopScreen(ETTP_LoginResponse);
 }

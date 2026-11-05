@@ -16,7 +16,8 @@ class FontManager
 				   std::string sChars = "");
 	Font* CopyFont(Font* pFont);
 	void UnloadFont(Font* fp);
-	// void PruneFonts();
+	// frees the cached fonts nothing references any more
+	void PruneFonts();
 };
 
 extern FontManager* FONT; // global and accessible from anywhere in our program
