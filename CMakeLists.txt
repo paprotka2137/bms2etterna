@@ -12,7 +12,7 @@ set(CMAKE_POLICY_DEFAULT_CMP0048 NEW) # Tell CMake to use the new policy for CMP
 set(CMAKE_POLICY_DEFAULT_CMP0077 NEW) # Tell CMake to use the new policy for CMP0077. (Due to fftw not defining it)
 
 # Options
-## We statically link the CRT by default. If you would like to dynamically
+## We statically link the CRT by default. If you would like to dynamicallydasasdadsadsdasadsadsadsdsd
 ## link the CRT, you can append "DLL" to the end of the variable below.
 ## More Info: https://cmake.org/cmake/help/latest/variable/CMAKE_MSVC_RUNTIME_LIBRARY.html
 
