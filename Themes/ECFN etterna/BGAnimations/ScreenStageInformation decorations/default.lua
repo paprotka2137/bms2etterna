@@ -126,10 +126,11 @@ t[#t + 1] = Def.Sprite {
 	end,
 }
 
--- white at the start, black at the end (the screen waits 2.5 seconds)
+-- in from black and out to black (the screen waits 2.5 seconds). ECFN starts
+-- with a white flash, here it read as a white screen while things loaded.
 t[#t + 1] = Def.Quad {
 	InitCommand = function(self)
-		self:halign(0):valign(0):zoomto(W, H):diffuse(color("1,1,1,1"))
+		self:halign(0):valign(0):zoomto(W, H):diffuse(color("0,0,0,1"))
 	end,
 	OnCommand = function(self)
 		self:decelerate(0.3):diffusealpha(0)

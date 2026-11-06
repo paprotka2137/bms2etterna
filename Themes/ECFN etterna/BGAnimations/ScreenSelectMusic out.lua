@@ -11,9 +11,9 @@ t[#t + 1] = Def.Quad {
 		self:xy(SCREEN_CENTER_X, SCREEN_CENTER_Y):zoomto(SCREEN_WIDTH, SCREEN_HEIGHT)
 	end,
 	OnCommand = function(self)
-		-- 7k goes white into the ECFN decide screen, which starts white
+		-- 7k goes quickly into the ECFN decide screen, which fades in from black
 		if hideMSD() then
-			self:diffuse(color("1,1,1,0")):linear(0.3):diffusealpha(1)
+			self:diffuse(color("0,0,0,0")):linear(0.15):diffusealpha(1)
 			return
 		end
 		self:diffuse(color("0,0,0,0")):sleep(0.1):linear(0.1):diffusealpha(1)
