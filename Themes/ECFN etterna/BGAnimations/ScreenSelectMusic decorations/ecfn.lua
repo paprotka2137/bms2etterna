@@ -41,11 +41,12 @@ local function exScore(s)
 end
 
 local function missCount(s)
-	return tns(s, "W4") + tns(s, "W5") + tns(s, "Miss")
+	return getBMSMissCount(s)
 end
 
 local function comboBreaks(s)
-	return missCount(s) + s:GetHoldNoteScore("HoldNoteScore_LetGo") + s:GetHoldNoteScore("HoldNoteScore_MissedHold")
+	-- a long note let go early is already one of the BADs
+	return tns(s, "W4") + tns(s, "W5") + tns(s, "Miss")
 end
 
 local function currentRate()

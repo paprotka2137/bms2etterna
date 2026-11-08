@@ -49,6 +49,7 @@ struct HighScoreImpl
 	bool bEtternaValid;
 	bool bUsedDS;
 	int stage_seed;
+	int iEmptyPoors; // LR2 empty POORs, 7k only
 	std::vector<std::string> uploaded;
 	std::vector<int> vRescoreJudgeVector;
 	unsigned int iMaxCombo; // maximum combo obtained [SM5 alpha 1a+]
@@ -128,6 +129,7 @@ HighScoreImpl::HighScoreImpl()
 	fJudgeScale = 0.F;
 	bEtternaValid = true;
 	played_seconds = 0.F;
+	iEmptyPoors = 0;
 	iMaxCombo = 0;
 	sModifiers = "";
 	dateTime.Init();
@@ -178,6 +180,9 @@ HighScoreImpl::CreateEttNode() const -> XNode*
 	}
 	if (stage_seed != 0) {
 		pNode->AppendChild("StageSeed", stage_seed);
+	}
+	if (iEmptyPoors != 0) {
+		pNode->AppendChild("EmptyPoors", iEmptyPoors);
 	}
 	pNode->AppendChild("PlayedSeconds", played_seconds);
 	pNode->AppendChild("MaxCombo", iMaxCombo);
@@ -256,6 +261,9 @@ HighScoreImpl::LoadFromEttNode(const XNode* pNode)
 	auto ssSuccess = pNode->GetChildValue("StageSeed", stage_seed);
 	if (!ssSuccess) {
 		stage_seed = 0;
+	}
+	if (!pNode->GetChildValue("EmptyPoors", iEmptyPoors)) {
+		iEmptyPoors = 0;
 	}
 	const auto* pUploadedServers = pNode->GetChild("Servs");
 	if (pUploadedServers != nullptr) {
@@ -570,6 +578,11 @@ HighScore::GetStageSeed() const -> int
 	return m_Impl->stage_seed;
 }
 auto
+HighScore::GetEmptyPoors() const -> int
+{
+	return m_Impl->iEmptyPoors;
+}
+auto
 HighScore::IsUploadedToServer(const std::string& s) const -> bool
 {
 	return find(m_Impl->uploaded.begin(), m_Impl->uploaded.end(), s) !=
@@ -864,6 +877,11 @@ void
 HighScore::SetStageSeed(int i)
 {
 	m_Impl->stage_seed = i;
+}
+void
+HighScore::SetEmptyPoors(int i)
+{
+	m_Impl->iEmptyPoors = i;
 }
 
 void
@@ -1701,6 +1719,7 @@ class LunaHighScore : public Luna<HighScore>
 	DEFINE_METHOD(GetEtternaValid, GetEtternaValid())
 	DEFINE_METHOD(HasReplayData, HasReplayData())
 	DEFINE_METHOD(GetChartKey, GetChartKey())
+	DEFINE_METHOD(GetEmptyPoorCount, GetEmptyPoors())
 	DEFINE_METHOD(GetScoreKey, GetScoreKey())
 	DEFINE_METHOD(GetReplayType, GetReplayType())
 	DEFINE_METHOD(GetDisplayName, GetDisplayName())
@@ -1734,6 +1753,7 @@ class LunaHighScore : public Luna<HighScore>
 		ADD_METHOD(GetEtternaValid);
 		ADD_METHOD(HasReplayData);
 		ADD_METHOD(GetChartKey);
+		ADD_METHOD(GetEmptyPoorCount);
 		ADD_METHOD(GetReplayType);
 		ADD_METHOD(GetReplay);
 		ADD_METHOD(GetJudgmentString);

@@ -229,12 +229,12 @@ static const BMSGaugeProperty BMS_GAUGES[NUM_BMSGauge] = {
 // LR2 course (dan) gauges, as beatoraja / Endless Dream have them
 // (GaugeProperty.LR2 CLASS_LR2, EXCLASS_LR2, EXHARDCLASS_LR2): start full,
 // never scaled by TOTAL or note count, a survival gauge for the whole
-// course. CLASS and EX CLASS take 60% damage below 30%.
+// course. CLASS and EX CLASS take 60% damage below 32%.
 static const BMSGaugeProperty BMS_CLASS_GAUGES[3] = {
 	{ true, 0.f, 100.f, 0.f, 2.f,
-	  { .1f, .1f, .05f, -2.f, -3.f, -2.f }, 30.f, .6f },
+	  { .1f, .1f, .05f, -2.f, -3.f, -2.f }, 32.f, .6f },
 	{ true, 0.f, 100.f, 0.f, 2.f,
-	  { .1f, .1f, .05f, -6.f, -10.f, -2.f }, 30.f, .6f },
+	  { .1f, .1f, .05f, -6.f, -10.f, -2.f }, 32.f, .6f },
 	{ true, 0.f, 100.f, 0.f, 2.f,
 	  { .1f, .1f, .05f, -12.f, -20.f, -2.f }, 0.f, 1.f },
 };
@@ -1012,9 +1012,13 @@ void
 LifeMeterBar::ChangeLife(HoldNoteScore score, TapNoteScore tscore)
 {
 	if (m_bBMS) {
-		// a dropped long note is a POOR, the head was judged already
-		if (score == HNS_LetGo)
-			ChangeBMSLife(BMS_PR);
+		// LR2 judges a long note once, when it ends: the head's judgment
+		// when held to the end, a BAD when let go early. Player holds the
+		// head's gauge change back until then.
+		if (score == HNS_Held)
+			ChangeLife(tscore);
+		else if (score == HNS_LetGo)
+			ChangeBMSLife(BMS_BD);
 		return;
 	}
 

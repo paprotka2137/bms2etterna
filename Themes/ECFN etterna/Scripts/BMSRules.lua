@@ -276,6 +276,18 @@ function getBMSMaxExScore(score)
 	return math.max(judged, possible or 0) * 2
 end
 
+-- LR2 / beatoraja BP (miss count) of a score: BAD + POOR + empty POOR, and
+-- a failed play also counts every note it did not reach
+function getBMSMissCount(score)
+	local function tns(x)
+		return score:GetTapNoteScore("TapNoteScore_" .. x)
+	end
+	local judged = tns("W1") + tns("W2") + tns("W3") + tns("W4") + tns("W5") + tns("Miss")
+	local bp = tns("W4") + tns("W5") + tns("Miss") + score:GetEmptyPoorCount()
+	local possible = score:GetRadarPossible():GetValue("RadarCategory_Notes") or 0
+	return bp + math.max(possible - judged, 0)
+end
+
 function getBMSScoreRate(score)
 	local max = getBMSMaxExScore(score)
 	if max <= 0 then

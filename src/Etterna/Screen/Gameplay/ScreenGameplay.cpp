@@ -1820,8 +1820,8 @@ ScreenGameplay::HandleScreenMessage(const ScreenMessage& SM)
 			c.judges[2] += pss->m_iTapNoteScores[TNS_W3];
 			c.judges[3] += pss->m_iTapNoteScores[TNS_W4] +
 						   pss->m_iTapNoteScores[TNS_W5];
-			c.judges[4] += pss->m_iTapNoteScores[TNS_Miss] +
-						   pss->m_iHoldNoteScores[HNS_LetGo];
+			// a long note let go early is already one of the BADs
+			c.judges[4] += pss->m_iTapNoteScores[TNS_Miss];
 			c.judges[5] += pss->m_iEmptyPoors;
 			c.maxCombo = std::max(c.maxCombo, pss->GetMaxCombo().m_cnt);
 			if (GAMESTATE->m_pCurSteps != nullptr)

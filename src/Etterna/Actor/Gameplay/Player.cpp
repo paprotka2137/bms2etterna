@@ -1186,6 +1186,13 @@ Player::UpdateHoldNotes(int iSongRow,
 		bHeadJudged = true;
 	}
 
+	// LR2 long notes (7k, human): letting go within the GOOD window before
+	// the end finishes the long note, letting go earlier is a BAD right away
+	const auto bLR2Hold = IsLR2Judging() &&
+						  m_pPlayerState->m_PlayerController == PC_HUMAN &&
+						  !m_bTickHolds;
+	auto bLR2Finished = false;
+
 	auto bIsHoldingButton = true;
 	for (auto& trtn : vTN) {
 		/*if this hold is already done, pretend it's always being pressed.
@@ -1243,6 +1250,16 @@ Player::UpdateHoldNotes(int iSongRow,
 
 				if (bInitiatedNote && bIsHoldingButton) {
 					fLife = 1;
+				} else if (bLR2Hold && bInitiatedNote) {
+					const auto fLeft =
+					  (m_Timing->GetTimeFromRowFast(iMaxEndRow) -
+					   GAMESTATE->m_Position.m_fMusicSeconds) /
+					  GAMESTATE->m_SongOptions.GetCurrent().m_fMusicRate;
+					if (fLeft <= GetWindowSeconds(TW_W3)) {
+						bLR2Finished = true;
+					} else {
+						fLife = 0.F;
+					}
 				} else {
 					const auto window = m_bTickHolds ? TW_Checkpoint : TW_Hold;
 					fLife -= fDeltaTime / GetWindowSeconds(window);
@@ -1294,7 +1311,7 @@ Player::UpdateHoldNotes(int iSongRow,
 	}
 
 	// score hold notes that have passed
-	if (iSongRow >= iMaxEndRow && bHeadJudged) {
+	if ((iSongRow >= iMaxEndRow || bLR2Finished) && bHeadJudged) {
 		auto bLetGoOfHoldNote = false;
 
 		/* Score rolls that end with fLife == 0 as LetGo, even if
@@ -1387,7 +1404,19 @@ Player::UpdateHoldNotes(int iSongRow,
 		}
 	}
 
-	if ((hns == HNS_LetGo) && COMBO_BREAK_ON_IMMEDIATE_HOLD_LET_GO) {
+	// LR2: a long note let go early is one BAD, whatever its head got
+	if (hns == HNS_LetGo && bLR2Hold && m_pPlayerStageStats != nullptr) {
+		for (auto& trtn : vTN) {
+			const auto head = trtn.pTN->result.tns;
+			if (head == TNS_W1 || head == TNS_W2 || head == TNS_W3) {
+				m_pPlayerStageStats->m_iTapNoteScores[head]--;
+				m_pPlayerStageStats->m_iTapNoteScores[TNS_W4]++;
+			}
+		}
+	}
+
+	if ((hns == HNS_LetGo) &&
+		(COMBO_BREAK_ON_IMMEDIATE_HOLD_LET_GO || bLR2Hold)) {
 		IncrementMissCombo();
 	}
 
@@ -1837,12 +1866,16 @@ Player::DoEmptyPoor(int col)
 // LR2 column judging on 7k, as lr2oraja's LR2 rule with the Lowest judge
 // algorithm:
 // - a press judges the earliest unjudged note of the lane that is in the
-//   BAD window, so a late note holds the lane (the column lock)
+//   BAD window, so a late note holds the lane (the column lock). Like
+//   lr2oraja's default "Combo" judge algorithm, the press goes on to the
+//   next note when the earliest is late by more than GOOD and the next one
+//   is no further ahead than GOOD.
 // - a long note head gets no late BAD, only up to a late GOOD
-// - a BAD does not take the note out of the lane: it can be hit again,
-//   and if it is not, it becomes a POOR when it goes by
-// - a BAD press on a normal note also gives a BAD to every later note of
-//   the lane that is in the BAD window but out of the GOOD one (multi BAD)
+// - a BAD takes the note out of the lane like any other judgment
+// - a press also gives a BAD to the earlier notes of the lane that are in
+//   the BAD window but out of the GOOD one, and a BAD press on a normal
+//   note to the later ones too (multi BAD)
+// - a long note is judged once, when it ends (see UpdateHoldNotes)
 static auto
 IsLR2UnjudgedNote(const TapNote& tn) -> bool
 {
@@ -1860,6 +1893,8 @@ Player::GetLR2LowestNote(int col, float fMusicSeconds, float fMusicRate) const
 	  BeatToNoteRow(m_Timing->GetBeatFromElapsedTime(
 		fMusicSeconds - LR2_BAD_WINDOW_SEC * fMusicRate)) -
 		1);
+	auto iBest = -1;
+	auto fBestOffset = 0.F;
 	for (auto it = m_NoteData.lower_bound(col, iStartRow);
 		 it != m_NoteData.end(col);
 		 ++it) {
@@ -1880,62 +1915,80 @@ Player::GetLR2LowestNote(int col, float fMusicSeconds, float fMusicRate) const
 		if (tn.type == TapNoteType_HoldHead && fOffset < -fGood) {
 			continue;
 		}
-		return it->first;
+		if (iBest == -1 || (fBestOffset < -fGood && fOffset <= fGood)) {
+			iBest = it->first;
+			fBestOffset = fOffset;
+			continue;
+		}
+		break;
 	}
-	return -1;
+	return iBest;
 }
 
 void
-Player::DoLR2Bad(int col, int row, float fNoteOffset)
+Player::DoLR2MultiBad(int col,
+					  int row,
+					  bool bBadOnTap,
+					  float fMusicSeconds,
+					  float fMusicRate)
 {
-	if (m_pPlayerStageStats != nullptr) {
-		const auto iOldCombo = m_pPlayerStageStats->m_iCurCombo;
-		const auto iOldMissCombo = m_pPlayerStageStats->m_iCurMissCombo;
-		m_pPlayerStageStats->m_iTapNoteScores[TNS_W4]++;
-		m_pPlayerStageStats->m_iCurCombo = 0;
-		m_pPlayerStageStats->m_iCurMissCombo++;
-		SendComboMessages(iOldCombo, iOldMissCombo);
-		SetCombo(m_pPlayerStageStats->m_iCurCombo,
-				 m_pPlayerStageStats->m_iCurMissCombo);
-		m_pPlayerStageStats->UpdateComboList(
-		  GAMESTATE->m_Position.m_fMusicSeconds /
-			GAMESTATE->m_SongOptions.GetCurrent().m_fMusicRate,
-		  false);
-	}
-	ChangeLife(TNS_W4);
-
-	// the note stays in the lane, so this is not a Judgment message
-	Message msg("LR2Bad");
-	msg.SetParam("Player", m_pPlayerState->m_PlayerNumber);
-	msg.SetParam("Column", col);
-	msg.SetParam("NoteRow", row);
-	msg.SetParam("Early", fNoteOffset > 0.F);
-	// in ms, positive is late, like the Judgment message
-	msg.SetParam("Offset", -fNoteOffset * 1000.F);
-	MESSAGEMAN->Broadcast(msg);
-}
-
-void
-Player::DoLR2MultiBad(int col, int row, float fMusicSeconds, float fMusicRate)
-{
+	// as lr2oraja's MultiBadCollector: notes in the BAD window out of the
+	// GOOD one, only the ones before the pressed note unless the press is a
+	// BAD on a normal note, and no long notes before the first normal one
 	const auto fGood = GetWindowSeconds(TW_W3);
-	for (auto it = m_NoteData.lower_bound(col, row + 1);
+	const auto iStartRow = max(
+	  0,
+	  BeatToNoteRow(m_Timing->GetBeatFromElapsedTime(
+		fMusicSeconds - LR2_BAD_WINDOW_SEC * fMusicRate)) -
+		1);
+	std::vector<std::pair<int, float>> bads;
+	for (auto it = m_NoteData.lower_bound(col, iStartRow);
 		 it != m_NoteData.end(col);
 		 ++it) {
 		const auto& tn = it->second;
+		if (it->first == row) {
+			if (!bBadOnTap) {
+				break;
+			}
+			continue;
+		}
 		if (!IsLR2UnjudgedNote(tn) || !m_Timing->IsJudgableAtRow(it->first)) {
 			continue;
 		}
+		// positive: the press is early
 		const auto fOffset =
 		  (m_Timing->GetTimeFromRowFast(it->first) - fMusicSeconds) /
 		  fMusicRate;
 		if (fOffset > LR2_BAD_WINDOW_SEC) {
 			break;
 		}
-		if (fabsf(fOffset) <= fGood) {
+		if (fOffset < -LR2_BAD_WINDOW_SEC || fabsf(fOffset) <= fGood) {
 			continue;
 		}
-		DoLR2Bad(col, it->first, fOffset);
+		if (bads.empty() && it->first < row &&
+			tn.type == TapNoteType_HoldHead) {
+			continue;
+		}
+		bads.emplace_back(it->first, fOffset);
+	}
+
+	// each one is a BAD like a pressed one: judged, out of the lane, combo
+	// and gauge. A long note head starts its long note, which then ends in
+	// one BAD whether it is held or not.
+	for (const auto& [iRow, fOffset] : bads) {
+		auto iter = m_NoteData.FindTapNote(col, iRow);
+		if (iter == m_NoteData.end(col)) {
+			continue;
+		}
+		auto& tn = iter->second;
+		tn.result.tns = TNS_W4;
+		tn.result.fTapNoteOffset = -fOffset;
+		AddNoteToReplayData(
+		  GAMESTATE->CountNotesSeparately() ? col : -1, &tn, iRow);
+		SetJudgment(iRow, col, tn);
+		m_iTapRowScoreCol = col;
+		HandleTapRowScore(iRow);
+		m_iTapRowScoreCol = -1;
 	}
 }
 
@@ -2501,17 +2554,18 @@ Player::Step(int col,
 		// Do game-specific and mode-specific score mapping.
 		score = GAMESTATE->GetCurrentGame()->MapTapNoteScore(score);
 
-		// LR2: a BAD leaves the note in the lane
-		const auto bLR2Bad =
-		  bLR2Press && score == TNS_W4 &&
-		  (pTN->type == TapNoteType_Tap || pTN->type == TapNoteType_HoldHead);
-		if (bLR2Bad) {
-			DoLR2Bad(col, iRowOfOverlappingNoteOrRow, fNoteOffset);
-			if (pTN->type == TapNoteType_Tap) {
-				DoLR2MultiBad(
-				  col, iRowOfOverlappingNoteOrRow, fMusicSeconds, fMusicRate);
-			}
-		} else if (score != TNS_None) {
+		// LR2 multi BAD: the lane's other notes in the BAD window but out of
+		// the GOOD one get a BAD before this press is judged
+		if (bLR2Press && score >= TNS_W4 && score <= TNS_W1 &&
+			(pTN->type == TapNoteType_Tap ||
+			 pTN->type == TapNoteType_HoldHead)) {
+			DoLR2MultiBad(col,
+						  iRowOfOverlappingNoteOrRow,
+						  score == TNS_W4 && pTN->type == TapNoteType_Tap,
+						  fMusicSeconds,
+						  fMusicRate);
+		}
+		if (score != TNS_None) {
 			pTN->result.tns = score;
 			pTN->result.fTapNoteOffset = -fNoteOffset;
 		}
@@ -2523,7 +2577,7 @@ Player::Step(int col,
 								iRowOfOverlappingNoteOrRow);
 		}
 		if (GAMESTATE->CountNotesSeparately()) {
-			if (pTN->type != TapNoteType_Mine && !bLR2Bad) {
+			if (pTN->type != TapNoteType_Mine) {
 				const auto bBlind =
 				  (m_pPlayerState->m_PlayerOptions.GetCurrent().m_fBlind != 0);
 				const auto bBright =
@@ -3117,9 +3171,17 @@ Player::HandleTapRowScore(unsigned row)
 	}
 
 	if (m_pLifeMeter != nullptr && m_pLifeMeter->IsBMSGauge()) {
-		// BMS gauges count every note of a chord, once each
+		// BMS gauges count every note of a chord, once each. LR2 judges a
+		// long note once, when it ends, so a judged head waits for the hold
+		// score (a missed head is its POOR).
+		const auto bmsLife = [this](const TapNote& tn) {
+			if (tn.type == TapNoteType_HoldHead && tn.result.tns != TNS_Miss) {
+				return;
+			}
+			ChangeLife(tn.result.tns);
+		};
 		if (m_iTapRowScoreCol >= 0) {
-			ChangeLife(m_NoteData.GetTapNote(m_iTapRowScoreCol, row).result.tns);
+			bmsLife(m_NoteData.GetTapNote(m_iTapRowScoreCol, row));
 		} else {
 			for (auto track = 0; track < m_NoteData.GetNumTracks(); ++track) {
 				const auto& tn = m_NoteData.GetTapNote(track, row);
@@ -3130,7 +3192,7 @@ Player::HandleTapRowScore(unsigned row)
 					tn.result.tns == TNS_None) {
 					continue;
 				}
-				ChangeLife(tn.result.tns);
+				bmsLife(tn);
 			}
 		}
 	} else {

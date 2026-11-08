@@ -46,12 +46,11 @@ local function exScore(s)
 end
 
 local function missCount(s)
-	local c = judgeCounts(s)
-	return c[4] + c[5]
+	return getBMSMissCount(s)
 end
 
 local counts = judgeCounts(score)
-local emptyPoors = isCurrentPlay and pss:GetEmptyPoorCount() or 0
+local emptyPoors = isCurrentPlay and pss:GetEmptyPoorCount() or score:GetEmptyPoorCount()
 local notes = counts[1] + counts[2] + counts[3] + counts[4] + counts[5]
 do
 	local possible = pss:GetRadarPossible():GetValue("RadarCategory_Notes")
@@ -61,7 +60,7 @@ do
 end
 local maxEx = math.max(notes * 2, 1)
 local curEx = exScore(score)
-local curMiss = counts[4] + counts[5] + emptyPoors
+local curMiss = getBMSMissCount(score)
 
 -- DJ levels are ninths of the max EX score: index 1 AAA .. 8 F
 local function djLevel(ex)

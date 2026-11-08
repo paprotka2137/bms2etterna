@@ -52,6 +52,7 @@ struct HighScore
 	[[nodiscard]] auto GetEtternaValid() const -> bool;
 	[[nodiscard]] auto GetDSFlag() const -> bool;
 	[[nodiscard]] auto GetStageSeed() const -> int;
+	[[nodiscard]] auto GetEmptyPoors() const -> int;
 	[[nodiscard]] auto IsUploadedToServer(const std::string& s) const -> bool;
 	std::vector<float> timeStamps;
 	[[nodiscard]] auto GetOffsetVector() -> const std::vector<float>&;
@@ -124,6 +125,7 @@ struct HighScore
 	void SetEtternaValid(bool b);
 	void SetDSFlag(bool b);
 	void SetStageSeed(int i);
+	void SetEmptyPoors(int i);
 	void AddUploadedServer(const std::string& s);
 	void SetInputDataVector(const std::vector<InputDataEvent>& v);
 	void SetMissDataVector(const std::vector<MissReplayResult>& v);

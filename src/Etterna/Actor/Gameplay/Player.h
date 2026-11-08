@@ -114,9 +114,9 @@ class Player : public ActorFrame
 	[[nodiscard]] auto GetLR2LowestNote(int col,
 										float fMusicSeconds,
 										float fMusicRate) const -> int;
-	void DoLR2Bad(int col, int row, float fNoteOffset);
 	void DoLR2MultiBad(int col,
 					   int row,
+					   bool bBadOnTap,
 					   float fMusicSeconds,
 					   float fMusicRate);
 	void AddHoldToReplayData(int col,
