@@ -1834,6 +1834,111 @@ Player::DoEmptyPoor(int col)
 	MESSAGEMAN->Broadcast(msg);
 }
 
+// LR2 column judging on 7k, as lr2oraja's LR2 rule with the Lowest judge
+// algorithm:
+// - a press judges the earliest unjudged note of the lane that is in the
+//   BAD window, so a late note holds the lane (the column lock)
+// - a long note head gets no late BAD, only up to a late GOOD
+// - a BAD does not take the note out of the lane: it can be hit again,
+//   and if it is not, it becomes a POOR when it goes by
+// - a BAD press on a normal note also gives a BAD to every later note of
+//   the lane that is in the BAD window but out of the GOOD one (multi BAD)
+static auto
+IsLR2UnjudgedNote(const TapNote& tn) -> bool
+{
+	return (tn.type == TapNoteType_Tap || tn.type == TapNoteType_HoldHead) &&
+		   tn.result.tns == TNS_None;
+}
+
+auto
+Player::GetLR2LowestNote(int col, float fMusicSeconds, float fMusicRate) const
+  -> int
+{
+	const auto fGood = GetWindowSeconds(TW_W3);
+	const auto iStartRow = max(
+	  0,
+	  BeatToNoteRow(m_Timing->GetBeatFromElapsedTime(
+		fMusicSeconds - LR2_BAD_WINDOW_SEC * fMusicRate)) -
+		1);
+	for (auto it = m_NoteData.lower_bound(col, iStartRow);
+		 it != m_NoteData.end(col);
+		 ++it) {
+		const auto& tn = it->second;
+		if (!IsLR2UnjudgedNote(tn) || !m_Timing->IsJudgableAtRow(it->first)) {
+			continue;
+		}
+		// positive: the press is early
+		const auto fOffset =
+		  (m_Timing->GetTimeFromRowFast(it->first) - fMusicSeconds) /
+		  fMusicRate;
+		if (fOffset > LR2_BAD_WINDOW_SEC) {
+			break;
+		}
+		if (fOffset < -LR2_BAD_WINDOW_SEC) {
+			continue;
+		}
+		if (tn.type == TapNoteType_HoldHead && fOffset < -fGood) {
+			continue;
+		}
+		return it->first;
+	}
+	return -1;
+}
+
+void
+Player::DoLR2Bad(int col, int row, float fNoteOffset)
+{
+	if (m_pPlayerStageStats != nullptr) {
+		const auto iOldCombo = m_pPlayerStageStats->m_iCurCombo;
+		const auto iOldMissCombo = m_pPlayerStageStats->m_iCurMissCombo;
+		m_pPlayerStageStats->m_iTapNoteScores[TNS_W4]++;
+		m_pPlayerStageStats->m_iCurCombo = 0;
+		m_pPlayerStageStats->m_iCurMissCombo++;
+		SendComboMessages(iOldCombo, iOldMissCombo);
+		SetCombo(m_pPlayerStageStats->m_iCurCombo,
+				 m_pPlayerStageStats->m_iCurMissCombo);
+		m_pPlayerStageStats->UpdateComboList(
+		  GAMESTATE->m_Position.m_fMusicSeconds /
+			GAMESTATE->m_SongOptions.GetCurrent().m_fMusicRate,
+		  false);
+	}
+	ChangeLife(TNS_W4);
+
+	// the note stays in the lane, so this is not a Judgment message
+	Message msg("LR2Bad");
+	msg.SetParam("Player", m_pPlayerState->m_PlayerNumber);
+	msg.SetParam("Column", col);
+	msg.SetParam("NoteRow", row);
+	msg.SetParam("Early", fNoteOffset > 0.F);
+	// in ms, positive is late, like the Judgment message
+	msg.SetParam("Offset", -fNoteOffset * 1000.F);
+	MESSAGEMAN->Broadcast(msg);
+}
+
+void
+Player::DoLR2MultiBad(int col, int row, float fMusicSeconds, float fMusicRate)
+{
+	const auto fGood = GetWindowSeconds(TW_W3);
+	for (auto it = m_NoteData.lower_bound(col, row + 1);
+		 it != m_NoteData.end(col);
+		 ++it) {
+		const auto& tn = it->second;
+		if (!IsLR2UnjudgedNote(tn) || !m_Timing->IsJudgableAtRow(it->first)) {
+			continue;
+		}
+		const auto fOffset =
+		  (m_Timing->GetTimeFromRowFast(it->first) - fMusicSeconds) /
+		  fMusicRate;
+		if (fOffset > LR2_BAD_WINDOW_SEC) {
+			break;
+		}
+		if (fabsf(fOffset) <= fGood) {
+			continue;
+		}
+		DoLR2Bad(col, it->first, fOffset);
+	}
+}
+
 void
 Player::DoTapScoreNone()
 {
@@ -2165,7 +2270,22 @@ Player::Step(int col,
 	auto score = TNS_None;
 
 	auto iRowOfOverlappingNoteOrRow = row;
-	if (row == -1 && col != -1) {
+	const auto bLR2Press = row == -1 && col != -1 && !bRelease &&
+						   IsLR2Judging() &&
+						   m_pPlayerState->m_PlayerController == PC_HUMAN;
+	if (bLR2Press) {
+		iRowOfOverlappingNoteOrRow =
+		  GetLR2LowestNote(col, fMusicSeconds, fMusicRate);
+		if (iRowOfOverlappingNoteOrRow == -1) {
+			// mines are still judged by the closest one
+			const auto iClosest = GetClosestNote(
+			  col, iSongRow, iStepSearchRows, iStepSearchRows, false, true, false);
+			if (iClosest != -1 &&
+				m_NoteData.GetTapNote(col, iClosest).type == TapNoteType_Mine) {
+				iRowOfOverlappingNoteOrRow = iClosest;
+			}
+		}
+	} else if (row == -1 && col != -1) {
 		iRowOfOverlappingNoteOrRow = GetClosestNote(
 		  col, iSongRow, iStepSearchRows, iStepSearchRows, false, true, false);
 	}
@@ -2381,7 +2501,17 @@ Player::Step(int col,
 		// Do game-specific and mode-specific score mapping.
 		score = GAMESTATE->GetCurrentGame()->MapTapNoteScore(score);
 
-		if (score != TNS_None) {
+		// LR2: a BAD leaves the note in the lane
+		const auto bLR2Bad =
+		  bLR2Press && score == TNS_W4 &&
+		  (pTN->type == TapNoteType_Tap || pTN->type == TapNoteType_HoldHead);
+		if (bLR2Bad) {
+			DoLR2Bad(col, iRowOfOverlappingNoteOrRow, fNoteOffset);
+			if (pTN->type == TapNoteType_Tap) {
+				DoLR2MultiBad(
+				  col, iRowOfOverlappingNoteOrRow, fMusicSeconds, fMusicRate);
+			}
+		} else if (score != TNS_None) {
 			pTN->result.tns = score;
 			pTN->result.fTapNoteOffset = -fNoteOffset;
 		}
@@ -2393,7 +2523,7 @@ Player::Step(int col,
 								iRowOfOverlappingNoteOrRow);
 		}
 		if (GAMESTATE->CountNotesSeparately()) {
-			if (pTN->type != TapNoteType_Mine) {
+			if (pTN->type != TapNoteType_Mine && !bLR2Bad) {
 				const auto bBlind =
 				  (m_pPlayerState->m_PlayerOptions.GetCurrent().m_fBlind != 0);
 				const auto bBright =

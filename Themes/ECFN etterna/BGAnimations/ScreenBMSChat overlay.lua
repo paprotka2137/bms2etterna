@@ -308,7 +308,9 @@ local function render()
 	else
 		local shown = typing
 		while textWidth(shown) > MW - 10 and #shown > 0 do
-			shown = shown:gsub("^[%z\1-\127\194-\244][\128-\191]*", "")
+			-- drop the first character (always at least one byte, so this ends)
+			local rest = shown:gsub("^[%z\1-\127\194-\244][\128-\191]*", "")
+			shown = #rest < #shown and rest or shown:sub(2)
 		end
 		box:settext(shown):diffuse(WHITE)
 		panel:GetChild("Caret"):x(MX + 4 + box:GetZoomedWidth() + 1)
@@ -427,7 +429,8 @@ local function input(event)
 	elseif b == "DeviceButton_tab" then
 		switchChannel(shift() and -1 or 1)
 	elseif b == "DeviceButton_backspace" then
-		typing = typing:gsub("[%z\1-\127\194-\244][\128-\191]*$", "")
+		local rest = typing:gsub("[%z\1-\127\194-\244][\128-\191]*$", "")
+		typing = #rest < #typing and rest or typing:sub(1, -2)
 	elseif b == "DeviceButton_delete" then
 		typing = ""
 	elseif b == "DeviceButton_pgup" then
@@ -444,8 +447,8 @@ local function input(event)
 			histPos = nil
 		end
 	elseif ctrl() and b == "DeviceButton_v" then
-		local clip = (Arch and Arch.getClipboard and Arch.getClipboard() or ""):gsub("[\r\n\t]", " ")
-		typing = (typing .. clip):sub(1, 300)
+		local clip = Arch and Arch.getClipboard and Arch.getClipboard() or ""
+		typing = C.toUTF8(typing .. clip, 300)
 	elseif b == "DeviceButton_space" then
 		typing = typing .. " "
 	elseif not ctrl() and event.char and event.char:find("^[%w%p ]$") then
@@ -714,6 +717,33 @@ t[#t + 1] = Def.ActorFrame {
 		InitCommand = function(self)
 			self:halign(0):valign(0.5):xy(-TOAST_W + 8, -11):zoom(ZOOM):diffuse(WHITE)
 				:maxwidth((TOAST_W - 14) / ZOOM)
+		end,
+	},
+}
+
+-- In fullscreen the theme draws its own mouse pointer (TOOLTIP in _cursor.lua)
+-- in the top screen's overlay, which sits under this overlay screen, so the
+-- open panel and the toast hid it. Draw the same pointer again on top.
+t[#t + 1] = Def.ActorFrame {
+	InitCommand = function(self)
+		-- the frame stays visible so this runs every frame, the quad shows only when needed
+		self:SetUpdateFunction(function(f)
+			local q = f:GetChild("Pointer")
+			-- same rule as _cursor.lua: the theme pointer is shown in exclusive fullscreen
+			local fullscreen = not PREFSMAN:GetPreference("Windowed") and
+				not PREFSMAN:GetPreference("FullscreenIsBorderlessWindow")
+			local toast = f:GetParent():GetChild("Toast")
+			local show = fullscreen and (open or toast:GetDiffuseAlpha() > 0)
+			q:visible(show)
+			if show then
+				q:xy(INPUTFILTER:GetMouseX(), INPUTFILTER:GetMouseY())
+			end
+		end)
+	end,
+	Def.Quad {
+		Name = "Pointer",
+		InitCommand = function(self)
+			self:rotationz(45):zoomto(5, 5):visible(false)
 		end,
 	},
 }

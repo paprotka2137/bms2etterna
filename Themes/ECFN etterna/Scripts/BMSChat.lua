@@ -49,6 +49,81 @@ local function errorOf(status, lines)
 	return "site error " .. tostring(status)
 end
 
+-- Windows 1252 bytes 0x80-0x9F as code points (the rest of the range is Latin-1)
+local CP1252 = {
+	[0x80] = 0x20AC, [0x82] = 0x201A, [0x83] = 0x0192, [0x84] = 0x201E, [0x85] = 0x2026,
+	[0x86] = 0x2020, [0x87] = 0x2021, [0x88] = 0x02C6, [0x89] = 0x2030, [0x8A] = 0x0160,
+	[0x8B] = 0x2039, [0x8C] = 0x0152, [0x8E] = 0x017D, [0x91] = 0x2018, [0x92] = 0x2019,
+	[0x93] = 0x201C, [0x94] = 0x201D, [0x95] = 0x2022, [0x96] = 0x2013, [0x97] = 0x2014,
+	[0x98] = 0x02DC, [0x99] = 0x2122, [0x9A] = 0x0161, [0x9B] = 0x203A, [0x9C] = 0x0153,
+	[0x9E] = 0x017E, [0x9F] = 0x0178,
+}
+
+local function encode(cp)
+	if cp < 0x80 then
+		return string.char(cp)
+	elseif cp < 0x800 then
+		return string.char(0xC0 + math.floor(cp / 0x40), 0x80 + cp % 0x40)
+	end
+	return string.char(0xE0 + math.floor(cp / 0x1000), 0x80 + math.floor(cp / 0x40) % 0x40, 0x80 + cp % 0x40)
+end
+
+-- one valid UTF-8 character at position i, returns its length or nil
+local function utf8At(s, i)
+	local c = s:byte(i)
+	local n
+	if c < 0x80 then
+		return 1
+	elseif c >= 0xC2 and c <= 0xDF then
+		n = 2
+	elseif c >= 0xE0 and c <= 0xEF then
+		n = 3
+	elseif c >= 0xF0 and c <= 0xF4 then
+		n = 4
+	else
+		return nil
+	end
+	for k = i + 1, i + n - 1 do
+		local d = s:byte(k)
+		if not d or d < 0x80 or d > 0xBF then
+			return nil
+		end
+	end
+	return n
+end
+
+-- Any text from outside (the clipboard, the site) as valid UTF-8 without
+-- control characters. Bytes that are not UTF-8 are read as Windows 1252,
+-- which is what the clipboard gave on Windows before the engine asked for
+-- Unicode text. Cut to at most `max` bytes on a character boundary.
+function C.toUTF8(s, max)
+	s = tostring(s or "")
+	local out = {}
+	local len = 0
+	local i = 1
+	while i <= #s do
+		local n = utf8At(s, i)
+		local ch
+		if n then
+			ch = s:sub(i, i + n - 1)
+		else
+			local b = s:byte(i)
+			ch = encode(CP1252[b] or (b >= 0xA0 and b) or 0xFFFD)
+			n = 1
+		end
+		if ch:byte(1) < 0x20 or ch:byte(1) == 0x7F then
+			ch = " "
+		end
+		if max and len + #ch > max then
+			break
+		end
+		out[#out + 1] = ch
+		len = len + #ch
+		i = i + n
+	end
+	return table.concat(out)
+end
+
 local function available()
 	return DLMAN ~= nil and DLMAN.BMSRequest ~= nil
 end
@@ -232,7 +307,7 @@ local function addMessage(f, me, panelOpen)
 			return nil -- already have it
 		end
 	end
-	local m = {id = id, dm = dm, from = from, to = to, t = tonumber(f[6]) or os.time(), body = f[7] or ""}
+	local m = {id = id, dm = dm, from = C.toUTF8(from), to = to, t = tonumber(f[6]) or os.time(), body = C.toUTF8(f[7])}
 	ch.msgs[#ch.msgs + 1] = m
 	if #ch.msgs > MAX_KEEP then
 		table.remove(ch.msgs, 1)
@@ -344,7 +419,7 @@ end
 
 -- the text typed in the box: a command or a message for the open channel
 function C.submit(text)
-	text = trim(text or "")
+	text = trim(C.toUTF8(text, 300))
 	if text == "" then
 		return
 	end

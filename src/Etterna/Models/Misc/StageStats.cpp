@@ -797,8 +797,26 @@ StageStats::FinalizeScores()
 	}
 
 	// BMS 7k ranking site: send the play (replay included) when logged in
-	if (m_bLivePlay)
-		DLMAN->BMSUploadScore(hs, pSteps, GAMESTATE->m_pCurSong);
+	if (m_bLivePlay) {
+		// the gauge over the song for the site's graph: 200 samples, 0-100
+		std::string graph;
+		const auto& rec = m_player.m_fLifeRecord;
+		if (!rec.empty()) {
+			auto end = rec.rbegin()->first;
+			if (GAMESTATE->m_pCurSong != nullptr)
+				end = std::max(end, GAMESTATE->m_pCurSong->GetLastSecond());
+			const auto samples = 200;
+			for (auto i = 0; i < samples; ++i) {
+				const auto at = end * static_cast<float>(i) / (samples - 1);
+				const auto v = std::clamp(
+				  m_player.GetLifeRecordLerpAt(at), 0.F, 1.F);
+				if (i > 0)
+					graph += ',';
+				graph += std::to_string(std::lround(v * 100.F));
+			}
+		}
+		DLMAN->BMSUploadScore(hs, pSteps, GAMESTATE->m_pCurSong, graph);
+	}
 
 	profile->SetAnyAchievedGoals(GAMESTATE->m_pCurSteps->GetChartKey(),
 							 GAMESTATE->m_SongOptions.GetCurrent().m_fMusicRate,

@@ -32,6 +32,7 @@
 #include "RageUtil/Sound/RageSoundReader_PostBuffering.h"
 #include "RageUtil/Sound/RageSoundReader_ThreadedBuffer.h"
 #include "Etterna/Models/Songs/Song.h"
+#include "RageUtil/Utils/RageUtil.h"
 
 #include <algorithm>
 
@@ -107,8 +108,23 @@ AutoKeysounds::LoadTracks(const Song* pSong,
 
 	std::vector<std::string> vsMusicFile;
 	const auto sMusicPath = GAMESTATE->m_pCurSteps->GetMusicPath();
+	// a music file that the chart also plays as a keysound (O2Jam charts
+	// set one of their samples for the preview and song length) would
+	// play twice
+	auto keysoundsOnly = false;
+	for (auto i = 0; i < static_cast<int>(pSong->m_vsKeysoundFile.size());
+		 i++) {
+		if (pSong->m_vsKeysoundFile[i] != pSong->m_sMusicFile)
+			continue;
+		for (auto t = 0; t < m_ndAutoKeysoundsOnly.GetNumTracks(); t++)
+			for (auto it = m_ndAutoKeysoundsOnly.begin(t);
+				 it != m_ndAutoKeysoundsOnly.end(t);
+				 ++it)
+				if (it->second.iKeysoundIndex == i)
+					keysoundsOnly = true;
+	}
 
-	if (!sMusicPath.empty())
+	if (!sMusicPath.empty() && !keysoundsOnly)
 		vsMusicFile.push_back(sMusicPath);
 
 	std::vector<RageSoundReader*> vpSounds;

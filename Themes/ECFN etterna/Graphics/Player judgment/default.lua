@@ -169,6 +169,12 @@ local t = Def.ActorFrame {
 			JudgeCmds[param.TapNoteScore](c.Judgment)
 		end
 	end,
+	-- LR2 BAD that leaves the note in the lane
+	LR2BadMessageCommand = function(self)
+		if bms then
+			showBMSJudgment(c.Judgment, "TapNoteScore_W4")
+		end
+	end,
 	-- LR2 empty POOR: a press with no note to hit, the combo stays
 	EmptyPoorMessageCommand = function(self)
 		if bms then

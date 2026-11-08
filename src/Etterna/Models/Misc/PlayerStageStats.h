@@ -150,6 +150,11 @@ class PlayerStageStats
 
 	std::map<float, float> m_fLifeRecord;
 	void SetLifeRecordAt(float fLife, float fStepsSecond);
+	// value (0-1) of every BMS gauge that ran, by BMSGauge and steps second.
+	// With gauge auto shift m_fLifeRecord follows whichever gauge is shown,
+	// this keeps each gauge's own line for the result screen.
+	std::map<int, std::map<float, float>> m_BMSGaugeRecord;
+	void SetBMSGaugeRecordAt(int gauge, float fLife, float fStepsSecond);
 	void GetLifeRecord(float* fLifeOut,
 					   int iNumSamples,
 					   float fStepsEndSecond) const;

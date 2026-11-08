@@ -182,12 +182,17 @@ local t = Def.ActorFrame {
 			end
 		end,
 	},
-	Button("sort_ico.png", 1538, 76, 158, 40, nextSort) .. {
+	-- the sort cell is clicked through an invisible quad (a sprite button would
+	-- keep its hover fade and show the sort icon over the cell)
+	UIElements.QuadButton(1, 1) .. {
 		InitCommand = function(self)
 			self:halign(0):valign(0):xy(1538, 76):zoomto(158, 40):diffusealpha(0)
 		end,
-		MouseOverCommand = function(self) end,
-		MouseOutCommand = function(self) end,
+		MouseDownCommand = function(self, params)
+			if params.event == "DeviceButton_left mouse button" then
+				nextSort()
+			end
+		end,
 	},
 	Def.Sprite {
 		Texture = dir .. "lnmodeset 1x3.png",

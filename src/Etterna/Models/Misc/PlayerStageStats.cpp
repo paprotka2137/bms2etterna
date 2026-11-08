@@ -52,6 +52,7 @@ PlayerStageStats::InternalInit()
 	m_bFailed = false;
 	m_iBMSClearGauge = -1;
 	m_iEmptyPoors = 0;
+	m_BMSGaugeRecord.clear();
 	m_iPossibleDancePoints = 0;
 	m_iCurPossibleDancePoints = 0;
 	m_iActualDancePoints = 0;
@@ -550,6 +551,17 @@ PlayerStageStats::GetLifeRecordAt(float fStepsSecond) const
 	return it->second;
 }
 
+void
+PlayerStageStats::SetBMSGaugeRecordAt(int gauge, float fLife, float fStepsSecond)
+{
+	auto& rec = m_BMSGaugeRecord[gauge];
+	// keep the step shape when several judgments land on one time
+	const auto curr = rec.find(fStepsSecond);
+	if (curr != rec.end() && curr->second != fLife)
+		rec[fStepsSecond - 0.00390625f] = curr->second;
+	rec[fStepsSecond] = fLife;
+}
+
 float
 PlayerStageStats::GetLifeRecordLerpAt(float fStepsSecond) const
 {
@@ -910,6 +922,36 @@ LuaFunction(GetGradeFromPercent, GetGradeFromPercent(FArg(1)))
 	DEFINE_METHOD(GetBestFullComboTapNoteScore, GetBestFullComboTapNoteScore())
 	DEFINE_METHOD(GetFailed, m_bFailed)
 	DEFINE_METHOD(GetEmptyPoorCount, m_iEmptyPoors)
+	// samples (0-1) of one BMS gauge's own record up to last_second, nil
+	// when that gauge didn't run
+	static int GetBMSGaugeRecord(T* p, lua_State* L)
+	{
+		const auto gauge = IArg(1);
+		const auto last_second = FArg(2);
+		auto samples = 100;
+		if (lua_gettop(L) >= 3 && !lua_isnil(L, 3))
+			samples = std::max(IArg(3), 1);
+		const auto it = p->m_BMSGaugeRecord.find(gauge);
+		if (it == p->m_BMSGaugeRecord.end() || it->second.empty()) {
+			lua_pushnil(L);
+			return 1;
+		}
+		const auto& rec = it->second;
+		lua_createtable(L, samples, 0);
+		for (auto i = 0; i < samples; ++i) {
+			const auto t = samples > 1
+							 ? SCALE(i, 0, static_cast<float>(samples) - 1.0f,
+									 0.0f, last_second)
+							 : last_second;
+			// step value: the last record at or before t, the first before any
+			auto later = rec.upper_bound(t);
+			auto v = later == rec.begin() ? later->second
+										  : std::prev(later)->second;
+			lua_pushnumber(L, v);
+			lua_rawseti(L, -2, i + 1);
+		}
+		return 1;
+	}
 	DEFINE_METHOD(GetSongsPassed, m_iSongsPassed)
 	DEFINE_METHOD(GetSongsPlayed, m_iSongsPlayed)
 
@@ -1147,6 +1189,7 @@ LuaFunction(GetGradeFromPercent, GetGradeFromPercent(FArg(1)))
 		ADD_METHOD(GetBestFullComboTapNoteScore);
 		ADD_METHOD(GetFailed);
 		ADD_METHOD(GetEmptyPoorCount);
+		ADD_METHOD(GetBMSGaugeRecord);
 		ADD_METHOD(SetScore);
 		ADD_METHOD(GetCurMaxScore);
 		ADD_METHOD(SetCurMaxScore);

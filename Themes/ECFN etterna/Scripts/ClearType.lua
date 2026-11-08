@@ -162,8 +162,8 @@ end
 local bmsLamps = {
 	{"FullCombo", "FC", "#66ffff"},
 	{"ExHardClear", "EXH", "#ffd91a"},
-	{"HardClear", "HARD", "#ff4444"},
-	{"NormalClear", "CLEAR", "#ffdd33"},
+	{"HardClear", "HARD", "#ffffff"},
+	{"NormalClear", "CLEAR", "#4aa8ff"},
 	{"EasyClear", "EASY", "#66ff66"},
 	{"Failed", "F", "#e61e25"},
 }

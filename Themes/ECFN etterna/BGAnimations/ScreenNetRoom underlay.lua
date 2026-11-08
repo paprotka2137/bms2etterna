@@ -11,7 +11,10 @@ if hideMSD() then
 			self:halign(0):valign(0):zoomto(SCREEN_WIDTH, SCREEN_HEIGHT):diffuse(color("0,0,0,1"))
 		end,
 		BeginCommand = function(self)
-			SCREENMAN:GetTopScreen():AddInputCallback(MPinput)
+			-- the Etterna chat overlay that defines MPinput is replaced by the BMS chat
+			if MPinput then
+				SCREENMAN:GetTopScreen():AddInputCallback(MPinput)
+			end
 		end,
 	}
 	t[#t + 1] = Def.Sprite {
@@ -37,7 +40,10 @@ t[#t + 1] = Def.Quad {
 		self:diffuse(0.1,0.1,0.1,0.4)
 	end,
 	BeginCommand= function(self)
-		SCREENMAN:GetTopScreen():AddInputCallback(MPinput)
+		-- the Etterna chat overlay that defines MPinput is replaced by the BMS chat
+		if MPinput then
+			SCREENMAN:GetTopScreen():AddInputCallback(MPinput)
+		end
 	end
 }
 --vertical bar left of songwheel

@@ -9,8 +9,11 @@ end
 
 local t = Def.ActorFrame {}
 t[#t + 1] = LoadActor("WifeJudgmentSpotting")
-t[#t + 1] = LoadActor("titlesplash")
-t[#t + 1] = LoadActor("leaderboard")
+-- 7k: the ECFN decide screen already showed the title
+if not hideMSD() then
+	t[#t + 1] = LoadActor("titlesplash")
+end
+t[#t + 1] = LoadActor("leaderboard.lua")
 if inReplay then
 	t[#t + 1] = LoadActor("replayscrolling")
 end

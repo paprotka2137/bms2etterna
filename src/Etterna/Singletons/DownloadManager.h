@@ -577,9 +577,11 @@ class DownloadManager
 	  std::function<void(long, const std::string&)> done,
 	  bool duringGameplay = false);
 	// sends a 7k play at 1.0x right after the song when logged in there
+	// gaugeGraph: the gauge over the song, comma separated 0-100 values
 	void BMSUploadScore(const HighScore& hs,
 						const class Steps* steps,
-						const class Song* song);
+						const class Song* song,
+						const std::string& gaugeGraph = "");
 	[[nodiscard]] bool BMSLoggedIn() const;
 	// the site login, the multiplayer server accepts it instead of a password
 	[[nodiscard]] std::string BMSLoginName() const;

@@ -103,6 +103,7 @@ function R.chart(ck, force)
 					combo = tonumber(f[11]) or 0,
 					gauge = f[12] or "",
 					date = f[13] or "",
+					lane = R.shortLane(f[14] or ""),
 				}
 				row.bp = row.bd + row.pr
 				board.rows[#board.rows + 1] = row
@@ -117,12 +118,57 @@ function R.chart(ck, force)
 	return nil
 end
 
+-- lane option of a score from its modifiers, the same names as the site:
+-- OFF, RANDOM, R-RANDOM, S-RANDOM, H-RANDOM, MIRROR or the lane order ("2143657")
+function R.laneOf(mods)
+	for t in string.gmatch(string.lower(mods or ""), "[^,]+") do
+		t = t:gsub("^%s+", ""):gsub("%s+$", "")
+		if t == "bmsrandom" or t == "random" then
+			return "RANDOM"
+		elseif t == "srandom" or t == "s-random" or t == "bmssrandom" then
+			return "S-RANDOM"
+		elseif t == "hrandom" or t == "h-random" or t == "bmshrandom" then
+			return "H-RANDOM"
+		elseif t == "rrandom" or t == "r-random" or t == "bmsrrandom" then
+			return "R-RANDOM"
+		elseif t == "mirror" or t == "bmsmirror" then
+			return "MIRROR"
+		end
+	end
+	for t in string.gmatch(string.lower(mods or ""), "[^,]+") do
+		local order = t:match("^%s*lanes(%d%d%d%d%d%d%d)%s*$")
+		if order then
+			return order == "1234567" and "OFF" or order
+		end
+	end
+	return "OFF"
+end
+
+-- short form for the narrow column
+function R.shortLane(lane)
+	local short = {["RANDOM"] = "RAN", ["S-RANDOM"] = "S-RAN", ["H-RANDOM"] = "H-RAN", ["R-RANDOM"] = "R-RAN", ["MIRROR"] = "MIR", [""] = "-"}
+	return short[lane] or lane
+end
+
 -- "93.21%" of the chart's max EX (2 per note), "-" before anyone clears it
-function R.rate(board, row)
-	if not board.notes or board.notes <= 0 then
+-- notes: the chart's own note count from the game, so failed plays get a
+-- rate too before anyone has cleared the chart (the site only knows the
+-- note count from a clear)
+function R.rate(board, row, notes)
+	local n = (notes and notes > 0) and notes or board.notes
+	if not n or n <= 0 then
 		return "-"
 	end
-	return string.format("%.2f%%", row.ex / (2 * board.notes) * 100)
+	return string.format("%.2f%%", row.ex / (2 * n) * 100)
+end
+
+-- note count of the selected chart
+function R.chartNotes()
+	local steps = GAMESTATE:GetCurrentSteps()
+	if not steps then
+		return 0
+	end
+	return steps:GetRadarValues(PLAYER_1):GetValue("RadarCategory_Notes") or 0
 end
 
 function R.login(name, password, cb)

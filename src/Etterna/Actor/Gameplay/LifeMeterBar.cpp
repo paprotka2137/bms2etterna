@@ -5,6 +5,7 @@
 #include "Etterna/Models/Misc/PlayerState.h"
 #include "Etterna/Singletons/PrefsManager.h"
 #include "Etterna/Models/Songs/Song.h"
+#include "Etterna/Models/Songs/SongOptions.h"
 #include "Etterna/Singletons/StatsManager.h"
 #include "Etterna/Actor/GameplayAndMenus/StreamDisplay.h"
 #include "Etterna/Singletons/ThemeManager.h"
@@ -816,6 +817,20 @@ LifeMeterBar::LoadBMSGauge()
 		m_fBMSValue[g] = prop.init;
 	}
 	SetBMSCurrentGauge(m_BMSGauge);
+	RecordBMSGauges(0.f);
+}
+
+// every gauge that runs keeps its own record for the result screen graph
+void
+LifeMeterBar::RecordBMSGauges(float fStepsSecond)
+{
+	if (m_pPlayerStageStats == nullptr)
+		return;
+	for (auto g = 0; g < NUM_BMSGauge; g++) {
+		if (m_bBMSTracked[g])
+			m_pPlayerStageStats->SetBMSGaugeRecordAt(
+			  g, m_fBMSValue[g] / 100.f, std::max(fStepsSecond, 0.f));
+	}
 }
 
 void
@@ -884,6 +899,9 @@ LifeMeterBar::ChangeBMSLife(BMSJudge judge)
 		if (value < prop.death)
 			value = 0.f;
 	}
+
+	RecordBMSGauges(GAMESTATE->m_Position.m_fMusicSeconds /
+					GAMESTATE->m_SongOptions.GetCurrent().m_fMusicRate);
 
 	const auto InitialLife = m_fLifePercentage;
 	const auto InitialGauge = m_BMSGauge;

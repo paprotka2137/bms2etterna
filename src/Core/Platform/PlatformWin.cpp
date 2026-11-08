@@ -282,26 +282,27 @@ namespace Core::Platform {
 		// Attempt to open the clipboard, and prevent others from accessing
 		if(!OpenClipboard(nullptr)) return "";
 
-		// Get text handler on clipboard, and prevent other applications from accessing
-		HANDLE hData = GetClipboardData(CF_TEXT);
+		// Unicode text, so the result is UTF-8 like every other string in
+		// the game (CF_TEXT gives the ANSI code page: "Ž" came out as the
+		// lone byte 0x8E and broke UTF-8 handling in Lua)
+		HANDLE hData = GetClipboardData(CF_UNICODETEXT);
 		if (hData == nullptr) {
 			CloseClipboard();
 			return "";
 		}
 
 		// Get contents by locking the handle
-		char *clipboardContent = static_cast<char*>(GlobalLock(hData));
+		auto* clipboardContent = static_cast<const wchar_t*>(GlobalLock(hData));
 		if (clipboardContent == nullptr) {
 			CloseClipboard();
 			return "";
 		}
 
- 	 	// Close clipboard handles
- 	 	GlobalUnlock(hData);
+		// Convert to std::string before letting go of the handle
+		std::string res = nowide::narrow(clipboardContent);
+		GlobalUnlock(hData);
 		CloseClipboard();
 
-		// Convert to std::string
-		std::string res(clipboardContent);
 		res.erase(std::remove(res.begin(), res.end(), '\n'), res.end()); // Remove newlines
 		res.erase(std::remove(res.begin(), res.end(), '\r'), res.end()); // Remove carriage returns
 		return res;

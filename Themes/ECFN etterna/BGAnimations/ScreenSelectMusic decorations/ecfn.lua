@@ -100,8 +100,9 @@ local function readChart()
 	end
 	data.length = math.floor(len / rate)
 	local bpms = steps:GetDisplayBpms()
-	data.minBpm = math.floor(bpms[1] * rate + 0.5)
-	data.maxBpm = math.floor(bpms[2] * rate + 0.5)
+	-- the display BPMs already have the music rate in them
+	data.minBpm = math.floor(bpms[1] + 0.5)
+	data.maxBpm = math.floor(bpms[2] + 0.5)
 
 	-- scores: lamps and best values from plays at 1.0x or faster like the
 	-- result screen, play counts and the local ranking from every play
@@ -1028,7 +1029,8 @@ p[#p + 1] = Img("score_graph.png", 60, 968, 381, 16, {
 	RefreshCommand = function(self)
 		self:finishtweening()
 		local r = data.bestEx and data.bestEx / data.maxEx or 0
-		self:cropright(1):diffusealpha(60 / 255):decelerate(0.3):cropright(1 - r):linear(0.9):diffusealpha(90 / 255)
+		-- short tweens: picking a song waits for every tween on the screen
+		self:cropright(1):diffusealpha(90 / 255):decelerate(0.15):cropright(1 - r)
 	end,
 })
 p[#p + 1] = Img("score_graph_frame.png", 41, 961, 415, 30)
@@ -1060,8 +1062,8 @@ do
 					total = (data.fast or 0) + (data.slow or 0)
 				end
 				local ratio = (v and total > 0) and math.min(1, v / total) or 0
-				self:cropright(1 - ratio):diffusealpha(150 / 255)
-				self:sleep(0.3):linear(0.9):diffusealpha(210 / 255):linear(0.5):diffusealpha(150 / 255)
+				-- no long glow tween, picking a song waits for every tween on the screen
+				self:cropright(1 - ratio):diffusealpha(180 / 255)
 			end,
 		})
 	end
@@ -1073,8 +1075,8 @@ end
 ---------------------------------------------------------------------------
 
 p[#p + 1] = Img("irdata_window.png", 895, 819, 261, 183)
-p[#p + 1] = Text(902, 830, 13, 0, 120, function() return "LOCAL DATA" end, color("#ffffff"))
-p[#p + 1] = Text(910, 963, 16, 0, 80, function() return "LAST PLAY" end, color("#ffffff"))
+-- its "LOCAL DATA" and "LATEST" labels are in the picture, put together from
+-- the letters of the skin's own PLAY DATA / SCORE DATA / CLEAR RATE / FAST
 for k = 1, 5 do
 	local top = 852 + 20 * (k - 1)
 	p[#p + 1] = Text(958, top + 7, 14, 0, 93, function()

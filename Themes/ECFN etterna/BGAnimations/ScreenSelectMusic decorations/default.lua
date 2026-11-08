@@ -20,9 +20,9 @@ if hideMSD() then
 	t[#t + 1] = LoadActor("playlists7k")
 	t[#t + 1] = LoadActor("dan")
 else
-	t[#t + 1] = LoadActor("profile")
+	t[#t + 1] = LoadActor("profile.lua")
 	t[#t + 1] = LoadActor("goaltracker")
-	t[#t + 1] = LoadActor("playlists")
+	t[#t + 1] = LoadActor("playlists.lua")
 	t[#t + 1] = LoadActor("tags")
 end
 t[#t + 1] = LoadActor("stepsdisplay")

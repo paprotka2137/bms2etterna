@@ -81,7 +81,10 @@ local t = Def.ActorFrame {
 		self:SetUpdateFunction(Update)
 	end,
 	BeginCommand = function(self)
-		SCREENMAN:GetTopScreen():AddInputCallback(MPinput)
+		-- the Etterna chat overlay that defines MPinput is replaced by the BMS chat
+		if MPinput then
+			SCREENMAN:GetTopScreen():AddInputCallback(MPinput)
+		end
 		updateScoreBoard(self)
 	end,
 	NewMultiScoreMessageCommand = updateScoreBoard

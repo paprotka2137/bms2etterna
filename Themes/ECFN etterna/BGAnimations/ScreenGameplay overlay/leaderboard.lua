@@ -13,6 +13,10 @@ local t =
 if not leaderboardEnabled then
 	return t
 end
+-- 7k multiplayer: the BMS style room ranking (EX score, DJ level, BP)
+if hideMSD() and NSMAN:IsETTP() and SCREENMAN:GetTopScreen() and SCREENMAN:GetTopScreen():GetName() == "ScreenNetStageInformation" then
+	return LoadActor("leaderboardMP")
+end
 local CRITERIA = "GetWifeScore"
 local NUM_ENTRIES = 5
 local ENTRY_HEIGHT = IsUsingWideScreen() and 35 or 20

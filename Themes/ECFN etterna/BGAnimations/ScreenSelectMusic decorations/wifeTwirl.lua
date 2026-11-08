@@ -1247,7 +1247,10 @@ t[#t + 1] = Def.ActorFrame {
 		Name = "PreviewViewer",
 		BeginCommand = function(self)
 			mcbootlarder = self:GetParent():GetParent():GetChild("ChartPreview")
-			SCREENMAN:GetTopScreen():AddInputCallback(MPinput)
+			-- the Etterna chat overlay that defines MPinput is replaced by the BMS chat
+			if MPinput then
+				SCREENMAN:GetTopScreen():AddInputCallback(MPinput)
+			end
 			SCREENMAN:GetTopScreen():AddInputCallback(ihatestickinginputcallbackseverywhere)
 			self:xy(20, 235):zoom(0.5):halign(0)
 			self:diffuse(getMainColor("positive"))

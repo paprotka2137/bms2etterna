@@ -333,7 +333,11 @@ function getCurrentKeyMode()
 		StepsType_Bm_Double5 = "12K",
 		StepsType_Bm_Double7 = "16K",
 	}
-	local stepstype = GAMESTATE:GetCurrentSteps():GetStepsType()
+	-- noteskins ask before a chart is picked (the song select's chart preview
+	-- loads them with the screen), the style tells the key mode then
+	local steps = GAMESTATE:GetCurrentSteps()
+	local style = GAMESTATE:GetCurrentStyle()
+	local stepstype = steps and steps:GetStepsType() or (style and style:GetStepsType())
 	return keys[stepstype]
 end
 

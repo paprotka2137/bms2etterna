@@ -1,0 +1,17 @@
+R Skin v3.0 (paprotka edit) smieszne ln (kb7)
+
+Converted from the osu!mania skin "R Skin v3.0" by Retsukiya (paprotka edit),
+using the [Mania] Keys: 7 section of its skin.ini.
+
+- flat notes, white/blue/white/pink/white/blue/white like in osu!, same note for the LN head
+- grey LN body (lnekx), no LN tail (T.png is empty)
+- "smieszne ln": the body stops 70 units before the real LN end, as in osu!
+  (StopDrawingHoldBodyOffsetFromTail in metrics.ini, 0 = normal LN)
+- red stage hint line (6 units tall), no column lights
+- notes are timed on their front edge like in osu!, not their centre
+- no hit bursts, no key images (both empty in the osu! skin)
+- mines: osu! has none, so they are a dark note with a coloured X
+
+Receptor height and judgements/combo come from the theme, not the noteskin.
+
+Notes fill the column, 32 units tall. With ECFN 7K NotefieldWidth 0.87 (NotefieldHeight 1) they are 125 x 72 px at 1080p with no gaps, like osu!.

@@ -71,6 +71,7 @@ class LifeMeterBar : public LifeMeter
 							  const Steps* steps,
 							  std::string& source);
 	void ChangeBMSLife(BMSJudge judge);
+	void RecordBMSGauges(float fStepsSecond);
 	void SetBMSCurrentGauge(BMSGauge gauge);
 	BMSGauge PickBMSAutoShiftGauge() const;
 	bool m_bBMS{ false };

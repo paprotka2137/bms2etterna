@@ -619,10 +619,13 @@ local function gaugeLife(name, samples)
 		return lifeCache[name]
 	end
 	local life
-	-- without auto shift the engine's own record of the played gauge is
-	-- exact (it has empty POORs and dropped long notes), but it only exists
-	-- for the play that just happened
-	if not usedGAS and name == gaugeName and isCurrentPlay then
+	-- the engine keeps every gauge that ran on its own (empty POORs and
+	-- dropped long notes included), but only for the play that just happened
+	local rec = isCurrentPlay and pss.GetBMSGaugeRecord and
+		pss:GetBMSGaugeRecord(gaugeIndex[name] - 1, finalSecond / math.max(score:GetMusicRate(), 0.01), samples)
+	if rec then
+		life = rec
+	elseif not usedGAS and name == gaugeName and isCurrentPlay then
 		-- the life record is kept in real seconds (chart time / rate)
 		local rate = score:GetMusicRate()
 		rate = rate > 0 and rate or 1
@@ -1304,7 +1307,7 @@ if BMSRanking and BMSRanking.loggedIn() then
 		}
 		row[#row + 1] = Text(1474, y + 17, 15, 0, 235, "-", color("1,1,1,0.9"), 0) .. {
 			RowCommand = function(self, p)
-				self:settext(p.row.name .. "   " .. R.rate(board, p.row))
+				self:settext(p.row.name .. "   " .. R.rate(board, p.row, notes))
 				self:diffuse(board.me == p.row and color("#9fe8ff") or color("1,1,1,0.9"))
 			end,
 		}

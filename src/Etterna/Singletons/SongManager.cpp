@@ -1,4 +1,5 @@
 #include "Etterna/Globals/global.h"
+#include "Etterna/Models/NoteLoaders/NotesLoaderOJN.h"
 #include "Etterna/Actor/Base/ActorUtil.h"
 #include "AnnouncerManager.h"
 #include "Etterna/Models/Misc/ImageCache.h"
@@ -258,6 +259,7 @@ SongManager::DifferentialReloadDir(string dir) -> int
 			songCount++;
 			unknownGroup.songs.emplace_back(SongDir(folder));
 		} else {
+			OJNLoader::SortLooseCharts(dir + folder);
 			std::vector<std::string> songdirs;
 			FILEMAN->GetDirListing(dir + folder + "/*", songdirs, ONLY_DIR, true);
 			Group group(folder);
@@ -967,6 +969,7 @@ SongManager::LoadStepManiaSongDir(std::string sDir, LoadingWindow* ld)
 		if (IsSongDir(burp)) {
 			unknownGroup.songs.emplace_back("/" + burp);
 		} else {
+			OJNLoader::SortLooseCharts(sDir + folder);
 			auto group = Group(folder);
 			FILEMAN->GetDirListing(sDir + folder + "/*", group.songs, ONLY_DIR, true);
 			groups.emplace_back(group);

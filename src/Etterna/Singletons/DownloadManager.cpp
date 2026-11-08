@@ -6590,7 +6590,8 @@ DownloadManager::BMSRankingRequest(
 void
 DownloadManager::BMSUploadScore(const HighScore& hs,
 								const Steps* steps,
-								const Song* song)
+								const Song* song,
+								const std::string& gaugeGraph)
 {
 	if (!BMSLoggedIn() || steps == nullptr || song == nullptr)
 		return;
@@ -6622,6 +6623,7 @@ DownloadManager::BMSUploadScore(const HighScore& hs,
 		{ "modifiers", hs.GetModifiers() },
 		{ "datetime", hs.GetDateTime().GetString() },
 		{ "replay_raw", replay },
+		{ "gauge_graph", gaugeGraph },
 	};
 	const auto key = hs.GetChartKey();
 	BMSRankingRequest(

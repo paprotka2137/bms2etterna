@@ -28,7 +28,7 @@ class AutoKeysounds
 
   protected:
 	void LoadAutoplaySoundsInto(RageSoundReader_Chain* pChain);
-	static void LoadTracks(const Song* pSong,
+	void LoadTracks(const Song* pSong,
 						   RageSoundReader*& pGlobal,
 						   RageSoundReader*& pPlayer1);
 

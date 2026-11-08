@@ -1,0 +1,14 @@
+mongolskin (kb7)
+
+Converted from the osu!mania skin "#마지막 스킨 [Stellium Skin]" by Applemango,
+using the [Mania] Keys: 7 section of its Skin.ini.
+
+- rounded notes: white, blue, white, gold, white, blue, white (mania-note1/2/S)
+- grey LN bar with a rounded end (Notes4K/LN.png), LN head = the note
+- outlined key frame on the hit position (mania/arrows/key1b, key1Db when pressed)
+- notes are timed on their front edge like in osu!, not their centre
+- no hit bursts, no stage hint, no column lights (all empty in the osu! skin)
+- mines: osu! has none, so they are a darkened note with an X
+
+Note size: 64 x 38 units (osu! proportions). Change NOTE_HEIGHT in Noteskin.lua
+if you resize the note images.

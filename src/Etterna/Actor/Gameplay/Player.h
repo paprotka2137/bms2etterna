@@ -110,6 +110,15 @@ class Player : public ActorFrame
 										float fMusicSeconds,
 										float fMusicRate) const -> bool;
 	void DoEmptyPoor(int col);
+	// LR2 column judging, 7k only
+	[[nodiscard]] auto GetLR2LowestNote(int col,
+										float fMusicSeconds,
+										float fMusicRate) const -> int;
+	void DoLR2Bad(int col, int row, float fNoteOffset);
+	void DoLR2MultiBad(int col,
+					   int row,
+					   float fMusicSeconds,
+					   float fMusicRate);
 	void AddHoldToReplayData(int col,
 							 const TapNote* pTN,
 							 int RowOfOverlappingNoteOrRow) const;

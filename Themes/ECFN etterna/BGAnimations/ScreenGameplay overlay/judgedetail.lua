@@ -159,6 +159,16 @@ return Def.ActorFrame {
 		end
 		refresh()
 	end,
+	-- LR2 BADs that leave the note in the lane
+	LR2BadMessageCommand = function(self, msg)
+		counts[4] = counts[4] + 1
+		if msg.Offset and msg.Offset > 0 then
+			slow[4] = slow[4] + 1
+		else
+			fast[4] = fast[4] + 1
+		end
+		refresh()
+	end,
 	-- empty POORs are presses before the note
 	EmptyPoorMessageCommand = function(self)
 		counts[6] = counts[6] + 1

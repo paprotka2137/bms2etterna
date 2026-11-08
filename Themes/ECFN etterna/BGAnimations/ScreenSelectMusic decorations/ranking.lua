@@ -34,10 +34,11 @@ local col = {
 	rank = 26,
 	lamp = 32,
 	name = 44,
-	lampText = frameWidth - 168,
-	ex = frameWidth - 118,
-	rate = frameWidth - 58,
-	bp = frameWidth - 12,
+	lampText = frameWidth - 196,
+	lane = frameWidth - 152,
+	ex = frameWidth - 106,
+	rate = frameWidth - 46,
+	bp = frameWidth - 10,
 }
 
 local t = Def.ActorFrame {
@@ -117,6 +118,7 @@ local t = Def.ActorFrame {
 				lamp = getBMSLampFromScore(sc),
 				ex = ex,
 				bp = tns(sc, "W4") + tns(sc, "W5") + tns(sc, "Miss"),
+				lane = R.shortLane(R.laneOf(sc:GetModifiers())),
 				rateText = notes > 0 and string.format("%.2f%%", ex / (2 * notes) * 100) or "-",
 				score = sc,
 			}
@@ -280,7 +282,7 @@ t[#t + 1] = text(110, frameY + 42, 0.34, 0) .. {
 			elseif R.loggedIn() then
 				s = s .. "   You: not played yet"
 			end
-			if board.notes <= 0 then
+			if board.notes <= 0 and R.chartNotes() <= 0 then
 				s = s .. "   (rate shows once someone clears it)"
 			end
 			self:settext(s)
@@ -291,7 +293,7 @@ t[#t + 1] = text(110, frameY + 42, 0.34, 0) .. {
 -- column names
 local heads = {
 	{"#", col.rank, 1}, {"PLAYER", col.name, 0}, {"LAMP", col.lampText, 0.5},
-	{"EX", col.ex, 1}, {"RATE", col.rate, 1}, {"BP", col.bp, 1},
+	{"LANE", col.lane, 0.5}, {"EX", col.ex, 1}, {"RATE", col.rate, 1}, {"BP", col.bp, 1},
 }
 for _, h in ipairs(heads) do
 	t[#t + 1] = text(h[2], listY - 14, 0.3, h[3], function(self)
@@ -380,6 +382,13 @@ for i = 1, rowsShown do
 			self:settext(getBMSLampInfo(p.row.lamp, 1)):diffuse(getBMSLampInfo(p.row.lamp, 2))
 		end,
 	}
+	r[#r + 1] = text(col.lane, y, 0.3, 0.5, function(self)
+		self:maxwidth(40 / 0.3)
+	end) .. {
+		RowCommand = function(self, p)
+			self:settext(p.row.lane or "-")
+		end,
+	}
 	r[#r + 1] = text(col.ex, y, 0.36, 1) .. {
 		RowCommand = function(self, p)
 			self:settext(p.row.ex)
@@ -387,7 +396,7 @@ for i = 1, rowsShown do
 	}
 	r[#r + 1] = text(col.rate, y, 0.34, 1) .. {
 		RowCommand = function(self, p)
-			self:settext(p.row.rateText or R.rate(board, p.row))
+			self:settext(p.row.rateText or R.rate(board, p.row, R.chartNotes()))
 		end,
 	}
 	r[#r + 1] = text(col.bp, y, 0.34, 1) .. {

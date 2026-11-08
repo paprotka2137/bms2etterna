@@ -9,6 +9,17 @@ local IgnoreTabInput = themeConfig:get_data().global.IgnoreTabInput
 
 local function searchInput(event)
 	if event.type ~= "InputEventType_Release" and active == true then
+		-- 7k: a right click leaves the search box and keeps the results, like Start
+		if hideMSD() and event.type == "InputEventType_FirstPress" and event.DeviceInput.button == "DeviceButton_right mouse button" then
+			local tind = getTabIndex()
+			resetTabIndex(0)
+			if not instantSearch then
+				whee:SongSearch(searchstring)
+			end
+			MESSAGEMAN:Broadcast("EndingSearch")
+			MESSAGEMAN:Broadcast("TabChanged", {from = tind, to = 0})
+			return false
+		end
 		if event.button == "Back" then
 			local tind = getTabIndex()
 			searchstring = ""
