@@ -1,23 +1,42 @@
--- 7k eval screen after a BMS dan course: the course result (合格 / 不合格),
--- saved to the profile's BMSDan.ini and sent to the ranking site once.
+-- 7k result screen of a song in a BMS dan course: where the course stands
+-- and what START does next (the next song, or the COURSE RESULT screen).
 local res = SONGMAN.GetBMSCourseResult and SONGMAN:GetBMSCourseResult()
-if not res or not res.finished or not BMSDan then
+if not res or not res.id or not BMSDan then
 	return Def.ActorFrame {}
 end
-BMSDan.finish(res)
+-- only right after a song of the course (not an old score opened later)
+local pss = STATSMAN:GetCurStageStats():GetPlayerStageStats()
+local hs = pss and pss:GetHighScore()
+local key = hs and hs:GetScoreKey() or ""
+local mine = false
+for _, k in ipairs(res.scoreKeys or {}) do
+	if k == key then
+		mine = true
+	end
+end
+if not mine then
+	return Def.ActorFrame {}
+end
 
-local w, h = 420, 92
-local x, y = SCREEN_CENTER_X, 70
-local j = res.judges or {}
-local passed = res.cleared
+local w, h = 460, 54
+local x, y = SCREEN_CENTER_X, 64
+local alive = not res.finished or res.cleared
+local col = alive and color("#ffd91a") or color("#ff4444")
 
-local function line(dy, zoom, txt, col)
+local function line(dy, zoom, txt, c)
 	return LoadFont("Common Normal") .. {
 		InitCommand = function(self)
-			self:xy(x, y + dy):zoom(zoom):settext(txt):diffuse(col or color("#ffffff"))
+			self:xy(x, y + dy):zoom(zoom):settext(txt):diffuse(c or color("#ffffff"))
 			self:shadowlength(1):shadowcolor(color("0,0,0,0.8")):maxwidth((w - 20) / zoom)
 		end,
 	}
+end
+
+local next
+if not res.finished then
+	next = "START: song " .. (res.songsPlayed + 1) .. "/" .. res.songsTotal
+else
+	next = "START: course result"
 end
 
 return Def.ActorFrame {
@@ -31,14 +50,10 @@ return Def.ActorFrame {
 	},
 	Def.Quad {
 		InitCommand = function(self)
-			self:xy(x, y - 14):valign(0):zoomto(w, 3):diffuse(passed and color("#ffd91a") or color("#ff4444"))
+			self:xy(x, y - 14):valign(0):zoomto(w, 3):diffuse(col)
 		end,
 	},
-	line(0, 0.5, res.name),
-	line(24, 0.9, passed and "合格  CLEAR" or "不合格  FAILED", passed and color("#ffd91a") or color("#ff5555")),
-	line(48, 0.38, string.format("%s %.1f%%   songs %d/%d   max combo %d",
-		BMSDan.gaugeNames[res.classGauge] or res.classGauge,
-		res.gauge, res.songsPlayed, res.songsTotal, res.maxCombo or 0), color("#cfd6e6")),
-	line(64, 0.34, string.format("PG %d  GR %d  GD %d  BD %d  PR %d  EP %d   EX %d",
-		j[1] or 0, j[2] or 0, j[3] or 0, j[4] or 0, j[5] or 0, j[6] or 0, (j[1] or 0) * 2 + (j[2] or 0)), color("#9aa3b5")),
+	line(0, 0.45, string.format("%s   song %d/%d   %s %.1f%%", res.name, res.songsPlayed, res.songsTotal,
+		BMSDan.gaugeNames[res.classGauge] or res.classGauge, res.gauge)),
+	line(24, 0.42, next, col),
 }

@@ -7,6 +7,7 @@
 #include "RageUtil/File/RageFile.h"
 #include "RageUtil/Utils/RageUtil.h"
 #include "DownloadManager.h"
+#include "Etterna/Models/NoteLoaders/NotesLoaderOJN.h"
 #include "GameState.h"
 #include "ScoreManager.h"
 #include "Etterna/Models/Misc/GamePreferences.h"
@@ -6624,7 +6625,20 @@ DownloadManager::BMSUploadScore(const HighScore& hs,
 		{ "datetime", hs.GetDateTime().GetString() },
 		{ "replay_raw", replay },
 		{ "gauge_graph", gaugeGraph },
+		// O2Jam charts are ranked by O2Jam rules (DMJam score)
+		{ "mode", OJNLoader::IsO2JamSteps(steps) ? "o2jam" : "bms" },
 	};
+	if (OJNLoader::IsO2JamSteps(steps)) {
+		// every note plus every long note tail (judged twice in O2Jam), so a
+		// failed play's DMJam score counts the notes it did not reach; the
+		// O2Jam level (EX / NX / HX level of the .ojn)
+		const auto& rv = steps->GetRadarValues();
+		params.emplace_back(
+		  "notes",
+		  num(static_cast<int>(rv[RadarCategory_Notes] +
+							   rv[RadarCategory_Holds])));
+		params.emplace_back("level", num(steps->GetMeter()));
+	}
 	const auto key = hs.GetChartKey();
 	BMSRankingRequest(
 	  "POST", "/api/game/score", params, [key](long code, const std::string& body) {

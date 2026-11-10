@@ -23,6 +23,10 @@ LoadNoteDataFromSimfile(const std::string& path, Steps& out);
  * same way as O2Jam's Music folder. */
 void
 SortLooseCharts(const std::string& packDir);
+/** A chart read from an O2Jam .ojn. It plays by O2Jam rules (judge windows,
+ * long note tails, DMJam score and the O2Jam hard gauge). */
+bool
+IsO2JamSteps(const Steps* steps);
 } // namespace OJNLoader
 
 #endif

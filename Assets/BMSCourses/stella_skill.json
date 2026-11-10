@@ -1,0 +1,700 @@
+{
+ "format": 1,
+ "set": "Stella Skill Simulator",
+ "source": {
+  "maker": "Stella / Satellite (stellabms.xyz)",
+  "page": "https://stellabms.xyz/skill-simulator",
+  "note": "SP courses only (DP skipped). Chart lists from the skill simulator page; artists and local titles from the game's BMS2SM converts (no md5 on the page)."
+ },
+ "courses": [
+  {
+   "id": "stella_skill_st0",
+   "name": "Stella Skill Simulator st0",
+   "short": "Stella st0",
+   "rank": 40,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "The NightScape [marienother]",
+     "table_title": "The NightScape [marienother]",
+     "artist": "litmus* / obj. marie",
+     "level": "st0",
+     "local_title": "The NightScape[marienother]"
+    },
+    {
+     "title": "Elina (feat. Reislaufer) [INFERNO]",
+     "table_title": "Elina (feat. Reislaufer) [INFERNO]",
+     "artist": "Squar / 差分 赤い人",
+     "level": "st0",
+     "local_title": "Elina (feat. Reislaufer)[INFERNO]"
+    },
+    {
+     "title": "HEXPERUS [NEXTAGE]",
+     "table_title": "HEXPERUS [NEXTAGE]",
+     "artist": "qfeileadh&のあ",
+     "level": "st0",
+     "local_title": "HEXPERUS [NEXTAGE]"
+    },
+    {
+     "title": "reAdvenTia [Pentagon]",
+     "table_title": "reAdvenTia [Pentagon]",
+     "artist": "daisan",
+     "level": "st0",
+     "local_title": "reAdvenTia [Pentagon]"
+    }
+   ]
+  },
+  {
+   "id": "stella_skill_st1",
+   "name": "Stella Skill Simulator st1",
+   "short": "Stella st1",
+   "rank": 41,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "carnation [for expert]",
+     "table_title": "carnation [for expert]",
+     "artist": "ああああ / A",
+     "level": "st1",
+     "local_title": "carnation [for expert]"
+    },
+    {
+     "title": "Lucid Dreaming [キャワ]",
+     "table_title": "Lucid Dreaming [キャワ]",
+     "artist": "TiS feat. maho / obj. laner",
+     "level": "st1",
+     "local_title": "Lucid Dreaming[キャワ]"
+    },
+    {
+     "title": "リクロスフェイト [Nuclear]",
+     "table_title": "リクロスフェイト [Nuclear]",
+     "artist": "あとぅす",
+     "level": "st1",
+     "local_title": "リクロスフェイト [Nuclear]"
+    },
+    {
+     "title": "水晶世界 ～Fracture～ [MANIAC]",
+     "table_title": "水晶世界 ～Fracture～ [MANIAC]",
+     "artist": "秋山 澪/obj:BAECON",
+     "level": "st1",
+     "local_title": "水晶世界 ～Fracture～ [MANIAC]"
+    }
+   ]
+  },
+  {
+   "id": "stella_skill_st2",
+   "name": "Stella Skill Simulator st2",
+   "short": "Stella st2",
+   "rank": 42,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "Life is PIANO [Wander]",
+     "table_title": "Life is PIANO [Wander]",
+     "artist": "Junk",
+     "level": "st2",
+     "local_title": "Life is PIANO[Wander]"
+    },
+    {
+     "title": "adabana [HEARTFUL]",
+     "table_title": "adabana [HEARTFUL]",
+     "artist": "Kyuzo Sameura",
+     "level": "st2",
+     "local_title": "adabana[HEARTFUL]"
+    },
+    {
+     "title": "ハッピーフェイクショー [Haven't you heard?]",
+     "table_title": "ハッピーフェイクショー [Haven't you heard?]",
+     "artist": "Ponchi♪ feat.はぁち",
+     "level": "st2",
+     "local_title": "ハッピーフェイクショー[Haven't you heard?]"
+    },
+    {
+     "title": "\"Flanker-E\" -Xe-",
+     "table_title": "\"Flanker-E\" -Xe-",
+     "artist": "Lemi.",
+     "level": "st2",
+     "local_title": "\"Flanker-E\"-Xe-"
+    }
+   ]
+  },
+  {
+   "id": "stella_skill_st3",
+   "name": "Stella Skill Simulator st3",
+   "short": "Stella st3",
+   "rank": 43,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "ハートマークとエンドロール [Finale]",
+     "table_title": "ハートマークとエンドロール [Finale]",
+     "artist": "KA-KU feat.春歌ナナ / obj.fuko",
+     "level": "st3",
+     "local_title": "ハートマークとエンドロール [Finale]"
+    },
+    {
+     "title": "BIG LOVE [HEARTFUL]",
+     "table_title": "BIG LOVE [HEARTFUL]",
+     "artist": "Alkome",
+     "level": "st3",
+     "local_title": "BIG LOVE[HEARTFUL]"
+    },
+    {
+     "title": "星月トラジコメディー [GALAXY]",
+     "table_title": "星月トラジコメディー [GALAXY]",
+     "artist": "Yonder Voice",
+     "level": "st3",
+     "local_title": "星月トラジコメディー[GALAXY]"
+    },
+    {
+     "title": "Endless Dream -Reminiscence-",
+     "table_title": "Endless Dream -Reminiscence-",
+     "artist": "SHIKI // BGA:あかくらげ & M.H / selene.",
+     "level": "st3",
+     "local_title": "Endless Dream -Reminiscence-"
+    }
+   ]
+  },
+  {
+   "id": "stella_skill_st4",
+   "name": "Stella Skill Simulator st4",
+   "short": "Stella st4",
+   "rank": 44,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "Rechronize [DEPARTURE]",
+     "table_title": "Rechronize [DEPARTURE]",
+     "artist": "あとぅす feat.咲良ゆの",
+     "level": "st4",
+     "local_title": "Rechronize[DEPARTURE]"
+    },
+    {
+     "title": "Lethal Strike [DENIAL]",
+     "table_title": "Lethal Strike [DENIAL]",
+     "artist": "Lian",
+     "level": "st4",
+     "local_title": "Lethal Strike [DENIAL]"
+    },
+    {
+     "title": "ルーネイトエルフ～霧の湖の物語～ [Pentagon]",
+     "table_title": "ルーネイトエルフ～霧の湖の物語～ [Pentagon]",
+     "artist": "9-zen",
+     "level": "st4",
+     "local_title": "ルーネイトエルフ～霧の湖の物語～ [Pentagon]"
+    },
+    {
+     "title": "Simurgh [yumether]",
+     "table_title": "Simurgh [yumether]",
+     "artist": "BilliumMoto & Sobrem / obj:夢瑠",
+     "level": "st4",
+     "local_title": "Simurgh [yumether]"
+    }
+   ]
+  },
+  {
+   "id": "stella_skill_st5",
+   "name": "Stella Skill Simulator st5",
+   "short": "Stella st5",
+   "rank": 45,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "サウンドコラージュ・ダイスキズム [Not-Daisuki]",
+     "table_title": "サウンドコラージュ・ダイスキズム [Not-Daisuki]",
+     "artist": "CYLTIE. Vo:初音ミク",
+     "level": "st5",
+     "local_title": "サウンドコラージュ・ダイスキズム[Not-Daisuki]"
+    },
+    {
+     "title": "Rabbits [Maryther]",
+     "table_title": "Rabbits [Maryther]",
+     "artist": "Est / BGA:Johnny / OBJ:Mary_Sue",
+     "level": "st5",
+     "local_title": "Rabbits[Maryther]"
+    },
+    {
+     "title": "The Mighty A [NIGHTMARE]",
+     "table_title": "The Mighty A [NIGHTMARE]",
+     "artist": "69 de 74",
+     "level": "st5",
+     "local_title": "The Mighty A[NIGHTMARE]"
+    },
+    {
+     "title": "whither [douvenonsnousquesommesnousouallonsnous]",
+     "table_title": "whither [douvenonsnousquesommesnousouallonsnous]",
+     "artist": "qfeileadh / obj:C4",
+     "level": "st5",
+     "local_title": "whither[douvenonsnousquesommesnousouallonsnous]"
+    }
+   ]
+  },
+  {
+   "id": "stella_skill_st6",
+   "name": "Stella Skill Simulator st6",
+   "short": "Stella st6",
+   "rank": 46,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "マッドメチャクチャニズム [Crushing]",
+     "table_title": "マッドメチャクチャニズム [Crushing]",
+     "artist": "69 de 74",
+     "level": "st6",
+     "local_title": "マッドメチャクチャニズム[Crushing]"
+    },
+    {
+     "title": "Breeze -SUMMER BOSS-",
+     "table_title": "Breeze -SUMMER BOSS-",
+     "artist": "Kankitsu",
+     "level": "st6",
+     "local_title": "Breeze-SUMMER BOSS-"
+    },
+    {
+     "title": "Marmot [BUSTER]",
+     "table_title": "Marmot [BUSTER]",
+     "artist": "Lian",
+     "level": "st6",
+     "local_title": "Marmot [BUSTER]"
+    },
+    {
+     "title": "ETERNiZE [ETERNiTY]",
+     "table_title": "ETERNiZE [ETERNiTY]",
+     "artist": "Pleiades (あとぅす vs. Lian)",
+     "level": "st6",
+     "local_title": "ETERNiZE [ETERNiTY]"
+    }
+   ]
+  },
+  {
+   "id": "stella_skill_st7",
+   "name": "Stella Skill Simulator st7",
+   "short": "Stella st7",
+   "rank": 47,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "Sylph (SP MARYTHER)",
+     "table_title": "Sylph (SP MARYTHER)",
+     "artist": "utah / obj: Mary_Sue",
+     "level": "st7",
+     "local_title": "Sylph (SP MARYTHER)"
+    },
+    {
+     "title": "Overdrive Power [Earth Power]",
+     "table_title": "Overdrive Power [Earth Power]",
+     "artist": "69 de 74",
+     "level": "st7",
+     "local_title": "Overdrive Power [Earth Power]"
+    },
+    {
+     "title": "スナレ",
+     "table_title": "スナレ",
+     "artist": "Zris feat. Green",
+     "level": "st7",
+     "local_title": "スナレ"
+    },
+    {
+     "title": "stardust explorer [starlight express]",
+     "table_title": "stardust explorer [starlight express]",
+     "artist": "kooridori",
+     "level": "st7",
+     "local_title": "stardust explorer[starlight express]"
+    }
+   ]
+  },
+  {
+   "id": "stella_skill_st8",
+   "name": "Stella Skill Simulator st8",
+   "short": "Stella st8",
+   "rank": 48,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "爽昧夢想ラバーズ [NOCTAMBULISM]",
+     "table_title": "爽昧夢想ラバーズ [NOCTAMBULISM]",
+     "artist": "qfeileadh feat.りこりす・らぢあーた",
+     "level": "st8",
+     "local_title": "爽昧夢想ラバーズ [NOCTAMBULISM]"
+    },
+    {
+     "title": "DUARRIER [Twin Stream+]",
+     "table_title": "DUARRIER [Twin Stream+]",
+     "artist": "Nuekawa",
+     "level": "st8",
+     "local_title": "DUARRIER [Twin Stream+]"
+    },
+    {
+     "title": "Blue Delaygoon [フルマラソン]",
+     "table_title": "Blue Delaygoon [フルマラソン]",
+     "artist": "kanone",
+     "level": "st8",
+     "local_title": "Blue Delaygoon[フルマラソン]"
+    },
+    {
+     "title": "Stellaria [LAST VOYAGE]",
+     "table_title": "Stellaria [LAST VOYAGE]",
+     "artist": "Lime",
+     "level": "st8",
+     "local_title": "Stellaria[LAST VOYAGE]"
+    }
+   ]
+  },
+  {
+   "id": "stella_skill_st9",
+   "name": "Stella Skill Simulator st9",
+   "short": "Stella st9",
+   "rank": 49,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "Apocalypse Nemesis -Meteor Noise- [Catastrophe]",
+     "table_title": "Apocalypse Nemesis -Meteor Noise- [Catastrophe]",
+     "artist": "kanone(BGI:TAKA.S)",
+     "level": "st9",
+     "local_title": "Apocalypse Nemesis -Meteor Noise- [Catastrophe]"
+    },
+    {
+     "title": "Weaponhuman [Armageddon]",
+     "table_title": "Weaponhuman [Armageddon]",
+     "artist": "paraneumann / obj:C4",
+     "level": "st9",
+     "local_title": "Weaponhuman [Armageddon]"
+    },
+    {
+     "title": "Terpsichore [Other]",
+     "table_title": "Terpsichore [Other]",
+     "artist": "Jun Kuroda",
+     "level": "st9",
+     "local_title": "Terpsichore[Other]"
+    },
+    {
+     "title": "!nterroban(?, [SUPERFACTORIAL]",
+     "table_title": "!nterroban(?, [SUPERFACTORIAL]",
+     "artist": "Aoi / obj:qfeileadh",
+     "level": "st9",
+     "local_title": "!nterroban(?, [SUPERFACTORIAL]"
+    }
+   ]
+  },
+  {
+   "id": "stella_skill_st10",
+   "name": "Stella Skill Simulator st10",
+   "short": "Stella st10",
+   "rank": 50,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "Blue-White Crazybits [GOD]",
+     "table_title": "Blue-White Crazybits [GOD]",
+     "artist": "234 / obj: black train",
+     "level": "st10",
+     "local_title": "Blue-White Crazybits[GOD]"
+    },
+    {
+     "title": "Quota -Falsen-",
+     "table_title": "Quota -Falsen-",
+     "artist": "Zris & Eurico",
+     "level": "st10",
+     "local_title": "Quota-Falsen-"
+    },
+    {
+     "title": "Sesame Kingdom [HEARTLESS]",
+     "table_title": "Sesame Kingdom [HEARTLESS]",
+     "artist": "VeetaCrush",
+     "level": "st10",
+     "local_title": "Sesame Kingdom[HEARTLESS]"
+    },
+    {
+     "title": "BEYOND [Sprint]",
+     "table_title": "BEYOND [Sprint]",
+     "artist": "Lime",
+     "level": "st10",
+     "local_title": "BEYOND[Sprint]"
+    }
+   ]
+  },
+  {
+   "id": "stella_skill_st11",
+   "name": "Stella Skill Simulator st11",
+   "short": "Stella st11",
+   "rank": 51,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "花嵐、空に溶けて [虚]",
+     "table_title": "花嵐、空に溶けて [虚]",
+     "artist": "DJ Raisei vs. Setca. feat. 咲良ゆの",
+     "level": "st11",
+     "local_title": "花嵐、空に溶けて[虚]"
+    },
+    {
+     "title": "Avantgarde [Oripathy]",
+     "table_title": "Avantgarde [Oripathy]",
+     "artist": "Raimukun",
+     "level": "st11",
+     "local_title": "Avantgarde[Oripathy]"
+    },
+    {
+     "title": "夜騒曲 op.Q-ν [Nightmare]",
+     "table_title": "夜騒曲 op.Q-ν [Nightmare]",
+     "artist": "NASA respekt for F. Chopin",
+     "level": "st11",
+     "local_title": "夜騒曲 op.Q-ν [Nightmare]"
+    },
+    {
+     "title": "Celestial Axes [Other]",
+     "table_title": "Celestial Axes [Other]",
+     "artist": "nmk / わっふゑ",
+     "level": "st11",
+     "local_title": "Celestial Axes[Other]"
+    }
+   ]
+  },
+  {
+   "id": "stella_skill_st12",
+   "name": "Stella Skill Simulator st12",
+   "short": "Stella st12",
+   "rank": 52,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "black opal [Pentagon++]",
+     "table_title": "black opal [Pentagon++]",
+     "artist": "TAK vs General / Jeff",
+     "level": "st12",
+     "local_title": "black opal [Pentagon++]"
+    },
+    {
+     "title": "Upside-down",
+     "table_title": "Upside-down",
+     "artist": "music:すてらべえ/BGA:hopkins",
+     "level": "st11",
+     "local_title": "Upside-down"
+    },
+    {
+     "title": "MESMERA [KOOKY]",
+     "table_title": "MESMERA [KOOKY]",
+     "artist": "qfeileadh + 空読無 白眼",
+     "level": "st12",
+     "local_title": "MESMERA[KOOKY]"
+    },
+    {
+     "title": "inertia [///]",
+     "table_title": "inertia [///]",
+     "artist": "Micelle",
+     "level": "st12",
+     "local_title": "inertia[///]"
+    }
+   ]
+  }
+ ]
+}

@@ -19,6 +19,7 @@
 #include "Etterna/Singletons/ScreenManager.h"
 #include "Etterna/Models/Songs/Song.h"
 #include "Etterna/Singletons/StatsManager.h"
+#include "Etterna/Singletons/SongManager.h"
 #include "Etterna/Globals/StepMania.h"
 #include "Etterna/Models/StepsAndStyles/Steps.h"
 #include "Etterna/Singletons/ThemeManager.h"
@@ -230,6 +231,14 @@ ScreenEvaluation::Input(const InputEventPlus& input)
 
 		// not in netplay
 		if (m_sName.find("Net") != std::string::npos)
+			return false;
+
+		// not after a song of a dan course (one still going or just over)
+		const auto& course = SONGMAN->bmsCourse;
+		if (SONGMAN->InBMSCourse() ||
+			(course.active && !course.scoreKeys.empty() &&
+			 course.scoreKeys.back() ==
+			   STATSMAN->m_CurStageStats.mostrecentscorekey))
 			return false;
 
 		// technically this is correct

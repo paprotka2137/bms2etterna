@@ -183,6 +183,10 @@ end
 -- the gauge a score was played on is kept in its modifiers
 local function getBMSGaugeLamp(score)
 	local mods = string.lower(score:GetModifiers() or "")
+	-- O2Jam charts play on the O2Jam hard gauge
+	if mods:find("o2jamhard", 1, true) then
+		return 3
+	end
 	-- "exhardgauge" contains "hardgauge", check it first
 	if mods:find("exhardgauge", 1, true) or mods:find("deathgauge", 1, true) then
 		return 2

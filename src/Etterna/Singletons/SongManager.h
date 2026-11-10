@@ -161,6 +161,12 @@ class SongManager
 		int notes = 0;
 		std::vector<std::string> scoreKeys;
 		std::vector<float> gaugeAfterSong;
+		// the course gauges carried from song to song (each song is its own
+		// gameplay screen with a result screen after it): the chosen one,
+		// the shown one (-1 before the first song) and every value
+		int classTop = -1;
+		int classShown = -1;
+		float classValues[3] = { 100.F, 100.F, 100.F };
 	};
 	BMSCourse bmsCourse;
 	// a BMS dan course is being played right now

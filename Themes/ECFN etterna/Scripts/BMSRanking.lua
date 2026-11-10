@@ -155,6 +155,11 @@ end
 -- rate too before anyone has cleared the chart (the site only knows the
 -- note count from a clear)
 function R.rate(board, row, notes)
+	-- O2Jam charts: the site keeps the DMJam score in thousandths
+	if isO2JamPlay() then
+		local v = row.ex / 1000
+		return string.format("%.3f %s", v, getO2JamGrade(v))
+	end
 	local n = (notes and notes > 0) and notes or board.notes
 	if not n or n <= 0 then
 		return "-"

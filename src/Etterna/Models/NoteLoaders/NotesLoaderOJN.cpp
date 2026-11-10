@@ -22,6 +22,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <cctype>
 #include <map>
 #include <set>
 
@@ -835,4 +836,19 @@ OJNLoader::SortLooseCharts(const std::string& packDir)
 	FILEMAN->FlushDirCache(dir);
 	Locator::getLogger()->info(
 	  "OJN: gave {} loose O2Jam charts in {} their own folders", moved, dir);
+}
+
+bool
+OJNLoader::IsO2JamSteps(const Steps* steps)
+{
+	if (steps == nullptr)
+		return false;
+	const auto& fn = steps->GetFilename();
+	if (fn.size() < 4)
+		return false;
+	auto ext = fn.substr(fn.size() - 4);
+	std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
+		return static_cast<char>(std::tolower(c));
+	});
+	return ext == ".ojn";
 }

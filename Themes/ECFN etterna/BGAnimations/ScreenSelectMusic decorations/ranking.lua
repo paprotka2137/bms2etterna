@@ -109,6 +109,13 @@ local t = Def.ActorFrame {
 		end
 		for _, sc in ipairs(list) do
 			local ex = tns(sc, "W1") * 2 + tns(sc, "W2")
+			local rateText = notes > 0 and string.format("%.2f%%", ex / (2 * notes) * 100) or "-"
+			-- O2Jam: the DMJam score in thousandths, like the site keeps it
+			if isO2JamScore(sc) then
+				local v = getO2JamScore(sc)
+				ex = math.floor(v * 1000 + 0.5)
+				rateText = string.format("%.3f %s", v, getO2JamGrade(v))
+			end
 			local label = sc:GetDate():sub(1, 16)
 			if math.abs(sc:GetMusicRate() - 1) > 0.001 then
 				label = label .. "  " .. getRateString(notShit.round(sc:GetMusicRate(), 3))
@@ -119,7 +126,7 @@ local t = Def.ActorFrame {
 				ex = ex,
 				bp = getBMSMissCount(sc),
 				lane = R.shortLane(R.laneOf(sc:GetModifiers())),
-				rateText = notes > 0 and string.format("%.2f%%", ex / (2 * notes) * 100) or "-",
+				rateText = rateText,
 				score = sc,
 			}
 		end
@@ -391,7 +398,8 @@ for i = 1, rowsShown do
 	}
 	r[#r + 1] = text(col.ex, y, 0.36, 1) .. {
 		RowCommand = function(self, p)
-			self:settext(p.row.ex)
+			-- O2Jam: the score is in the RATE column
+			self:settext(isO2JamPlay() and "" or p.row.ex)
 		end,
 	}
 	r[#r + 1] = text(col.rate, y, 0.34, 1) .. {

@@ -119,6 +119,18 @@ class Player : public ActorFrame
 					   bool bBadOnTap,
 					   float fMusicSeconds,
 					   float fMusicRate);
+	// O2Jam rules, O2Jam charts on 7k only
+	[[nodiscard]] auto GetO2JamWindowSeconds(TimingWindow tw, int row) const
+	  -> float;
+	[[nodiscard]] auto GetO2JamNote(int col,
+									float fMusicSeconds,
+									float fMusicRate) const -> int;
+	void O2JamJudgeTail(int col,
+						int row,
+						TapNote& tn,
+						TapNoteScore tns,
+						float fOffset);
+	void O2JamRelease(int col, float fMusicSeconds, float fMusicRate);
 	void AddHoldToReplayData(int col,
 							 const TapNote* pTN,
 							 int RowOfOverlappingNoteOrRow) const;
@@ -275,6 +287,19 @@ class Player : public ActorFrame
 
 	std::vector<float> lastHoldHeadsSeconds;
 	std::vector<TapNote*> activeHoldTaps;
+	// O2Jam: the long note each lane holds (its head got a COOL or GOOD),
+	// waiting for the release that judges its tail
+	struct O2JamHold
+	{
+		int row = -1;
+		TapNote* tn = nullptr;
+	};
+	std::vector<O2JamHold> m_O2JamHolds;
+	// O2Jam pills: 15 COOLs in a row give one (5 at most), a BAD uses one
+	// up and becomes a COOL
+	int m_iO2JamCoolStreak = 0;
+	int m_iO2JamPills = 0;
+	auto O2JamPill(TapNoteScore tns) -> TapNoteScore;
 
 	bool m_bPaused;
 	bool m_bDelay;

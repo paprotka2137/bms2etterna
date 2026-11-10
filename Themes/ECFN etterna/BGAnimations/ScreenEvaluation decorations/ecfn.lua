@@ -40,7 +40,11 @@ local function judgeCounts(s)
 	return {tns(s, "W1"), tns(s, "W2"), tns(s, "W3"), tns(s, "W4") + tns(s, "W5"), tns(s, "Miss")}
 end
 
+-- O2Jam scores are compared by their DMJam score, kept in thousandths
 local function exScore(s)
+	if isO2JamScore(s) then
+		return math.floor(getO2JamScore(s) * 1000 + 0.5)
+	end
 	local c = judgeCounts(s)
 	return c[1] * 2 + c[2]
 end
@@ -49,11 +53,18 @@ local function missCount(s)
 	return getBMSMissCount(s)
 end
 
+-- O2Jam charts play by O2Jam rules: COOL GOOD BAD MISS, DMJam score and
+-- O2Jam grade, a long note is judged twice (head and tail)
+local o2jam = isO2JamScore(score)
+
 local counts = judgeCounts(score)
 local emptyPoors = isCurrentPlay and pss:GetEmptyPoorCount() or score:GetEmptyPoorCount()
 local notes = counts[1] + counts[2] + counts[3] + counts[4] + counts[5]
 do
 	local possible = pss:GetRadarPossible():GetValue("RadarCategory_Notes")
+	if o2jam and possible then
+		possible = possible + (pss:GetRadarPossible():GetValue("RadarCategory_Holds") or 0)
+	end
 	if possible and possible > notes then
 		notes = possible
 	end
@@ -78,6 +89,10 @@ end
 
 local function scoreGaugeName(s)
 	local mods = string.lower(s:GetModifiers() or "")
+	-- the O2Jam hard gauge is drawn as a survival gauge
+	if mods:find("o2jamhard", 1, true) then
+		return "Hard"
+	end
 	-- a dan course song (course gauge) is drawn as the nearest survival
 	-- gauge; the course result panel shows the real course gauge
 	if mods:find("exhardclassgauge", 1, true) then
@@ -166,6 +181,11 @@ end
 local curLamp = lampFrame(score)
 local cleared = curLamp ~= 1
 local curRank = djLevel(curEx)
+if o2jam then
+	-- O2Jam grade on the DJ level scale, for the background pictures
+	local g = getO2JamGrade(getO2JamScore(score))
+	curRank = ({P = 1, SS = 1, S = 2, A = 3, B = 4, C = 5, D = 6})[g] or 8
+end
 local bestRank = best.ex and djLevel(best.ex) or nil
 -- target: the AAA border, or MAX once AAA is reached
 local targetEx = curRank == 1 and maxEx or djBorder(1)
@@ -175,13 +195,22 @@ local judgeRank = getBMSJudgeRankIndexFromScore(score)
 local windows = getBMSWindowsMs(judgeRank)
 local finalSecond = math.max(steps:GetLastSecond(), 1)
 local td = steps:GetTimingData()
+-- O2Jam windows follow the bpm: each note by its own, the graphs by the
+-- chart's starting bpm
+local function o2jamWindowsAt(beat)
+	return getO2JamWindowsMs(td:GetBPMAtBeat(beat or 0), score:GetMusicRate())
+end
+if o2jam then
+	windows = o2jamWindowsAt(0)
+end
 local taps = {} -- {time, offset, judgment 1-5}
 local fast = {0, 0, 0, 0, 0, 0}
 local slow = {0, 0, 0, 0, 0, 0}
-local function offsetJudgment(o)
+local function offsetJudgment(o, w)
 	local a = math.abs(o)
+	w = w or windows
 	for i = 1, 4 do
-		if a <= windows[i] then
+		if a <= w[i] then
 			return i
 		end
 	end
@@ -196,7 +225,7 @@ do
 	for i, o in ipairs(dvt) do
 		local ty = types[i]
 		if ty == nil or ty == "TapNoteType_Tap" or ty == "TapNoteType_HoldHead" or ty == "TapNoteType_Lift" then
-			local j = offsetJudgment(o)
+			local j = offsetJudgment(o, o2jam and nrt[i] and o2jamWindowsAt(nrt[i] / 48) or nil)
 			local t = nrt[i] and td:GetElapsedTimeFromNoteRow(nrt[i]) or 0
 			taps[#taps + 1] = {t, o, j}
 			-- missed notes went by, beatoraja counts them as late
@@ -509,6 +538,12 @@ local gaugeProps = {
 	Death = {true, 0, 100, 0, 2, {0.15, 0.06, 0, -100.0, -100.0}, 0, 1},
 }
 
+-- the O2Jam hard gauge: COOL +0.1, GOOD 0, BAD -0.5, MISS -3, dead at 0 (pills are not
+-- in the replay, the recorded gauge graph has them)
+if o2jam then
+	gaugeProps.Hard = {true, 0, 100, 0, 0, {0.1, 0.1, 0, -0.5, -3}, 0, 1}
+end
+
 -- LR2 survival gauge damage multiplier from TOTAL and notes
 local function lr2DamageScale(total, n)
 	local fix1 = 10 / math.min(10, math.max(1, math.floor(total / 16) - 5))
@@ -547,7 +582,7 @@ local function simulateGauge(name, samples)
 		local f = p[6][j]
 		if f > 0 and not p[1] then
 			f = f * total / notes
-		elseif f < 0 and (name == "Hard" or name == "ExHard") then
+		elseif f < 0 and (name == "Hard" or name == "ExHard") and not o2jam then
 			f = f * lr2DamageScale(total, notes)
 		end
 		change[j] = f
@@ -598,7 +633,9 @@ local gaugeLine = {
 -- gauges the graph can show, + and - switch between them: with auto shift
 -- the ones that ran (the picked one and everything below), else all of them
 local viewGauges = {}
-if usedGAS then
+if o2jam then
+	viewGauges = {"Hard"}
+elseif usedGAS then
 	for g = 1, gaugeIndex[gaugeName] or 2 do
 		viewGauges[#viewGauges + 1] = gaugeOrder[g]
 	end
@@ -740,7 +777,11 @@ do
 		if view ~= gaugeName then
 			text = text .. " > " .. names[view]
 		end
-		text = text .. "  /  " .. string.upper(getBMSJudgeRankFromScore(score)) .. " JUDGE"
+		if o2jam then
+			text = "O2JAM HARD GAUGE  /  O2JAM JUDGE"
+		else
+			text = text .. "  /  " .. string.upper(getBMSJudgeRankFromScore(score)) .. " JUDGE"
+		end
 		local rate = score:GetMusicRate()
 		if math.abs(rate - 1) > 0.001 then
 			text = text .. "  /  " .. getRateString(notShit.round(rate, 3))
@@ -759,6 +800,8 @@ t[#t + 1] = Def.Sprite {
 	Texture = dir .. "rank_b 1x8.png",
 	InitCommand = function(self)
 		self:animate(false):setstate(curRank - 1):halign(0):valign(0):xy(116, 131):zoomto(369, 124)
+		-- O2Jam plays show their O2Jam grade instead
+		self:visible(not o2jam)
 	end,
 	OnCommand = function(self)
 		self:diffusealpha(0):zoomto(396, 524 / 4):sleep(0.1):decelerate(0.2):diffusealpha(1):zoomto(369, 124)
@@ -871,6 +914,39 @@ do
 	t[#t + 1] = Img("target_per2.png", 446, 697, 23, 18)
 end
 
+-- O2Jam: the score frame shows the O2Jam grade and the DMJam score
+if o2jam then
+	local dm = getO2JamScore(score)
+	local grade = getO2JamGrade(dm)
+	local bestDm
+	for _, s in ipairs(localScores) do
+		if s:GetScoreKey() ~= score:GetScoreKey() and s:GetMusicRate() > 0.999 then
+			local v = getO2JamScore(s)
+			if bestDm == nil or v > bestDm then
+				bestDm = v
+			end
+		end
+	end
+	local dim = color("1,1,1,0.6")
+	t[#t + 1] = Text(300, 193, 110, 0.5, 360, grade, getO2JamGradeColor(grade), 200)
+	t[#t + 1] = Box(26, 420, 479, 295, color("0.02,0.03,0.07,0.95"))
+	t[#t + 1] = Text(45, 445, 16, 0, 440, "O2JAM SCORE", color("#8fd4ff"))
+	t[#t + 1] = Text(45, 490, 15, 0, 200, "GRADE")
+	t[#t + 1] = Text(490, 490, 30, 1, 200, grade, getO2JamGradeColor(grade))
+	t[#t + 1] = Text(45, 540, 15, 0, 200, "SCORE")
+	t[#t + 1] = Text(490, 540, 28, 1, 260, string.format("%.3f", dm), color("#66ffff"))
+	if bestDm then
+		t[#t + 1] = Text(45, 580, 13, 0, 200, "BEST", dim)
+		t[#t + 1] = Text(490, 580, 16, 1, 300,
+			string.format("%.3f  (%s%.3f)", bestDm, dm >= bestDm and "+" or "", dm - bestDm), dim)
+	end
+	t[#t + 1] = Text(45, 620, 15, 0, 300, "NOTES (LONG NOTE = 2)")
+	t[#t + 1] = Text(490, 620, 18, 1, 200, tostring(notes))
+	t[#t + 1] = Text(45, 655, 15, 0, 300, "MAX COMBO")
+	t[#t + 1] = Text(490, 655, 18, 1, 200, tostring(score:GetMaxCombo()))
+	t[#t + 1] = Text(45, 693, 12, 0, 450, "SS > 99   S > 96   A > 90   B > 86   C > 78   D > 50", dim)
+end
+
 ---------------------------------------------------------------------------
 -- judge detail with FAST/SLOW
 ---------------------------------------------------------------------------
@@ -909,6 +985,18 @@ do
 	t[#t + 1] = Num("num_small 11x1.png", 199, 977, 14, 13, 4, counts[4] + counts[5])
 	t[#t + 1] = Num("num_small 11x1.png", 390, 954, 14, 13, 4, totalFast)
 	t[#t + 1] = Num("num_small 11x1.png", 390, 977, 14, 13, 4, totalSlow)
+end
+-- O2Jam names over the LR2 ones: COOL, (no GREAT), GOOD, BAD, MISS, (no empty POOR)
+if o2jam then
+	local labels = {
+		{"COOL", "TapNoteScore_W1"}, {"-", nil}, {"GOOD", "TapNoteScore_W3"},
+		{"BAD", "TapNoteScore_W4"}, {"MISS", "TapNoteScore_Miss"}, {"-", nil},
+	}
+	for k, l in ipairs(labels) do
+		local y = 744 + 34 * (k - 1)
+		t[#t + 1] = Box(48, y, 112, 27, color("0.02,0.03,0.07,1"))
+		t[#t + 1] = Text(55, y + 13, 18, 0, 100, l[1], l[2] and getBMSJudgeColor(l[2]) or color("1,1,1,0.4"), 100)
+	end
 end
 
 ---------------------------------------------------------------------------
@@ -1120,9 +1208,15 @@ do
 		if math.abs(s:GetMusicRate() - 1) > 0.001 then
 			label = label .. "  " .. getRateString(notShit.round(s:GetMusicRate(), 3))
 		end
+		if o2jam then
+			local v = getO2JamScore(s)
+			label = label .. string.format("   %.3f  %s", v, getO2JamGrade(v))
+		end
 		t[#t + 1] = Text(1474, y + 17, 15, 0, 235, label, mine and color("#9fe8ff") or color("1,1,1,0.9"))
-		t[#t + 1] = Num("num_white 11x1.png", 1717, y + 7, 18, 20, 4, exScore(s))
-		t[#t + 1] = Diff("num_plus 12x1.png", "num_minus 12x1.png", 1804, y + 7, 18, 20, 5, curEx - exScore(s))
+		if not o2jam then
+			t[#t + 1] = Num("num_white 11x1.png", 1717, y + 7, 18, 20, 4, exScore(s))
+			t[#t + 1] = Diff("num_plus 12x1.png", "num_minus 12x1.png", 1804, y + 7, 18, 20, 5, curEx - exScore(s))
+		end
 	end
 end
 
@@ -1312,20 +1406,21 @@ if BMSRanking and BMSRanking.loggedIn() then
 		}
 		row[#row + 1] = LiveNum("num_white 11x1.png", 1717, y + 7, 18, 20, 4) .. {
 			RowCommand = function(self, p)
-				setNum(self, p.row.ex)
+				-- O2Jam: the DMJam score is in the text next to the name
+				setNum(self, not o2jam and p.row.ex or nil)
 			end,
 		}
 		-- how far this play is from them, + and - sheets like the local list
 		row[#row + 1] = LiveNum("num_plus 12x1.png", 1804, y + 7, 18, 20, 5, true) .. {
 			RowCommand = function(self, p)
 				local d = curEx - p.row.ex
-				setNum(self, d >= 0 and d or nil)
+				setNum(self, (d >= 0 and not o2jam) and d or nil)
 			end,
 		}
 		row[#row + 1] = LiveNum("num_minus 12x1.png", 1804, y + 7, 18, 20, 5, true) .. {
 			RowCommand = function(self, p)
 				local d = curEx - p.row.ex
-				setNum(self, d < 0 and d or nil)
+				setNum(self, (d < 0 and not o2jam) and d or nil)
 			end,
 		}
 		ir[#ir + 1] = row
@@ -1430,6 +1525,32 @@ do
 		OnCommand = function(self)
 			self:sleep(0.05):diffusealpha(1):decelerate(0.4):x(bx - 400):zoomto(bw + 800, 196):diffusealpha(0)
 		end,
+	}
+end
+
+---------------------------------------------------------------------------
+-- a song of a dan course: hand this song over for the COURSE RESULT screen
+---------------------------------------------------------------------------
+
+if BMSDan and BMSDan.addCourseSong and isCurrentPlay and not o2jam then
+	local life = {}
+	local full = gaugeLife(gaugeName, gw) or {}
+	local n = 200
+	for i = 1, n do
+		local k = math.max(1, math.min(#full, math.floor((i - 0.5) / n * #full) + 1))
+		life[i] = full[k] or 0
+	end
+	BMSDan.addCourseSong {
+		key = score:GetScoreKey(),
+		notes = notes,
+		counts = {counts[1], counts[2], counts[3], counts[4], counts[5]},
+		emptyPoors = emptyPoors,
+		fast = {fast[1], fast[2], fast[3], fast[4], fast[5], fast[6]},
+		slow = {slow[1], slow[2], slow[3], slow[4], slow[5], slow[6]},
+		miss = curMiss,
+		maxCombo = score:GetMaxCombo(),
+		arrange = arrange,
+		life = life,
 	}
 end
 

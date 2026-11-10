@@ -379,7 +379,16 @@ ScreenGameplay::InitSongQueues()
 		auto& pl = SONGMAN->InBMSCourse()
 					 ? SONGMAN->bmsCourse.playlist
 					 : SongManager::GetPlaylists()[SONGMAN->playlistcourse];
-		for (auto& ch : pl.chartlist) {
+		// a dan course plays one song per gameplay screen (with its result
+		// screen in between): start at the first song not played yet
+		const auto skip =
+		  SONGMAN->InBMSCourse()
+			? std::clamp(SONGMAN->bmsCourse.songsPlayed,
+						 0,
+						 static_cast<int>(pl.chartlist.size()) - 1)
+			: 0;
+		for (auto i = static_cast<size_t>(skip); i < pl.chartlist.size(); i++) {
+			const auto& ch = pl.chartlist[i];
 			m_apSongsQueue.emplace_back(ch.songptr);
 			GetPlayerInfo()->m_vpStepsQueue.emplace_back(ch.stepsptr);
 			ratesqueue.emplace_back(ch.rate);
@@ -1215,6 +1224,13 @@ ScreenGameplay::Update(float fDeltaTime)
 				GetPlayerInfo()->GetPlayerStageStats()->m_bDisqualified = true;
 				GetPlayerInfo()->GetPlayerStageStats()->gaveuplikeadumbass = true;
 				ResetGiveUpTimers(false);
+				// giving up a dan course song fails the course: it ends like
+				// a failed song (counted, result screen, then course result)
+				if (SONGMAN->InBMSCourse()) {
+					GetPlayerInfo()->GetPlayerStageStats()->m_bFailed = true;
+					this->PostScreenMessage(SM_NotesEnded, 0);
+					return;
+				}
 				Locator::getLogger()->info("Exited Gameplay to Evaluation");
 				this->PostScreenMessage(SM_LeaveGameplay, 0);
 				return;
@@ -1398,6 +1414,10 @@ ScreenGameplay::BeginBackingOutFromGameplay()
 void
 ScreenGameplay::RestartGameplay()
 {
+	// no quick restart in a dan course: the course gauge goes on from song
+	// to song, a course is played through once
+	if (SONGMAN->InBMSCourse())
+		return;
 	GAMESTATE->m_bRestartedGameplay = true;
 	if (m_sName.find("Net") != std::string::npos) {
 		SetPrevScreenName("ScreenNetStageInformation");
@@ -1827,6 +1847,11 @@ ScreenGameplay::HandleScreenMessage(const ScreenMessage& SM)
 			if (GAMESTATE->m_pCurSteps != nullptr)
 				c.notes += static_cast<int>(
 				  GAMESTATE->m_pCurSteps->GetRadarValues()[RadarCategory_Notes]);
+			// with auto shift the course gauge may have dropped (EX HARD
+			// CLASS -> EX CLASS -> CLASS): the result is on the one left
+			if (lifeMeter != nullptr && lifeMeter->GetBMSClassGauge() >= 0 &&
+				!pss->m_bFailed)
+				c.classGauge = lifeMeter->GetBMSClassGauge();
 			c.gauge = lifeMeter != nullptr && !pss->m_bFailed
 						? lifeMeter->GetLife() * 100.F
 						: 0.F;
@@ -1858,7 +1883,9 @@ ScreenGameplay::HandleScreenMessage(const ScreenMessage& SM)
 			ratesqueue.erase(ratesqueue.begin(), ratesqueue.begin() + 1);
 
 			this->StageFinished(false);
-			if (!m_apSongsQueue.empty() && !bBMSCourseFailed) {
+			// a dan course goes to the result screen after every song, the
+			// next song is a new gameplay screen; keep this song's stats
+			if (!m_apSongsQueue.empty() && !bInBMSCourse) {
 				GAMESTATE->m_SongOptions.GetCurrent().m_fMusicRate =
 				  ratesqueue[0];
 				GAMESTATE->m_SongOptions.GetSong().m_fMusicRate = ratesqueue[0];
@@ -1876,7 +1903,7 @@ ScreenGameplay::HandleScreenMessage(const ScreenMessage& SM)
 				  STATSMAN->m_CurStageStats.mostrecentscorekey);
 		}
 
-		if (!bIsLastSong && !bBMSCourseFailed) {
+		if (!bIsLastSong && !bInBMSCourse) {
 			// Load the next song in the course.
 			HandleScreenMessage(SM_StartLoadingNextSong);
 			return;
@@ -1898,7 +1925,8 @@ ScreenGameplay::HandleScreenMessage(const ScreenMessage& SM)
 		if (bAllReallyFailed) {
 			const auto bFailedHard =
 			  STATSMAN->m_CurStageStats.m_player.GetMaxCombo().m_cnt == 0;
-			if (bFailedHard) {
+			// a dan course keeps every song, even one with nothing hit
+			if (bFailedHard && !SONGMAN->InBMSCourse()) {
 				Locator::getLogger()->info(
 				  "Player hit literally nothing, so exiting gameplay and "
 				  "ignoring score...");
@@ -1973,6 +2001,13 @@ ScreenGameplay::HandleScreenMessage(const ScreenMessage& SM)
 		SongFinished();
 		this->StageFinished(true);
 
+		// backing out of a dan course ends it, nothing is saved for it
+		if (SONGMAN->InBMSCourse()) {
+			SONGMAN->bmsCourse.active = false;
+			GAMESTATE->isplaylistcourse = false;
+			SONGMAN->playlistcourse = "";
+		}
+
 		m_sNextScreen = GetPrevScreen();
 
 		if (!GAMESTATE->IsPlaylistCourse() && AdjustSync::IsSyncDataChanged()) {
@@ -1997,7 +2032,10 @@ ScreenGameplay::HandleScreenMessage(const ScreenMessage& SM)
 			HandleScreenMessage(SM_GoToNextScreen);
 		}
 
-		if (GAMESTATE->IsPlaylistCourse()) {
+		// a dan course that goes on keeps its course for the next song
+		const auto bBMSCourseGoesOn =
+		  SONGMAN->InBMSCourse() && !SONGMAN->bmsCourse.finished;
+		if (GAMESTATE->IsPlaylistCourse() && !bBMSCourseGoesOn) {
 			GAMESTATE->isplaylistcourse = false;
 			SONGMAN->playlistcourse = "";
 		}

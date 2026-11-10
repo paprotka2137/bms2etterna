@@ -38,6 +38,7 @@
 #include "Etterna/Globals/rngthing.h"
 #include "Etterna/Globals/GameLoop.h"
 #include "Etterna/Singletons/ReplayManager.h"
+#include "Etterna/Models/NoteLoaders/NotesLoaderOJN.h"
 
 #include <algorithm>
 using std::max;
@@ -201,11 +202,73 @@ IsLR2Judging() -> bool
 	return style != nullptr && style->m_iColsPerPlayer == 7;
 }
 
+// O2Jam charts play by O2Jam rules. O2Jam judges in 1/192 of a measure,
+// which is 1/48 of a beat: COOL within 6, GOOD within 18 and BAD within 25
+// of them, so the windows follow the BPM (at 200 BPM 37.5, 112.5 and
+// 156.25 ms). One unit is 60 / (BPM * 48) = 1.25 / BPM seconds of the song.
+// The windows are in beats, so a rate makes them shorter in real time, like
+// the song at a higher BPM. COOL is W1, GOOD W3 and BAD W4 (W2 is never given).
+static constexpr float O2JAM_COOL = 6.F;
+static constexpr float O2JAM_GOOD = 18.F;
+static constexpr float O2JAM_BAD = 25.F;
+// a very slow section would make the windows huge
+static constexpr float O2JAM_MIN_BPM = 30.F;
+
+static auto
+IsO2JamJudging() -> bool
+{
+	return IsLR2Judging() && OJNLoader::IsO2JamSteps(GAMESTATE->m_pCurSteps);
+}
+
+static auto
+O2JamUnits(TimingWindow tw, float& out) -> bool
+{
+	switch (tw) {
+		case TW_W1:
+		case TW_W2:
+			out = O2JAM_COOL;
+			return true;
+		case TW_W3:
+			out = O2JAM_GOOD;
+			return true;
+		case TW_W4:
+		case TW_W5:
+			out = O2JAM_BAD;
+			return true;
+		default:
+			return false;
+	}
+}
+
+// song seconds of one O2Jam unit at a bpm
+static auto
+O2JamUnitSeconds(float bpm) -> float
+{
+	return 1.25F / std::max(fabsf(bpm), O2JAM_MIN_BPM);
+}
+
+static auto
+MusicRate() -> float
+{
+	const auto rate = GAMESTATE->m_SongOptions.GetCurrent().m_fMusicRate;
+	return rate > 0.F ? rate : 1.F;
+}
+
 static auto
 GetLR2WindowSeconds(TimingWindow tw, float& out) -> bool
 {
 	if (!IsLR2Judging())
 		return false;
+	if (IsO2JamJudging()) {
+		// with no note to go by, at the bpm playing now (judging itself
+		// uses each note's own bpm, see GetO2JamWindowSeconds)
+		float units = 0.F;
+		if (!O2JamUnits(tw, units))
+			return false;
+		out = units * O2JamUnitSeconds(GAMESTATE->m_Position.m_fCurBPS * 60.F) /
+			  MusicRate();
+		return true;
+	}
 	auto rank = GAMESTATE->m_pPlayerState->m_PlayerOptions.GetCurrent()
 				  .m_BMSJudgeRank;
 	if (rank < 0 || rank >= NUM_BMSJudgeRank)
@@ -281,6 +344,15 @@ Player::GetWindowSecondsCustomScale(TimingWindow tw, float timingScale) -> float
 	fSecs *= timingScale;
 	fSecs = std::clamp(fSecs, 0.F, MISS_WINDOW_BEGIN_SEC);
 	return fSecs;
+}
+
+// O2Jam window of a note, from the bpm at its row, in real seconds
+auto
+Player::GetO2JamWindowSeconds(TimingWindow tw, int row) const -> float
+{
+	auto units = O2JAM_BAD;
+	O2JamUnits(tw, units);
+	return units * O2JamUnitSeconds(m_Timing->GetBPMAtRow(row)) / MusicRate();
 }
 
 auto
@@ -594,6 +666,10 @@ Player::Load()
 			->m_iCurMissCombo); // combo can persist between songs and games
 	}
 
+	m_O2JamHolds.assign(m_NoteData.GetNumTracks(), O2JamHold{});
+	m_iO2JamCoolStreak = 0;
+	m_iO2JamPills = 0;
+
 	// Mina garbage - Mina
 	m_Timing = GAMESTATE->m_pCurSteps->GetTimingData();
 	const auto lastRow = m_NoteData.GetLastRow();
@@ -737,6 +813,9 @@ Player::Reload()
 	// but not all of it
 
 	m_LastTapNoteScore = TNS_None;
+	m_O2JamHolds.assign(m_NoteData.GetNumTracks(), O2JamHold{});
+	m_iO2JamCoolStreak = 0;
+	m_iO2JamPills = 0;
 
 	const auto iNoteRow = BeatToNoteRow(GAMESTATE->m_Position.m_fSongBeat);
 	m_iFirstUncrossedRow = iNoteRow - 1;
@@ -1168,6 +1247,49 @@ Player::UpdateHoldNotes(int iSongRow,
 		   tns != TNS_None); // did they step on the start of this hold?
 		bHeadJudged &=
 		  (tns != TNS_None); // has this hold really even started yet?
+	}
+
+	// O2Jam long notes (human): the release judges the tail (Step), a head
+	// MISS or BAD has made the tail a MISS already. Still holding once the
+	// tail's BAD window is over is a MISS too.
+	if (IsO2JamJudging() && m_pPlayerState->m_PlayerController == PC_HUMAN &&
+		subType == TapNoteSubType_Hold) {
+		const auto fMusicSeconds = GAMESTATE->m_Position.m_fMusicSeconds;
+		for (auto& trtn : vTN) {
+			auto& tn = *trtn.pTN;
+			const auto iTrack = trtn.iTrack;
+			if (tn.HoldResult.hns != HNS_None || tn.result.tns == TNS_None) {
+				continue;
+			}
+			if (tn.result.tns != TNS_W1 && tn.result.tns != TNS_W2 &&
+				tn.result.tns != TNS_W3) {
+				O2JamJudgeTail(iTrack, iStartRow, tn, TNS_Miss, 0.F);
+				continue;
+			}
+			if (iTrack < static_cast<int>(m_O2JamHolds.size())) {
+				m_O2JamHolds[iTrack] = { iStartRow, &tn };
+			}
+			std::vector<GameInput> GameI;
+			GAMESTATE->GetCurrentStyle(GetPlayerState()->m_PlayerNumber)
+			  ->StyleInputToGameInput(iTrack, GameI);
+			if (!INPUTMAPPER->IsBeingPressed(GameI, m_pPlayerState->m_mp)) {
+				// a release Step has not judged yet
+				O2JamRelease(iTrack, fMusicSeconds, MusicRate());
+				continue;
+			}
+			const auto iEndRow = iStartRow + tn.iDuration;
+			tn.HoldResult.bHeld = true;
+			tn.HoldResult.bActive = true;
+			tn.HoldResult.fLife = 1.F;
+			tn.HoldResult.iLastHeldRow = min(iSongRow, iEndRow);
+			const auto fLate =
+			  (fMusicSeconds - m_Timing->GetTimeFromRowFast(iEndRow)) /
+			  MusicRate();
+			if (fLate > GetO2JamWindowSeconds(TW_W4, iEndRow)) {
+				O2JamJudgeTail(iTrack, iStartRow, tn, TNS_Miss, -fLate);
+			}
+		}
+		return;
 	}
 
 	bool bInitiatedNote;
@@ -1823,13 +1945,19 @@ Player::GetClosestNonEmptyRow(int iNoteRow,
 
 // LR2 gives an empty POOR for a press that judges nothing while the next
 // note in that lane is at most a second away (its POOR window is 0-1000ms
-// early). It takes gauge but keeps the combo.
+// early). It takes gauge but keeps the combo. A note already hit early
+// counts too until its time comes, like lr2oraja: mashing again before
+// it is an empty POOR.
 static constexpr float LR2_EMPTY_POOR_SECONDS = 1.F;
 
 auto
 Player::IsEmptyPoorPress(int col, float fMusicSeconds, float fMusicRate) const
   -> bool
 {
+	// O2Jam has no empty POOR
+	if (IsO2JamJudging()) {
+		return false;
+	}
 	const auto iSongRow = BeatToNoteRow(GAMESTATE->m_Position.m_fSongBeat);
 	for (auto it = m_NoteData.lower_bound(col, iSongRow);
 		 it != m_NoteData.end(col);
@@ -1838,11 +1966,15 @@ Player::IsEmptyPoorPress(int col, float fMusicSeconds, float fMusicRate) const
 		if (tn.type != TapNoteType_Tap && tn.type != TapNoteType_HoldHead) {
 			continue;
 		}
-		if (tn.result.tns != TNS_None || !m_Timing->IsJudgableAtRow(it->first)) {
+		if (!m_Timing->IsJudgableAtRow(it->first)) {
 			continue;
 		}
 		const auto fAhead =
 		  (m_Timing->GetTimeFromRowFast(it->first) - fMusicSeconds) / fMusicRate;
+		// a judged note only counts while it is still ahead
+		if (tn.result.tns != TNS_None && fAhead < 0.F) {
+			continue;
+		}
 		return fAhead <= LR2_EMPTY_POOR_SECONDS;
 	}
 	return false;
@@ -1989,6 +2121,191 @@ Player::DoLR2MultiBad(int col,
 		m_iTapRowScoreCol = col;
 		HandleTapRowScore(iRow);
 		m_iTapRowScoreCol = -1;
+	}
+}
+
+// O2Jam takes the earliest note of the lane that is not judged yet, as long
+// as the press is inside its BAD window. A press earlier than that does
+// nothing; a note late by more than BAD becomes a MISS
+// (UpdateTapNotesMissedOlderThan). No multi BAD, no empty POOR.
+auto
+Player::GetO2JamNote(int col, float fMusicSeconds, float fMusicRate) const
+  -> int
+{
+	const auto iStartRow =
+	  max(0,
+		  BeatToNoteRow(m_Timing->GetBeatFromElapsedTime(
+			fMusicSeconds - GetMaxStepDistanceSeconds())) -
+			1);
+	for (auto it = m_NoteData.lower_bound(col, iStartRow);
+		 it != m_NoteData.end(col);
+		 ++it) {
+		const auto& tn = it->second;
+		if (!IsLR2UnjudgedNote(tn) || !m_Timing->IsJudgableAtRow(it->first)) {
+			continue;
+		}
+		// positive: the press is early
+		const auto fOffset =
+		  (m_Timing->GetTimeFromRowFast(it->first) - fMusicSeconds) /
+		  fMusicRate;
+		const auto fBad = GetO2JamWindowSeconds(TW_W4, it->first);
+		if (fOffset < -fBad) {
+			continue; // missed, Update judges it
+		}
+		return fOffset <= fBad ? it->first : -1;
+	}
+	return -1;
+}
+
+// O2Jam long note: letting go judges the tail on the same windows as a
+// note. Letting go earlier than its BAD window is a MISS.
+void
+Player::O2JamRelease(int col, float fMusicSeconds, float fMusicRate)
+{
+	if (col < 0 || col >= static_cast<int>(m_O2JamHolds.size())) {
+		return;
+	}
+	const auto hold = m_O2JamHolds[col];
+	if (hold.tn == nullptr) {
+		return;
+	}
+	const auto iTailRow = hold.row + hold.tn->iDuration;
+	// positive: let go early
+	const auto fOffset =
+	  (m_Timing->GetTimeFromRowFast(iTailRow) - fMusicSeconds) / fMusicRate;
+	const auto fAbs = fabsf(fOffset);
+	auto tns = TNS_Miss;
+	if (fAbs <= GetO2JamWindowSeconds(TW_W1, iTailRow)) {
+		tns = TNS_W1;
+	} else if (fAbs <= GetO2JamWindowSeconds(TW_W3, iTailRow)) {
+		tns = TNS_W3;
+	} else if (fAbs <= GetO2JamWindowSeconds(TW_W4, iTailRow)) {
+		tns = TNS_W4;
+	}
+	O2JamJudgeTail(col, hold.row, *hold.tn, tns, fOffset);
+}
+
+// O2Jam pills: every 15 COOLs in a row give a pill, 5 at most. A BAD uses
+// a pill up and counts as a COOL instead (it does not add to the streak).
+// Anything but a COOL starts the streak over.
+auto
+Player::O2JamPill(TapNoteScore tns) -> TapNoteScore
+{
+	const auto before = m_iO2JamPills;
+	if (tns == TNS_W4 && m_iO2JamPills > 0) {
+		m_iO2JamPills--;
+		m_iO2JamCoolStreak = 0;
+		tns = TNS_W1;
+	} else if (tns == TNS_W1 || tns == TNS_W2) {
+		if (++m_iO2JamCoolStreak >= 15) {
+			m_iO2JamCoolStreak = 0;
+			m_iO2JamPills = std::min(m_iO2JamPills + 1, 5);
+		}
+	} else if (tns != TNS_None) {
+		m_iO2JamCoolStreak = 0;
+	}
+	if (m_iO2JamPills != before && m_bSendJudgmentAndComboMessages) {
+		Message msg("O2JamPills");
+		msg.SetParam("Pills", m_iO2JamPills);
+		msg.SetParam("Used", m_iO2JamPills < before);
+		MESSAGEMAN->Broadcast(msg);
+	}
+	return tns;
+}
+
+// The tail of an O2Jam long note is a judgment of its own: it counts as a
+// note (COOL / GOOD / BAD / MISS), for the combo and the gauge.
+void
+Player::O2JamJudgeTail(int col,
+					   int row,
+					   TapNote& tn,
+					   TapNoteScore tns,
+					   float fOffset)
+{
+	if (col >= 0 && col < static_cast<int>(m_O2JamHolds.size()) &&
+		m_O2JamHolds[col].tn == &tn) {
+		m_O2JamHolds[col] = O2JamHold{};
+	}
+	if (tn.HoldResult.hns != HNS_None) {
+		return;
+	}
+	if (m_pPlayerState->m_PlayerController == PC_HUMAN) {
+		tns = O2JamPill(tns);
+	}
+	const auto bOk = tns == TNS_W1 || tns == TNS_W2 || tns == TNS_W3;
+	const auto iTailRow = row + tn.iDuration;
+	tn.HoldResult.hns = tns == TNS_Miss ? HNS_LetGo : HNS_Held;
+	tn.HoldResult.fLife = tns == TNS_Miss ? 0.F : 1.F;
+	tn.HoldResult.bHeld = false;
+	tn.HoldResult.bActive = false;
+	if (tns != TNS_Miss) {
+		tn.HoldResult.iLastHeldRow = iTailRow;
+	}
+
+	if (m_pPlayerState->m_PlayerController == PC_AUTOPLAY) {
+		return;
+	}
+
+	if (m_pPlayerStageStats != nullptr) {
+		m_pPlayerStageStats->m_iTapNoteScores[tns]++;
+	}
+	if (m_pPrimaryScoreKeeper != nullptr) {
+		m_pPrimaryScoreKeeper->HandleHoldScore(tn);
+	}
+	IncrementComboOrMissCombo(bOk);
+	if (m_pPlayerStageStats != nullptr) {
+		m_pPlayerStageStats->m_iMaxCombo =
+		  max(m_pPlayerStageStats->m_iMaxCombo,
+			  m_pPlayerStageStats->m_iCurCombo);
+		m_pPlayerStageStats->UpdateComboList(
+		  GAMESTATE->m_Position.m_fMusicSeconds / MusicRate(), false);
+	}
+	ChangeLife(tns);
+
+	if (col >= 0 && col < static_cast<int>(m_vpHoldJudgment.size()) &&
+		m_vpHoldJudgment[col] != nullptr) {
+		m_vpHoldJudgment[col]->SetHoldJudgment(tn.HoldResult.hns);
+	}
+	if (bOk && m_pNoteField != nullptr) {
+		const auto bBright =
+		  m_pPlayerStageStats != nullptr &&
+		  m_pPlayerStageStats->m_iCurCombo >
+			static_cast<unsigned int>(BRIGHT_GHOST_COMBO_THRESHOLD);
+		m_pNoteField->DidHoldNote(col, HNS_Held, bBright);
+	}
+
+	if (m_bSendJudgmentAndComboMessages) {
+		Message msg("Judgment");
+		msg.SetParam("Player", m_pPlayerState->m_PlayerNumber);
+		msg.SetParam("MultiPlayer", m_pPlayerState->m_mp);
+		msg.SetParam("FirstTrack", col);
+		msg.SetParam("TapNoteScore", tns);
+		msg.SetParam("Early", fOffset > 0.F);
+		msg.SetParam("Judgment", tns);
+		msg.SetParam("NoteRow", iTailRow);
+		msg.SetParam("Type", std::string("Tap"));
+		msg.SetParam("O2JamTail", true);
+		msg.SetParam("TapNoteOffset", -fOffset);
+		// the wife numbers as they are (themes read them on every judgment)
+		msg.SetParam("WifePercent",
+					 maxwifescore == 0.F ? 0.F
+										 : 100 * curwifescore / maxwifescore);
+		msg.SetParam("CurWifeScore", curwifescore);
+		msg.SetParam("MaxWifeScore", maxwifescore);
+		msg.SetParam("WifeDifferential",
+					 curwifescore -
+					   maxwifescore * m_pPlayerState->playertargetgoal);
+		msg.SetParam("TotalPercent",
+					 totalwifescore == 0.F
+					   ? 0.F
+					   : 100 * curwifescore / totalwifescore);
+		if (m_pPlayerStageStats != nullptr) {
+			msg.SetParam("Val", m_pPlayerStageStats->m_iTapNoteScores[tns]);
+		}
+		if (tns != TNS_Miss) {
+			msg.SetParam("Offset", -fOffset * 1000);
+		}
+		MESSAGEMAN->Broadcast(msg);
 	}
 }
 
@@ -2151,6 +2468,13 @@ Player::Step(int col,
 							   : GAMESTATE->m_Position.m_fSongBeat;
 
 	const auto iSongRow = row == -1 ? BeatToNoteRow(fSongBeat) : row;
+
+	// O2Jam: letting go of a long note judges its tail
+	const auto bO2Jam = IsO2JamJudging();
+	if (bO2Jam && bRelease && col != -1 &&
+		m_pPlayerState->m_PlayerController == PC_HUMAN) {
+		O2JamRelease(col, fMusicSeconds, fMusicRate);
+	}
 
 	// instant-judge holds that are released close enough to the head
 	if (bRelease && col != -1 && lastHoldHeadsSeconds[col] > fMusicSeconds &&
@@ -2328,7 +2652,8 @@ Player::Step(int col,
 						   m_pPlayerState->m_PlayerController == PC_HUMAN;
 	if (bLR2Press) {
 		iRowOfOverlappingNoteOrRow =
-		  GetLR2LowestNote(col, fMusicSeconds, fMusicRate);
+		  bO2Jam ? GetO2JamNote(col, fMusicSeconds, fMusicRate)
+				 : GetLR2LowestNote(col, fMusicSeconds, fMusicRate);
 		if (iRowOfOverlappingNoteOrRow == -1) {
 			// mines are still judged by the closest one
 			const auto iClosest = GetClosestNote(
@@ -2423,7 +2748,22 @@ Player::Step(int col,
 							}
 						}
 						if ((pTN->type == TapNoteType_Lift) == bRelease) {
-							if (fSecondsFromExact <= GetWindowSeconds(TW_W1)) {
+							const auto iJudgedRow = iRowOfOverlappingNoteOrRow;
+							if (bO2Jam) {
+								// COOL, GOOD, BAD on the note's own bpm
+								if (fSecondsFromExact <=
+									GetO2JamWindowSeconds(TW_W1, iJudgedRow)) {
+									score = TNS_W1;
+								} else if (fSecondsFromExact <=
+										   GetO2JamWindowSeconds(TW_W3,
+																 iJudgedRow)) {
+									score = TNS_W3;
+								} else if (fSecondsFromExact <=
+										   GetO2JamWindowSeconds(TW_W4,
+																 iJudgedRow)) {
+									score = TNS_W4;
+								}
+							} else if (fSecondsFromExact <= GetWindowSeconds(TW_W1)) {
 								score = TNS_W1;
 							} else if (fSecondsFromExact <=
 									   GetWindowSeconds(TW_W2)) {
@@ -2556,7 +2896,7 @@ Player::Step(int col,
 
 		// LR2 multi BAD: the lane's other notes in the BAD window but out of
 		// the GOOD one get a BAD before this press is judged
-		if (bLR2Press && score >= TNS_W4 && score <= TNS_W1 &&
+		if (bLR2Press && !bO2Jam && score >= TNS_W4 && score <= TNS_W1 &&
 			(pTN->type == TapNoteType_Tap ||
 			 pTN->type == TapNoteType_HoldHead)) {
 			DoLR2MultiBad(col,
@@ -2564,6 +2904,13 @@ Player::Step(int col,
 						  score == TNS_W4 && pTN->type == TapNoteType_Tap,
 						  fMusicSeconds,
 						  fMusicRate);
+		}
+		// O2Jam: a pill turns a BAD into a COOL
+		if (bO2Jam && score != TNS_None &&
+			m_pPlayerState->m_PlayerController == PC_HUMAN &&
+			(pTN->type == TapNoteType_Tap ||
+			 pTN->type == TapNoteType_HoldHead)) {
+			score = O2JamPill(score);
 		}
 		if (score != TNS_None) {
 			pTN->result.tns = score;
@@ -2603,6 +2950,21 @@ Player::Step(int col,
 		} else if (NoteDataWithScoring::IsRowCompletelyJudged(
 					 m_NoteData, iRowOfOverlappingNoteOrRow)) {
 			FlashGhostRow(iRowOfOverlappingNoteOrRow);
+		}
+
+		// O2Jam long note: a COOL or GOOD head is held until the release
+		// judges the tail. A BAD head loses the long note, its tail is a
+		// MISS right away (it can't be pressed again).
+		if (bO2Jam && !bRelease && score != TNS_None &&
+			pTN->type == TapNoteType_HoldHead &&
+			m_pPlayerState->m_PlayerController == PC_HUMAN &&
+			col < static_cast<int>(m_O2JamHolds.size())) {
+			if (score == TNS_W1 || score == TNS_W2 || score == TNS_W3) {
+				m_O2JamHolds[col] = { iRowOfOverlappingNoteOrRow, pTN };
+			} else {
+				O2JamJudgeTail(
+				  col, iRowOfOverlappingNoteOrRow, *pTN, TNS_Miss, 0.F);
+			}
 		}
 	} else {
 		// input data
@@ -2907,6 +3269,7 @@ Player::UpdateTapNotesMissedOlderThan(float fMissIfOlderThanSeconds)
 	}
 
 	auto& iter = *m_pIterNeedsTapJudging;
+	const auto bO2Jam = IsO2JamJudging();
 
 	for (; !iter.IsAtEnd() && iter.Row() < iMissIfOlderThanThisRow; ++iter) {
 		auto& tn = *iter;
@@ -2918,6 +3281,15 @@ Player::UpdateTapNotesMissedOlderThan(float fMissIfOlderThanSeconds)
 		// Ignore all notes in WarpSegments or FakeSegments.
 		if (!m_Timing->IsJudgableAtRow(iter.Row())) {
 			continue;
+		}
+
+		// O2Jam: a note is missed once the BAD window of its own bpm is
+		// over (the search above went back as far as the slowest bpm)
+		if (bO2Jam && tn.type != TapNoteType_Mine &&
+			GAMESTATE->m_Position.m_fMusicSeconds -
+				m_Timing->GetTimeFromRowFast(iter.Row()) <=
+			  O2JAM_BAD * O2JamUnitSeconds(m_Timing->GetBPMAtRow(iter.Row()))) {
+			break;
 		}
 
 		if (tn.type == TapNoteType_Mine) {
@@ -2938,11 +3310,22 @@ Player::UpdateTapNotesMissedOlderThan(float fMissIfOlderThanSeconds)
 				iMissIfOlderThanThisRow - iter.Row() > 8) {
 				tn.result.tns = TNS_None;
 			}
+			// O2Jam: a miss starts the COOL streak over
+			if (bO2Jam && tn.result.tns == TNS_Miss &&
+				m_pPlayerState->m_PlayerController == PC_HUMAN) {
+				O2JamPill(TNS_Miss);
+			}
 			if (GAMESTATE->CountNotesSeparately()) {
 				SetJudgment(iter.Row(), iter.Track(), tn);
 				m_iTapRowScoreCol = iter.Track();
 				HandleTapRowScore(iter.Row());
 				m_iTapRowScoreCol = -1;
+			}
+			// O2Jam: a missed long note head misses its tail too
+			if (bO2Jam && tn.type == TapNoteType_HoldHead &&
+				tn.result.tns == TNS_Miss &&
+				m_pPlayerState->m_PlayerController == PC_HUMAN) {
+				O2JamJudgeTail(iter.Track(), iter.Row(), tn, TNS_Miss, 0.F);
 			}
 		}
 	}
@@ -3174,8 +3557,11 @@ Player::HandleTapRowScore(unsigned row)
 		// BMS gauges count every note of a chord, once each. LR2 judges a
 		// long note once, when it ends, so a judged head waits for the hold
 		// score (a missed head is its POOR).
-		const auto bmsLife = [this](const TapNote& tn) {
-			if (tn.type == TapNoteType_HoldHead && tn.result.tns != TNS_Miss) {
+		// O2Jam judges the head and the tail of a long note on their own.
+		const auto bO2Jam = IsO2JamJudging();
+		const auto bmsLife = [this, bO2Jam](const TapNote& tn) {
+			if (tn.type == TapNoteType_HoldHead && tn.result.tns != TNS_Miss &&
+				!bO2Jam) {
 				return;
 			}
 			ChangeLife(tn.result.tns);
@@ -3293,6 +3679,10 @@ Player::HandleHoldScore(const TapNote& tn) const
 auto
 Player::GetMissWindowSeconds() -> float
 {
+	float fBad = 0.F;
+	if (IsO2JamJudging() && GetLR2WindowSeconds(TW_W4, fBad)) {
+		return fBad;
+	}
 	return IsLR2Judging() ? LR2_BAD_WINDOW_SEC : MISS_WINDOW_BEGIN_SEC;
 }
 
@@ -3304,6 +3694,15 @@ Player::GetMaxStepDistanceSeconds() -> float
 	// Setting this hard to .18 x rate brings it back into line.
 	// (On that note, this should only be used in the context of music
 	// timing, because at a 3x rate this would expand by 3x correctly)
+
+	// O2Jam: the BAD window at the slowest bpm of the chart, in song seconds
+	// (the windows are in beats, the rate doesn't change them)
+	if (IsO2JamJudging() && GAMESTATE->m_pCurSteps != nullptr) {
+		auto fMinBPM = 0.F;
+		auto fMaxBPM = 0.F;
+		GAMESTATE->m_pCurSteps->GetTimingData()->GetActualBPM(fMinBPM, fMaxBPM);
+		return O2JAM_BAD * O2JamUnitSeconds(fMinBPM);
+	}
 	float fMax = GetMissWindowSeconds();
 	/*
 	float fMax = 0;

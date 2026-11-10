@@ -107,6 +107,30 @@ for k = 1, 6 do
 		return slow[k]
 	end)
 end
+-- O2Jam charts: O2Jam names over the LR2 ones (COOL, no GREAT, GOOD, BAD,
+-- MISS, no empty POOR)
+if isO2JamPlay() then
+	local labels = {
+		{"COOL", "TapNoteScore_W1"}, {"-", nil}, {"GOOD", "TapNoteScore_W3"},
+		{"BAD", "TapNoteScore_W4"}, {"MISS", "TapNoteScore_Miss"}, {"-", nil},
+	}
+	for k, l in ipairs(labels) do
+		local y = 744 + 34 * (k - 1)
+		panel[#panel + 1] = Def.Quad {
+			InitCommand = function(self)
+				self:halign(0):valign(0):xy(48 - PX, y - PY):zoomto(112, 27):diffuse(color("0.02,0.03,0.07,1"))
+			end,
+		}
+		panel[#panel + 1] = LoadFont("Common Normal") .. {
+			InitCommand = function(self)
+				self:halign(0):valign(0.5):xy(55 - PX, y + 13 - PY):settext(l[1])
+				self:zoom(22 / math.max(self:GetHeight(), 1)):maxwidth(100 / self:GetZoom())
+				self:diffuse(l[2] and getBMSJudgeColor(l[2]) or color("1,1,1,0.4"))
+			end,
+		}
+	end
+end
+
 -- FAST/SLOW totals leave PGREAT out like the result screen
 local function total(t)
 	return t[2] + t[3] + t[4] + t[5] + t[6]

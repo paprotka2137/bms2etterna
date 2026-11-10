@@ -36,7 +36,11 @@ local function judgeCounts(s)
 	return {tns(s, "W1"), tns(s, "W2"), tns(s, "W3"), tns(s, "W4") + tns(s, "W5"), tns(s, "Miss")}
 end
 
+-- O2Jam scores are compared by their DMJam score, kept in thousandths
 local function exScore(s)
+	if data.o2jam then
+		return math.floor(getO2JamScore(s) * 1000 + 0.5)
+	end
 	return tns(s, "W1") * 2 + tns(s, "W2")
 end
 
@@ -95,6 +99,15 @@ local function readChart()
 	data.maxEx = math.max(notes * 2, 1)
 	local total = steps:GetBMSTotal()
 	data.total = (total and total > 0) and total or nil
+	-- O2Jam charts: a long note is judged twice, the score is the DMJam
+	-- score (100.000 at most, kept in thousandths) and there is no TOTAL
+	data.o2jam = isO2JamSteps(steps)
+	data.judged = notes
+	if data.o2jam then
+		data.judged = notes + rv:GetValue("RadarCategory_Holds")
+		data.maxEx = 100000
+		data.total = nil
+	end
 	local len = steps:GetLengthSeconds()
 	if not len or len <= 0 then
 		len = song:MusicLengthSeconds()
@@ -138,7 +151,10 @@ local function readChart()
 			data.lamp = math.max(data.lamp, getBMSLampFrame(s))
 		end
 	end
-	if data.best then
+	if data.best and data.o2jam then
+		data.bestCounts = judgeCounts(data.best)
+		data.grade = getO2JamGrade(data.bestEx / 1000)
+	elseif data.best then
 		data.bestCounts = judgeCounts(data.best)
 		data.dj = djLevel(data.bestEx, data.maxEx)
 		data.nextEx = data.dj == 1 and data.maxEx or djBorder(data.dj - 1, data.maxEx)
@@ -181,9 +197,18 @@ local function readReplay()
 	end
 	local types = replay:GetTapNoteTypeVector() or {}
 	local windows = getBMSWindowsMs(getBMSJudgeRankIndexFromScore(s))
+	-- O2Jam windows follow the bpm of each note
+	local rows, td
+	if data.o2jam and data.steps then
+		rows = replay:GetNoteRowVector() or {}
+		td = data.steps:GetTimingData()
+	end
 	local fast, slow = 0, 0
 	for i, o in ipairs(offsets) do
 		local ty = types[i]
+		if rows and rows[i] then
+			windows = getO2JamWindowsMs(td:GetBPMAtBeat(rows[i] / 48), s:GetMusicRate())
+		end
 		if ty == nil or ty == "TapNoteType_Tap" or ty == "TapNoteType_HoldHead" or ty == "TapNoteType_Lift" then
 			local a = math.abs(o)
 			if a > windows[1] then
@@ -663,7 +688,7 @@ p[#p + 1] = Img("7keys_info.png", 30, 222, 384, 57)
 for i = 1, 4 do
 	p[#p + 1] = Img("jud_" .. i .. ".png", 223, 573, 78, 22, {
 		RefreshCommand = function(self)
-			self:visible(getBMSEffectiveJudgeRank() == i)
+			self:visible(getBMSEffectiveJudgeRank() == i and not data.o2jam)
 		end,
 	})
 end
@@ -727,6 +752,10 @@ do
 		{
 			label = THEME:GetString("GeneralInfo", "ProfileGauge"),
 			value = function()
+				-- O2Jam charts always play on the O2Jam hard gauge
+				if data.o2jam then
+					return "O2Jam Hard"
+				end
 				return getBMSOptionName("Gauge")
 			end,
 			click = function(event)
@@ -739,7 +768,12 @@ do
 		},
 		{
 			label = THEME:GetString("GeneralInfo", "ProfileAutoShift"),
-			value = getBMSAutoShiftText,
+			value = function()
+				if data.o2jam then
+					return "-"
+				end
+				return getBMSAutoShiftText()
+			end,
 			click = function(event)
 				if event == "DeviceButton_left mouse button" or event == "DeviceButton_right mouse button" then
 					toggleBMSAutoShift()
@@ -943,12 +977,12 @@ p[#p + 1] = Img("label_combo.png", 45, 906, 145, 22)
 p[#p + 1] = Img("label_playcount.png", 45, 932, 145, 22)
 
 local big = "num_big 11x1.png"
-p[#p + 1] = Num(big, 203, 853, 26, 24, 4, function() return data.bestEx end, {pad = "dim"})
-p[#p + 1] = Num(big, 338, 853, 26, 24, 4, function() return data.steps and data.maxEx end, {pad = "dim"})
+p[#p + 1] = Num(big, 203, 853, 26, 24, 4, function() return not data.o2jam and data.bestEx or nil end, {pad = "dim"})
+p[#p + 1] = Num(big, 338, 853, 26, 24, 4, function() return data.steps and not data.o2jam and data.maxEx or nil end, {pad = "dim"})
 p[#p + 1] = Num(big, 203, 879, 26, 24, 4, function() return data.minMiss end, {pad = "dim"})
 p[#p + 1] = Num(big, 338, 879, 26, 24, 4, function() return data.minCB end, {pad = "dim"})
 p[#p + 1] = Num(big, 203, 905, 26, 24, 4, function() return data.maxCombo end, {pad = "dim"})
-p[#p + 1] = Num(big, 338, 905, 26, 24, 4, function() return data.steps and data.notes end, {pad = "dim"})
+p[#p + 1] = Num(big, 338, 905, 26, 24, 4, function() return data.steps and data.judged end, {pad = "dim"})
 p[#p + 1] = Num(big, 203, 931, 26, 24, 4, function() return data.steps and data.clears end, {pad = "dim"})
 p[#p + 1] = Num(big, 338, 931, 26, 24, 4, function() return data.steps and data.plays end, {pad = "dim"})
 
@@ -1003,10 +1037,27 @@ p[#p + 1] = Def.Sprite {
 p[#p + 1] = Num("num_sign 12x2.png", 516, 937, 18, 18, 5, function()
 	return data.dj and (data.bestEx - data.nextEx)
 end, {signed = true, pad = "dim"})
+-- O2Jam: the O2Jam grade where the DJ level is
+do
+	local g = Text(529, 891, 34, 0.5, 120, function()
+		return data.o2jam and data.grade or nil
+	end)
+	g.RefreshCommand = function(self)
+		local grade = data.o2jam and data.grade or nil
+		self:settext(grade or "")
+		if grade then
+			self:diffuse(getO2JamGradeColor(grade))
+		end
+	end
+	p[#p + 1] = g
+end
+p[#p + 1] = Text(529, 946, 13, 0.5, 120, function()
+	return data.o2jam and data.steps and "O2JAM" or nil
+end, color("#8fd4ff"))
 
 -- score rate
 p[#p + 1] = Num("num_rate 11x1.png", 490, 958, 15, 14, 3, function()
-	return data.bestEx and math.floor(data.bestEx / data.maxEx * 100)
+	return data.bestEx and math.floor(math.max(data.bestEx, 0) / data.maxEx * 100)
 end)
 p[#p + 1] = Img("score_per.png", 537, 958, 57, 14, {
 	RefreshCommand = function(self)
@@ -1017,7 +1068,7 @@ p[#p + 1] = Num("num_rate 11x1.png", 545, 958, 15, 14, 2, function()
 	if not data.bestEx then
 		return nil
 	end
-	local pct = data.bestEx / data.maxEx * 100
+	local pct = math.max(data.bestEx, 0) / data.maxEx * 100
 	return math.floor((pct - math.floor(pct)) * 100)
 end, {pad = "zero"})
 
@@ -1029,7 +1080,7 @@ p[#p + 1] = Img("score_graph.png", 60, 968, 381, 16, {
 	end,
 	RefreshCommand = function(self)
 		self:finishtweening()
-		local r = data.bestEx and data.bestEx / data.maxEx or 0
+		local r = data.bestEx and math.max(data.bestEx, 0) / data.maxEx or 0
 		-- short tweens: picking a song waits for every tween on the screen
 		self:cropright(1):diffusealpha(90 / 255):decelerate(0.15):cropright(1 - r)
 	end,
@@ -1058,7 +1109,7 @@ do
 				local v = r.get()
 				local total = 0
 				if k <= 5 then
-					total = data.notes or 0
+					total = data.judged or 0
 				else
 					total = (data.fast or 0) + (data.slow or 0)
 				end
@@ -1093,7 +1144,12 @@ for k = 1, 5 do
 	end, color("1,1,1,0.9"))
 	p[#p + 1] = Num("num_pd 11x1.png", 1074, top - 2, 17, 17, 4, function()
 		local s = data.ranking and data.ranking[k]
-		return s and exScore(s)
+		return s and not data.o2jam and exScore(s) or nil
+	end)
+	-- O2Jam: the DMJam score
+	p[#p + 1] = Text(1142, top + 7, 15, 1, 70, function()
+		local s = data.o2jam and data.ranking and data.ranking[k]
+		return s and string.format("%.3f", exScore(s) / 1000) or nil
 	end)
 end
 p[#p + 1] = Num("num_pd 11x1.png", 995, 954, 17, 17, 4, function()
@@ -1115,6 +1171,48 @@ p[#p + 1] = Num("num_pd 11x1.png", 1095, 974, 17, 17, 2, function()
 	local pct = data.clears / data.plays * 100
 	return math.floor((pct - math.floor(pct)) * 100)
 end, {pad = "zero"})
+
+---------------------------------------------------------------------------
+-- O2Jam names and numbers over the LR2 ones
+---------------------------------------------------------------------------
+
+local function O2Box(x, y, w, h)
+	local b = Box(x, y, w, h, color("0.02,0.03,0.07,1"))
+	b.RefreshCommand = function(self)
+		self:visible(data.o2jam == true)
+	end
+	return b
+end
+local function o2Text(x, y, h, align, maxw, get, c)
+	return Text(x, y, h, align, maxw, function()
+		if data.o2jam then
+			return get()
+		end
+		return nil
+	end, c)
+end
+-- judge rank: O2Jam has its own windows
+p[#p + 1] = o2Text(262, 584, 15, 0.5, 76, function() return "O2JAM" end, color("#8fd4ff"))
+-- SCORE DATA: DMJam score in place of the EX score
+p[#p + 1] = O2Box(42, 850, 400, 28)
+p[#p + 1] = o2Text(48, 865, 15, 0, 150, function() return "SCORE" end)
+p[#p + 1] = o2Text(306, 865, 19, 1, 150, function()
+	return data.bestEx and string.format("%.3f", data.bestEx / 1000) or "-"
+end, color("#66ffff"))
+p[#p + 1] = o2Text(436, 865, 16, 1, 120, function() return "%" end, color("1,1,1,0.6"))
+-- PLAY DATA: COOL, (no GREAT), GOOD, BAD, MISS
+do
+	local labels = {
+		{"COOL", "TapNoteScore_W1"}, {"-", nil}, {"GOOD", "TapNoteScore_W3"},
+		{"BAD", "TapNoteScore_W4"}, {"MISS", "TapNoteScore_Miss"},
+	}
+	for k, l in ipairs(labels) do
+		local top = 850 + 20 * (k - 1)
+		p[#p + 1] = O2Box(624, top, 78, 18)
+		p[#p + 1] = o2Text(628, top + 9, 15, 0, 72, function() return l[1] end,
+			l[2] and getBMSJudgeColor(l[2]) or color("1,1,1,0.4"))
+	end
+end
 
 -- the tab windows go over the panels (the Til Death panels on them are in
 -- later decoration files, so they draw on top)

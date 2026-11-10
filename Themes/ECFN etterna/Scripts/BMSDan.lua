@@ -252,8 +252,66 @@ function D.start(course)
 	if not top or not top.StartBMSCourse then
 		return false, "this build of the game has no dan courses"
 	end
+	D.course = {id = course.id, songs = {}}
 	return top:StartBMSCourse(course.id, course.name, keys)
 end
+
+---------------------------------------------------------------------------
+-- a course being played: one gameplay and result screen per song, then the
+-- COURSE RESULT screen (ScreenBMSCourseResult) with the songs added up
+---------------------------------------------------------------------------
+
+-- one course attempt, from SONGMAN:GetBMSCourseResult()
+function D.courseKey(res)
+	if not res or not res.id then
+		return nil
+	end
+	return res.id .. ":" .. table.concat(res.scoreKeys or {}, ",")
+end
+
+-- the song result screen hands over what it worked out for a course song
+-- (judgments, FAST/SLOW, the course gauge over the song): {key, notes,
+-- counts = {PG GR GD BD PR}, emptyPoors, fast, slow, miss, maxCombo, arrange,
+-- life = {0..1, ...}}
+function D.addCourseSong(e)
+	local res = SONGMAN.GetBMSCourseResult and SONGMAN:GetBMSCourseResult()
+	if not res or not e or not e.key then
+		return
+	end
+	local mine = false
+	for _, k in ipairs(res.scoreKeys or {}) do
+		if k == e.key then
+			mine = true
+		end
+	end
+	if not mine then
+		return
+	end
+	if not D.course or D.course.id ~= res.id then
+		D.course = {id = res.id, songs = {}}
+	end
+	for _, s in ipairs(D.course.songs) do
+		if s.key == e.key then
+			return -- the result screen was loaded again
+		end
+	end
+	D.course.songs[#D.course.songs + 1] = e
+end
+
+-- after the song result screen: the next song, the course result, or the
+-- usual way on
+function D.afterEvaluation()
+	local res = SONGMAN.GetBMSCourseResult and SONGMAN:GetBMSCourseResult()
+	if res and res.active and not res.finished then
+		return "next"
+	end
+	if res and res.finished and D.courseResultShown ~= D.courseKey(res) then
+		return "result"
+	end
+	return nil
+end
+
+
 
 ---------------------------------------------------------------------------
 -- records (BMSDan.ini in the profile folder)
@@ -275,16 +333,103 @@ end
 D.gaugeRank = {Class = 1, ExClass = 2, ExHardClass = 3}
 D.gaugeNames = {Class = "CLASS", ExClass = "EX CLASS", ExHardClass = "EX HARD CLASS"}
 
+-- this computer's record merged with the ranking site's (when logged in and
+-- loaded, see D.loadSite): the best of both, so plays from another computer
+-- count too. {cleared, gauge_type, best_songs, best_ex, best_miss, best_lamp,
+-- attempts} or nil
 function D.record(id)
-	return D.records()[id]
+	local l = D.records()[id]
+	local w = D.site and D.site[id]
+	if not w then
+		return l
+	end
+	if not l then
+		return w
+	end
+	local r = {}
+	for k, v in pairs(l) do
+		r[k] = v
+	end
+	if tonumber(w.cleared) == 1 then
+		r.cleared = 1
+		if (D.gaugeRank[w.gauge_type or ""] or 0) > (D.gaugeRank[r.gauge_type or ""] or 0) then
+			r.gauge_type = w.gauge_type
+		end
+	end
+	local function num(x)
+		return tonumber(x)
+	end
+	r.best_songs = math.max(num(l.best_songs) or 0, num(w.best_songs) or 0)
+	r.attempts = math.max(num(l.attempts) or 0, num(w.attempts) or 0)
+	r.best_lamp = math.max(num(l.best_lamp) or 0, num(w.best_lamp) or 0)
+	if num(l.best_ex) or num(w.best_ex) then
+		r.best_ex = math.max(num(l.best_ex) or 0, num(w.best_ex) or 0)
+	end
+	if num(l.best_miss) and num(w.best_miss) then
+		r.best_miss = math.min(num(l.best_miss), num(w.best_miss))
+	else
+		r.best_miss = num(l.best_miss) or num(w.best_miss)
+	end
+	return r
 end
 
--- the hardest cleared course: course table (with .rank) or nil
-function D.best()
+-- the dan courses of the logged in player from the ranking site, into D.site;
+-- broadcasts BMSDanSiteLoaded when they are in
+function D.loadSite(force)
+	if not (BMSRanking and BMSRanking.loggedIn and BMSRanking.loggedIn()) then
+		D.site = nil
+		return
+	end
+	if D.sitePending then
+		return
+	end
+	local now = GetTimeSinceStart()
+	if not force and D.siteTime and now - D.siteTime < 20 then
+		return
+	end
+	D.sitePending = true
+	DLMAN:BMSRequest("POST", "/api/game/mydan", {}, function(status, body)
+		D.sitePending = false
+		D.siteTime = GetTimeSinceStart()
+		local text = (body or ""):gsub("\r", "")
+		local lines = {}
+		for l in text:gmatch("[^\n]+") do
+			local f = {}
+			for v in (l .. "\t"):gmatch("([^\t]*)\t") do
+				f[#f + 1] = v
+			end
+			lines[#lines + 1] = f
+		end
+		if status ~= 200 or not lines[1] or lines[1][1] ~= "OK" then
+			return -- keep what was loaded before
+		end
+		local site = {}
+		for i = 2, #lines do
+			local f = lines[i]
+			if f[1] and f[1] ~= "" then
+				site[f[1]] = {
+					cleared = tonumber(f[2]) or 0,
+					gauge_type = f[3] ~= "" and f[3] or nil,
+					best_songs = tonumber(f[4]) or 0,
+					best_ex = tonumber(f[5]),
+					best_miss = tonumber(f[6]),
+					best_lamp = tonumber(f[7]) or 0,
+					attempts = tonumber(f[8]) or 0,
+				}
+			end
+		end
+		D.site = site
+		MESSAGEMAN:Broadcast("BMSDanSiteLoaded")
+	end)
+end
+
+-- the hardest cleared course (of one set when setName is given): course
+-- table (with .rank) or nil
+function D.best(setName)
 	local best
 	for _, c in ipairs(D.allCourses()) do
 		local r = D.record(c.id)
-		if r and tonumber(r.cleared) == 1 and (best == nil or (c.rank or 0) > (best.rank or 0)) then
+		if (not setName or c.set == setName) and r and tonumber(r.cleared) == 1 and (best == nil or (c.rank or 0) > (best.rank or 0)) then
 			best = c
 		end
 	end
@@ -352,6 +497,27 @@ function D.finish(res)
 			score_keys = table.concat(res.scoreKeys or {}, ","),
 		}, function(status, body)
 			MESSAGEMAN:Broadcast("BMSDanUploaded", {ok = status == 200, body = body})
+			D.loadSite(true)
 		end)
 	end
+end
+
+-- best EX score, miss count and lamp of a course, for the course result
+function D.saveCourseBest(id, ex, miss, lamp)
+	local recs = D.records()
+	local r = recs[id]
+	if not r then
+		return
+	end
+	local key = "saved:" .. tostring(D.lastFinished)
+	if D.lastBestSaved == key then
+		return
+	end
+	D.lastBestSaved = key
+	r.best_ex = math.max(tonumber(r.best_ex) or 0, ex)
+	if lamp > 1 then
+		r.best_miss = math.min(tonumber(r.best_miss) or miss, miss)
+	end
+	r.best_lamp = math.max(tonumber(r.best_lamp) or 0, lamp)
+	pcall(IniFile.WriteFile, recordPath(), recs)
 end

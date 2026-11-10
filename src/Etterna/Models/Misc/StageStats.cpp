@@ -19,6 +19,7 @@
 #include "Etterna/Singletons/ReplayManager.h"
 #include "Etterna/Singletons/GameManager.h"
 #include "Etterna/Models/NoteData/NoteDataUtil.h"
+#include "Etterna/Models/NoteLoaders/NotesLoaderOJN.h"
 
 #if !( defined(_WIN32) || defined(__APPLE__)) \
     && (defined(__x86_64__) || defined(__i386__))
@@ -552,9 +553,20 @@ FillInHighScore(const PlayerStageStats& pss,
 			po.m_BMSGauge = BMSGauge_Normal; // writes no gauge
 			po.m_bBMSAutoShift = false;
 		}
+		// an O2Jam chart plays by O2Jam rules whatever gauge and judge rank
+		// were picked: write none of them, "O2JamHard" says it instead
+		const auto bO2Jam = OJNLoader::IsO2JamSteps(GAMESTATE->m_pCurSteps);
+		if (bO2Jam) {
+			po.m_BMSGauge = BMSGauge_Normal;
+			po.m_bBMSAutoShift = false;
+			po.m_BMSJudgeRank = BMSJudgeRank_Easy;
+		}
 		auto sPlayerOptions = po.GetString();
 		if (!sPlayerOptions.empty()) {
 			asModifiers.push_back(sPlayerOptions);
+		}
+		if (bO2Jam) {
+			asModifiers.push_back("O2JamHard");
 		}
 		if (inBMSCourse) {
 			static const char* names[] = { "ClassGauge",
@@ -799,18 +811,42 @@ StageStats::FinalizeScores()
 
 	// BMS 7k ranking site: send the play (replay included) when logged in
 	if (m_bLivePlay) {
-		// the gauge over the song for the site's graph: 200 samples, 0-100
+		// the gauge over the song for the site's graph: 200 samples, 0-100.
+		// It is the gauge the site files the play under (the gauge that
+		// survived an auto shift clear, else the chosen one), from that
+		// gauge's own record. m_fLifeRecord follows whichever gauge is shown,
+		// so with auto shift a dead EX HARD turned into the HARD / GROOVE /
+		// EASY gauge after it, and it starts at the engine's default life.
 		std::string graph;
-		const auto& rec = m_player.m_fLifeRecord;
-		if (!rec.empty()) {
-			auto end = rec.rbegin()->first;
+		const std::map<float, float>* rec = nullptr;
+		auto gauge = static_cast<int>(
+		  GAMESTATE->m_pPlayerState->m_PlayerOptions.GetStage().m_BMSGauge);
+		if (m_player.m_iBMSClearGauge >= 0 &&
+			m_player.m_iBMSClearGauge < NUM_BMSGauge)
+			gauge = m_player.m_iBMSClearGauge;
+		// the O2Jam hard gauge is kept as BMSGauge_Hard
+		if (OJNLoader::IsO2JamSteps(pSteps))
+			gauge = BMSGauge_Hard;
+		const auto it = m_player.m_BMSGaugeRecord.find(gauge);
+		if (it != m_player.m_BMSGaugeRecord.end() && !it->second.empty())
+			rec = &it->second;
+		else if (SONGMAN->InBMSCourse() && !m_player.m_fLifeRecord.empty())
+			rec = &m_player.m_fLifeRecord; // the course gauge is the only one
+		if (rec != nullptr) {
+			auto end = rec->rbegin()->first;
 			if (GAMESTATE->m_pCurSong != nullptr)
 				end = std::max(end, GAMESTATE->m_pCurSong->GetLastSecond());
 			const auto samples = 200;
 			for (auto i = 0; i < samples; ++i) {
 				const auto at = end * static_cast<float>(i) / (samples - 1);
+				// step value like the result screen: the last record at or
+				// before this time, so a death drops straight to 0
+				const auto later = rec->upper_bound(at);
 				const auto v = std::clamp(
-				  m_player.GetLifeRecordLerpAt(at), 0.F, 1.F);
+				  later == rec->begin() ? later->second
+										: std::prev(later)->second,
+				  0.F,
+				  1.F);
 				if (i > 0)
 					graph += ',';
 				graph += std::to_string(std::lround(v * 100.F));

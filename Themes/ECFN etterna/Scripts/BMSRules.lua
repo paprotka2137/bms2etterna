@@ -202,12 +202,149 @@ local bmsJudgeColors = {
 	TapNoteScore_Miss = color("#ff4040"),
 }
 
--- name, short name and color of a judgment on 7k, nil for anything else
+-- O2Jam charts (.ojn) play by O2Jam rules: COOL is W1, GOOD W3, BAD W4
+-- and MISS. The engine never gives W2 there.
+local o2jamJudgeNames = {
+	TapNoteScore_W1 = "COOL",
+	TapNoteScore_W2 = "COOL",
+	TapNoteScore_W3 = "GOOD",
+	TapNoteScore_W4 = "BAD",
+	TapNoteScore_W5 = "BAD",
+	TapNoteScore_Miss = "MISS",
+}
+local o2jamShortJudgeNames = {
+	TapNoteScore_W1 = "CL",
+	TapNoteScore_W2 = "CL",
+	TapNoteScore_W3 = "GD",
+	TapNoteScore_W4 = "BD",
+	TapNoteScore_W5 = "BD",
+	TapNoteScore_Miss = "MS",
+}
+
+function isO2JamSteps(steps)
+	if steps == nil or steps.GetFilename == nil then
+		return false
+	end
+	local fn = string.lower(steps:GetFilename() or "")
+	return fn:sub(-4) == ".ojn"
+end
+
+-- the chart being played (or picked) is an O2Jam chart
+function isO2JamPlay()
+	return isO2JamSteps(GAMESTATE:GetCurrentSteps())
+end
+
+-- a score played by O2Jam rules: the game writes "O2JamHard" into its
+-- modifiers, older scores are told by their chart
+local o2jamChartCache = {}
+function isO2JamScore(score)
+	if score == nil then
+		return false
+	end
+	if string.lower(score:GetModifiers() or ""):find("o2jamhard", 1, true) then
+		return true
+	end
+	local ck = score:GetChartKey()
+	if o2jamChartCache[ck] == nil then
+		o2jamChartCache[ck] = isO2JamSteps(SONGMAN:GetStepsByChartKey(ck))
+	end
+	return o2jamChartCache[ck]
+end
+
+-- O2Jam judgments of a score: COOL GOOD BAD MISS
+function getO2JamCounts(score)
+	local function tns(x)
+		return score:GetTapNoteScore("TapNoteScore_" .. x)
+	end
+	return tns("W1") + tns("W2"), tns("W3"), tns("W4") + tns("W5"), tns("Miss")
+end
+
+-- notes of an O2Jam score: every note plus every long note tail (a long
+-- note is judged twice). A failed play counts the notes it did not reach.
+function getO2JamNoteCount(score)
+	local cool, good, bad, miss = getO2JamCounts(score)
+	local judged = cool + good + bad + miss
+	local rv = score:GetRadarPossible()
+	local possible = (rv:GetValue("RadarCategory_Notes") or 0) + (rv:GetValue("RadarCategory_Holds") or 0)
+	return math.max(judged, possible)
+end
+
+-- O2Jam score in percent (out of 1,000,000 shown as 100%):
+-- base = (COOL * 100 + GOOD * 99) / (notes * 100) * 1,000,000,
+-- above 900,000 it is base * 9 - 8,000,000, else base / 9. A play that did
+-- not judge all notes but one (failed) gets 80% of it.
+function getO2JamScoreOf(cool, good, judged, n)
+	if n <= 0 then
+		return 0
+	end
+	local base = (cool * 100 + good * 99) / (n * 100) * 1000000
+	local final
+	if base > 900000 then
+		final = base * 9 - 8000000
+	else
+		final = base / 9
+	end
+	if judged < n - 1 then
+		final = final * 0.8
+	end
+	return math.floor(final) / 10000
+end
+
+function getO2JamScore(score)
+	local cool, good, bad, miss = getO2JamCounts(score)
+	return getO2JamScoreOf(cool, good, cool + good + bad + miss, getO2JamNoteCount(score))
+end
+
+-- O2Jam grade of an O2Jam score in percent: P (all COOL), SS > 99, S > 96, A > 90,
+-- B > 86, C > 78, D > 50, else F
+function getO2JamGrade(v)
+	if v >= 99.9995 then
+		return "P"
+	elseif v > 99 then
+		return "SS"
+	elseif v > 96 then
+		return "S"
+	elseif v > 90 then
+		return "A"
+	elseif v > 86 then
+		return "B"
+	elseif v > 78 then
+		return "C"
+	elseif v > 50 then
+		return "D"
+	end
+	return "F"
+end
+
+local o2jamGradeColors = {
+	P = color("#ffffff"), SS = color("#ffe060"), S = color("#ffd040"), A = color("#60ff60"),
+	B = color("#60d0ff"), C = color("#a0a0ff"), D = color("#c080ff"), F = color("#ff4040"),
+}
+function getO2JamGradeColor(g)
+	return o2jamGradeColors[g] or color("#ffffff")
+end
+
+-- O2Jam windows in ms (COOL, GOOD, BAD) at a bpm: 6, 18 and 25 of 1/48
+-- beat, same as Player.cpp
+function getO2JamWindowsMs(bpm, rate)
+	bpm = math.max(math.abs(bpm or 120), 30)
+	local unit = 1250 / bpm / ((rate and rate > 0) and rate or 1)
+	return {6 * unit, 6 * unit, 18 * unit, 25 * unit}
+end
+
+-- name, short name and color of a judgment on 7k, nil for anything else.
+-- O2Jam names while an O2Jam chart is picked.
 function getBMSJudgeName(tns)
+	if isO2JamPlay() then
+		return o2jamJudgeNames[tns]
+	end
 	return bmsJudgeNames[tns]
 end
 
 function getBMSShortJudgeName(tns)
+	if isO2JamPlay() then
+		return o2jamShortJudgeNames[tns]
+	end
 	return bmsShortJudgeNames[tns]
 end
 
@@ -285,10 +422,18 @@ function getBMSMissCount(score)
 	local judged = tns("W1") + tns("W2") + tns("W3") + tns("W4") + tns("W5") + tns("Miss")
 	local bp = tns("W4") + tns("W5") + tns("Miss") + score:GetEmptyPoorCount()
 	local possible = score:GetRadarPossible():GetValue("RadarCategory_Notes") or 0
+	-- O2Jam: every long note tail is a note of its own
+	if isO2JamScore(score) then
+		possible = possible + (score:GetRadarPossible():GetValue("RadarCategory_Holds") or 0)
+	end
 	return bp + math.max(possible - judged, 0)
 end
 
 function getBMSScoreRate(score)
+	-- O2Jam scores show their DMJam score instead
+	if isO2JamScore(score) then
+		return math.max(getO2JamScore(score), 0) / 100
+	end
 	local max = getBMSMaxExScore(score)
 	if max <= 0 then
 		return 0

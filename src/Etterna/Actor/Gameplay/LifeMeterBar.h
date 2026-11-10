@@ -75,6 +75,8 @@ class LifeMeterBar : public LifeMeter
 	void SetBMSCurrentGauge(BMSGauge gauge);
 	BMSGauge PickBMSAutoShiftGauge() const;
 	bool m_bBMS{ false };
+	// O2Jam chart: the O2Jam hard gauge, filed under BMSGauge_Hard
+	bool m_bO2Jam{ false };
 	bool m_bBMSAutoShift{ false };
 	// the gauge shown and judged on, with auto shift it moves down
 	BMSGauge m_BMSGauge{ BMSGauge_Normal };
@@ -85,9 +87,15 @@ class LifeMeterBar : public LifeMeter
 	// BMS dan course: one course gauge (CLASS / EX CLASS / EX HARD CLASS)
 	// instead of the chosen one, its value carried over the songs since the
 	// life meter lives for the whole course. -1 outside a course.
+	// With auto shift every course gauge below the chosen one runs too and
+	// the shown one drops to the strongest that is still alive.
 	int m_iBMSClassGauge{ -1 };
-	float m_fBMSClassValue{ 100.f };
+	int m_iBMSClassTop{ -1 };
+	bool m_bBMSClassAutoShift{ false };
+	float m_fBMSClassValues[3]{ 100.f, 100.f, 100.f };
 	void ChangeBMSClassLife(BMSJudge judge);
+	void SaveBMSClassState() const;
+	void RecordBMSClassGauge(float fStepsSecond) const;
 	float m_fBMSMin{ 0.f };
 	float m_fBMSBorder{ 0.f };
 

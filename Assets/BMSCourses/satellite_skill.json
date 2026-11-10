@@ -1,0 +1,700 @@
+{
+ "format": 1,
+ "set": "Satellite Skill Analyzer",
+ "source": {
+  "maker": "Stella / Satellite (stellabms.xyz)",
+  "page": "https://stellabms.xyz/skill-simulator",
+  "note": "SP courses only (DP skipped). Chart lists from the skill simulator page; artists and local titles from the game's BMS2SM converts (no md5 on the page)."
+ },
+ "courses": [
+  {
+   "id": "satellite_skill_sl0",
+   "name": "Satellite Skill Analyzer sl0",
+   "short": "Satellite sl0",
+   "rank": 20,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "翼の折れた天使たちのレクイエム [Another]",
+     "table_title": "翼の折れた天使たちのレクイエム [Another]",
+     "artist": "Sakamiya feat.前野",
+     "level": "sl0",
+     "local_title": "翼の折れた天使たちのレクイエム[Another]"
+    },
+    {
+     "title": "アトロポスと最果の探求者",
+     "table_title": "アトロポスと最果の探求者",
+     "artist": "しーけー",
+     "level": "sl0",
+     "local_title": "アトロポスと最果の探求者"
+    },
+    {
+     "title": "Life is PIANO [Another]",
+     "table_title": "Life is PIANO [Another]",
+     "artist": "Junk",
+     "level": "sl0",
+     "local_title": "Life is PIANO [Another]"
+    },
+    {
+     "title": "BLAZE YOUR SOUL [SP ANOTHER]",
+     "table_title": "BLAZE YOUR SOUL [SP ANOTHER]",
+     "artist": "sound piercer x ginkiha (mov : 1B)",
+     "level": "sl0",
+     "local_title": "BLAZE YOUR SOUL [SP ANOTHER]"
+    }
+   ]
+  },
+  {
+   "id": "satellite_skill_sl1",
+   "name": "Satellite Skill Analyzer sl1",
+   "short": "Satellite sl1",
+   "rank": 21,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "IKAROS [HARD]",
+     "table_title": "IKAROS [HARD]",
+     "artist": "ETIA. feat. Jenga",
+     "level": "sl1",
+     "local_title": "IKAROS [HARD]"
+    },
+    {
+     "title": "Berry Go!! [Esteem and Love]",
+     "table_title": "Berry Go!! [Esteem and Love]",
+     "artist": "Freezer feat. 妃苺",
+     "level": "sl1",
+     "local_title": "Berry Go!![Esteem and Love]"
+    },
+    {
+     "title": "Latch (Flip-Flop) [Spinner+]",
+     "table_title": "Latch (Flip-Flop) [Spinner+]",
+     "artist": "litmus*",
+     "level": "sl1",
+     "local_title": "Latch (Flip-Flop) [Spinner+]"
+    },
+    {
+     "title": "Brave My Soul -Flareness Heart-",
+     "table_title": "Brave My Soul -Flareness Heart-",
+     "artist": "uma feat. ましろ",
+     "level": "sl1",
+     "local_title": "Brave My Soul-Flareness Heart-"
+    }
+   ]
+  },
+  {
+   "id": "satellite_skill_sl2",
+   "name": "Satellite Skill Analyzer sl2",
+   "short": "Satellite sl2",
+   "rank": 22,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "Sea Breeze Memory -Summer Vacation-",
+     "table_title": "Sea Breeze Memory -Summer Vacation-",
+     "artist": "Concordia(Aeris+Cervesia) feat.ヒトトリ",
+     "level": "sl2",
+     "local_title": "Sea Breeze Memory-Summer Vacation-"
+    },
+    {
+     "title": "Apocaliptix [Doomsayer]",
+     "table_title": "Apocaliptix [Doomsayer]",
+     "artist": "Juggernaut.",
+     "level": "sl2",
+     "local_title": "Apocaliptix [Doomsayer]"
+    },
+    {
+     "title": "Love☆Spellcard [ZOI]",
+     "table_title": "Love☆Spellcard [ZOI]",
+     "artist": "uma feat. ましろ",
+     "level": "sl3",
+     "local_title": "Love☆Spellcard[ZOI]"
+    },
+    {
+     "title": "Re/Im [ZOI]",
+     "table_title": "Re/Im [ZOI]",
+     "artist": "q/stol",
+     "level": "sl3",
+     "local_title": "Re/Im[ZOI]"
+    }
+   ]
+  },
+  {
+   "id": "satellite_skill_sl3",
+   "name": "Satellite Skill Analyzer sl3",
+   "short": "Satellite sl3",
+   "rank": 23,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "MAGENTA POTION [INSANE]",
+     "table_title": "MAGENTA POTION [INSANE]",
+     "artist": "EmoCo. × NO|SER",
+     "level": "sl3",
+     "local_title": "MAGENTA POTION[INSANE]"
+    },
+    {
+     "title": "Wicked Laboratory",
+     "table_title": "Wicked Laboratory",
+     "artist": "BBBB / (obj:Mr.Faine)",
+     "level": "sl3",
+     "local_title": "Wicked Laboratory"
+    },
+    {
+     "title": "GLITCH SWITCH [SP INSANE]",
+     "table_title": "GLITCH SWITCH [SP INSANE]",
+     "artist": "GRASSEZ",
+     "level": "sl3",
+     "local_title": "GLITCH SWITCH[SP INSANE]"
+    },
+    {
+     "title": "Disorder -ANOTHER-",
+     "table_title": "Disorder -ANOTHER-",
+     "artist": "HyuN",
+     "level": "sl3",
+     "local_title": "Disorder [7K Anotherl]-ANOTHER-"
+    }
+   ]
+  },
+  {
+   "id": "satellite_skill_sl4",
+   "name": "Satellite Skill Analyzer sl4",
+   "short": "Satellite sl4",
+   "rank": 24,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "EVERLASTING HAPPiNESS↑ [ZOI]",
+     "table_title": "EVERLASTING HAPPiNESS↑ [ZOI]",
+     "artist": "psi",
+     "level": "sl5",
+     "local_title": "EVERLASTING HAPPiNESS↑[ZOI]"
+    },
+    {
+     "title": "Mr. BLACKRUM [SP RUNOTHER -Cuba Libre-]",
+     "table_title": "Mr. BLACKRUM [SP RUNOTHER -Cuba Libre-]",
+     "artist": "tcheb / ドーナツシネマ / obj:ks382",
+     "level": "sl4",
+     "local_title": "Mr. BLACKRUM [SP RUNOTHER -Cuba Libre-]"
+    },
+    {
+     "title": "Transfixation [STERRITE]",
+     "table_title": "Transfixation [STERRITE]",
+     "artist": "Hyparpax / obj.Sterrite",
+     "level": "sl4",
+     "local_title": "Transfixation[STERRITE]"
+    },
+    {
+     "title": "squartatrice [HARD]",
+     "table_title": "squartatrice [HARD]",
+     "artist": "美樹さやか vs. 美樹さやか (fw. 美樹さやか)/差分　赤い人",
+     "level": "sl5",
+     "local_title": "squartatrice[HARD]"
+    }
+   ]
+  },
+  {
+   "id": "satellite_skill_sl5",
+   "name": "Satellite Skill Analyzer sl5",
+   "short": "Satellite sl5",
+   "rank": 25,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "Signager -HONGKONG EXPRESS_FIX-",
+     "table_title": "Signager -HONGKONG EXPRESS_FIX-",
+     "artist": "corok-Bb",
+     "level": "sl5",
+     "local_title": "Signager-HONGKONG EXPRESS_FIX-"
+    },
+    {
+     "title": "banana man [HARD]",
+     "table_title": "banana man [HARD]",
+     "artist": "sa10/差分 赤い人",
+     "level": "sl5",
+     "local_title": "banana man[HARD]"
+    },
+    {
+     "title": "Wizdomiot [ABNORMAL]",
+     "table_title": "Wizdomiot [ABNORMAL]",
+     "artist": "ZUN remixed by LeaF",
+     "level": "sl5",
+     "local_title": "Wizdomiot[ABNORMAL]"
+    },
+    {
+     "title": "Ground Z.E.R.O. [ZOI]",
+     "table_title": "Ground Z.E.R.O. [ZOI]",
+     "artist": "kanone",
+     "level": "sl7",
+     "local_title": "Ground Z.E.R.O.[ZOI]"
+    }
+   ]
+  },
+  {
+   "id": "satellite_skill_sl6",
+   "name": "Satellite Skill Analyzer sl6",
+   "short": "Satellite sl6",
+   "rank": 26,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "Awaking Beat-From the next generation- [W]",
+     "table_title": "Awaking Beat-From the next generation- [W]",
+     "artist": "nmk feat.橘花音",
+     "level": "sl6",
+     "local_title": "Awaking Beat-From the next generation- [W]"
+    },
+    {
+     "title": "平衡世界 Parallel World [HARDEST]",
+     "table_title": "平衡世界 Parallel World [HARDEST]",
+     "artist": "daisan/ 差分 赤い人",
+     "level": "sl7",
+     "local_title": "平衡世界 Parallel World[HARDEST]"
+    },
+    {
+     "title": "Absolute Future [ANOTHER+]",
+     "table_title": "Absolute Future [ANOTHER+]",
+     "artist": "otoshi.b",
+     "level": "sl6",
+     "local_title": "Absolute Future[ANOTHER+]"
+    },
+    {
+     "title": "白菊 [Snother]",
+     "table_title": "白菊 [Snother]",
+     "artist": "立秋",
+     "level": "sl6",
+     "local_title": "白菊 [Snother]"
+    }
+   ]
+  },
+  {
+   "id": "satellite_skill_sl7",
+   "name": "Satellite Skill Analyzer sl7",
+   "short": "Satellite sl7",
+   "rank": 27,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "Remembrance [INSANE]",
+     "table_title": "Remembrance [INSANE]",
+     "artist": "Lian",
+     "level": "sl7",
+     "local_title": "Remembrance [INSANE]"
+    },
+    {
+     "title": "Astronomical Twilight [Sunrise]",
+     "table_title": "Astronomical Twilight [Sunrise]",
+     "artist": "anubasu-anubasu/6UT3/SHU10/U-hey/Lafale/CELLON./Kankitsu",
+     "level": "sl7",
+     "local_title": "Astronomical Twilight[Sunrise]"
+    },
+    {
+     "title": "Doppelganger [Eb]",
+     "table_title": "Doppelganger [Eb]",
+     "artist": "LeaF / obj:いい靴",
+     "level": "sl7",
+     "local_title": "Doppelganger[Eb]"
+    },
+    {
+     "title": "energy night [JOY]",
+     "table_title": "energy night [JOY]",
+     "artist": "KAH (BGA:自動車原付　イラスト:手鞠鈴)",
+     "level": "sl7",
+     "local_title": "energy night[JOY]"
+    }
+   ]
+  },
+  {
+   "id": "satellite_skill_sl8",
+   "name": "Satellite Skill Analyzer sl8",
+   "short": "Satellite sl8",
+   "rank": 28,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "Happiness Magical Kanon [HAPPY]",
+     "table_title": "Happiness Magical Kanon [HAPPY]",
+     "artist": "DJ Michelle",
+     "level": "sl8",
+     "local_title": "Happiness Magical Kanon [HAPPY]"
+    },
+    {
+     "title": "ラケシスと永遠の祈祷者 [Sanctuary]",
+     "table_title": "ラケシスと永遠の祈祷者 [Sanctuary]",
+     "artist": "しーけー",
+     "level": "sl9",
+     "local_title": "ラケシスと永遠の祈祷者[Sanctuary]"
+    },
+    {
+     "title": "Empress of Raizze [ストレッチ]",
+     "table_title": "Empress of Raizze [ストレッチ]",
+     "artist": "-45/わなな・BANI / obj:発汗BMS",
+     "level": "sl8",
+     "local_title": "Empress of Raizze [ストレッチ]"
+    },
+    {
+     "title": "DESPERATE -Last Battle-",
+     "table_title": "DESPERATE -Last Battle-",
+     "artist": "NIKITA / obj: Lennon",
+     "level": "sl9",
+     "local_title": "DESPERATE -Last Battle-"
+    }
+   ]
+  },
+  {
+   "id": "satellite_skill_sl9",
+   "name": "Satellite Skill Analyzer sl9",
+   "short": "Satellite sl9",
+   "rank": 29,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "Free Hand zero [ANOTHER*]",
+     "table_title": "Free Hand zero [ANOTHER*]",
+     "artist": "菊田研究所/lactate",
+     "level": "sl9",
+     "local_title": "Free Hand zero [ANOTHER*]"
+    },
+    {
+     "title": "Andro [F]",
+     "table_title": "Andro [F]",
+     "artist": "紅蓮月影",
+     "level": "sl9",
+     "local_title": "Andro [F]"
+    },
+    {
+     "title": "永劫綺譚の純潔葬花 -Red Lily-",
+     "table_title": "永劫綺譚の純潔葬花 -Red Lily-",
+     "artist": "nmk feat.橘花音",
+     "level": "sl9",
+     "local_title": "永劫綺譚の純潔葬花 -Red Lily-"
+    },
+    {
+     "title": "ニニ - ニサシゴ -",
+     "table_title": "ニニ - ニサシゴ -",
+     "artist": "テヅカ × Qayo",
+     "level": "sl9",
+     "local_title": "ニニ- ニサシゴ -"
+    }
+   ]
+  },
+  {
+   "id": "satellite_skill_sl10",
+   "name": "Satellite Skill Analyzer sl10",
+   "short": "Satellite sl10",
+   "rank": 30,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "踊る水飛沫 [KF7]",
+     "table_title": "踊る水飛沫 [KF7]",
+     "artist": "あきやまうに",
+     "level": "sl10",
+     "local_title": "踊る水飛沫 [KF7]"
+    },
+    {
+     "title": "Central Nucleus [INFERNO]",
+     "table_title": "Central Nucleus [INFERNO]",
+     "artist": "8284 / 差分 赤い人",
+     "level": "sl11",
+     "local_title": "Central Nucleus [INFERNO]"
+    },
+    {
+     "title": "温泉大作戦 [温泉名人]",
+     "table_title": "温泉大作戦 [温泉名人]",
+     "artist": "Freezer feat. 妃苺",
+     "level": "sl11",
+     "local_title": "温泉大作戦[温泉名人]"
+    },
+    {
+     "title": "Andromeda [yumether]",
+     "table_title": "Andromeda [yumether]",
+     "artist": "hurirai",
+     "level": "sl11",
+     "local_title": "Andromeda [yumether]"
+    }
+   ]
+  },
+  {
+   "id": "satellite_skill_sl11",
+   "name": "Satellite Skill Analyzer sl11",
+   "short": "Satellite sl11",
+   "rank": 31,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "SYNTHETICS [CYBERTIC ETUDE]",
+     "table_title": "SYNTHETICS [CYBERTIC ETUDE]",
+     "artist": "Soba Yamamori / И",
+     "level": "sl11",
+     "local_title": "SYNTHETICS[CYBERTIC ETUDE]"
+    },
+    {
+     "title": "Wavetapper [ATHLETIC]",
+     "table_title": "Wavetapper [ATHLETIC]",
+     "artist": "Frums / obj :Lennon",
+     "level": "sl11",
+     "local_title": "Wavetapper[ATHLETIC]"
+    },
+    {
+     "title": "Death Opera [The Phantom]",
+     "table_title": "Death Opera [The Phantom]",
+     "artist": "Irish Kappa",
+     "level": "sl12",
+     "local_title": "Death Opera [The Phantom]"
+    },
+    {
+     "title": "ヒメタイプ [LAPITHER]",
+     "table_title": "ヒメタイプ [LAPITHER]",
+     "artist": "ノクティス・江口・チェラム",
+     "level": "sl12",
+     "local_title": "ヒメタイプ[LAPITHER]"
+    }
+   ]
+  },
+  {
+   "id": "satellite_skill_sl12",
+   "name": "Satellite Skill Analyzer sl12",
+   "short": "Satellite sl12",
+   "rank": 32,
+   "constraint": [
+    "grade_mirror",
+    "gauge_lr2",
+    "ln"
+   ],
+   "trophy": [
+    {
+     "name": "silvermedal",
+     "missrate": 5.0,
+     "scorerate": 70.0
+    },
+    {
+     "name": "goldmedal",
+     "missrate": 2.5,
+     "scorerate": 85.0
+    }
+   ],
+   "charts": [
+    {
+     "title": "Sparkling☆Sunshine!! [INSANE]",
+     "table_title": "Sparkling☆Sunshine!! [INSANE]",
+     "artist": "otoshi.b BGI:はしたかさん",
+     "level": "sl12",
+     "local_title": "Sparkling☆Sunshine!![INSANE]"
+    },
+    {
+     "title": "ting ting [belong]",
+     "table_title": "ting ting [belong]",
+     "artist": "陳 正平",
+     "level": "sl12",
+     "local_title": "ting ting[belong]"
+    },
+    {
+     "title": "Total Eclipse of the Sun -Nightmare-",
+     "table_title": "Total Eclipse of the Sun -Nightmare-",
+     "artist": "-45 / selene.",
+     "level": "sl12",
+     "local_title": "Total Eclipse of the Sun -Nightmare-"
+    },
+    {
+     "title": "Terpsichore [Li]",
+     "table_title": "Terpsichore [Li]",
+     "artist": "Jun Kuroda",
+     "level": "sl12",
+     "local_title": "Terpsichore[Li]"
+    }
+   ]
+  }
+ ]
+}

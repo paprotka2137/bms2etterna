@@ -32,6 +32,14 @@ local bmsExWeights = {
 	TapNoteScore_W1 = 2, TapNoteScore_W2 = 1, TapNoteScore_W3 = 0,
 	TapNoteScore_W4 = 0, TapNoteScore_W5 = 0, TapNoteScore_Miss = 0,
 }
+-- running O2Jam score on O2Jam charts, per judged note (a long note tail
+-- is a judgment of its own)
+local o2jamWeights = {
+	TapNoteScore_W1 = 100, TapNoteScore_W2 = 100, TapNoteScore_W3 = 91,
+	TapNoteScore_W4 = -800, TapNoteScore_W5 = -800, TapNoteScore_Miss = -800,
+}
+local o2jamPlay = isO2JamPlay()
+local o2jamGoods = 0
 local bmsEx = 0
 local bmsJudged = 0
 local curMeanSum = 0
@@ -254,7 +262,20 @@ local t =
 		-- 7k shows the LR2 / beatoraja rate of what was judged so far:
 		-- EX score (PGREAT 2, GREAT 1) over 2 per judged note. Counted here
 		-- because the judgment message comes before the stage stats update.
-		if hideMSD() then
+		if hideMSD() and o2jamPlay then
+			-- O2Jam score of what was judged so far (bmsEx counts COOLs,
+			-- o2jamGoods GOODs)
+			local w = o2jamWeights[msg.Judgment]
+			if w and not msg.HoldNoteScore then
+				if w == 100 then
+					bmsEx = bmsEx + 1
+				elseif w == 91 then
+					o2jamGoods = o2jamGoods + 1
+				end
+				bmsJudged = bmsJudged + 1
+			end
+			wifey = Floor(getO2JamScoreOf(bmsEx, o2jamGoods, bmsJudged, bmsJudged) * 100) / 100
+		elseif hideMSD() then
 			local w = bmsExWeights[msg.Judgment]
 			if w and not msg.HoldNoteScore then
 				bmsEx = bmsEx + w
@@ -283,6 +304,7 @@ local t =
 		tDiff = 0
 		wifey = 0
 		bmsEx = 0
+		o2jamGoods = 0
 		bmsJudged = 0
 		jdgct = 0
 		dvCur = nil
@@ -1393,5 +1415,44 @@ mc = Def.ActorFrame {
 }
 
 -- t[#t + 1] = mc
+
+-- O2Jam pills: five slots under the combo, lit by the pills held. 15 COOLs
+-- in a row give one, a BAD uses one up and counts as a COOL.
+if o2jamPlay then
+	local slot, gap = 14, 4
+	local pillColor = color("#40e0ff")
+	local emptyColor = color("0.2,0.2,0.25,0.8")
+	local pills = Def.ActorFrame {
+		Name = "O2JamPills",
+		OnCommand = function(self)
+			local player = SCREENMAN:GetTopScreen():GetChild("PlayerP1")
+			local x = (player and player:GetX() or SCREEN_CENTER_X) + (MovableValues.NotefieldX or 0)
+			self:xy(x, SCREEN_CENTER_Y + (MovableValues.ComboY or -20) + 30)
+		end,
+		O2JamPillsMessageCommand = function(self, msg)
+			for i = 1, 5 do
+				local q = self:GetChild("pill" .. i)
+				if q then
+					q:finishtweening():diffuse(i <= msg.Pills and pillColor or emptyColor)
+				end
+			end
+			if msg.Used then
+				self:finishtweening():zoom(1.3):linear(0.15):zoom(1)
+			end
+		end,
+		PracticeModeResetMessageCommand = function(self)
+			self:playcommand("O2JamPillsMessage", {Pills = 0})
+		end,
+	}
+	for i = 1, 5 do
+		pills[#pills + 1] = Def.Quad {
+			Name = "pill" .. i,
+			InitCommand = function(self)
+				self:zoomto(slot, 6):x((i - 3) * (slot + gap)):diffuse(emptyColor)
+			end,
+		}
+	end
+	t[#t + 1] = pills
+end
 
 return t

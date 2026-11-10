@@ -15,6 +15,7 @@
 #include "Etterna/Singletons/CryptManager.h"
 #include "Etterna/Singletons/ScreenManager.h"
 #include "Etterna/Singletons/SongManager.h"
+#include "Etterna/Models/NoteLoaders/NotesLoaderOJN.h"
 #include "Core/Services/Locator.hpp"
 #include "RageUtil/File/RageFileManager.h"
 
@@ -225,6 +226,11 @@ static const BMSGaugeProperty BMS_GAUGES[NUM_BMSGauge] = {
 	{ true, 0.f, 100.f, 0.f, 2.f,
 	  { .15f, .06f, 0.f, -100.f, -100.f, -10.f }, 0.f, 1.f },
 };
+
+// O2Jam hard gauge (O2Jam charts): starts full at 100, COOL +0.1, GOOD 0,
+// BAD -0.5, MISS -3, never scaled by TOTAL or note count. At 0 the song
+// is failed. No empty POOR in O2Jam.
+static const float O2JAM_HARD_CHANGE[6] = { .1f, .1f, 0.f, -.5f, -3.f, 0.f };
 
 // LR2 course (dan) gauges, as beatoraja / Endless Dream have them
 // (GaugeProperty.LR2 CLASS_LR2, EXCLASS_LR2, EXHARDCLASS_LR2): start full,
@@ -767,19 +773,54 @@ LifeMeterBar::LoadBMSGauge()
 	if (m_BMSGauge < 0 || m_BMSGauge >= NUM_BMSGauge)
 		m_BMSGauge = BMSGauge_Normal;
 	m_bBMSAutoShift = po.m_bBMSAutoShift;
+	m_bO2Jam = false;
 
 	// dan course: the course gauge decides everything, no auto shift
 	m_iBMSClassGauge = -1;
+	m_iBMSClassTop = -1;
 	if (SONGMAN != nullptr && SONGMAN->InBMSCourse()) {
-		m_iBMSClassGauge = std::clamp(SONGMAN->bmsCourse.classGauge, 0, 2);
+		auto& c = SONGMAN->bmsCourse;
+		// auto shift: EX HARD CLASS -> EX CLASS -> CLASS
+		m_bBMSClassAutoShift = m_bBMSAutoShift;
 		m_bBMSAutoShift = false;
-		m_fBMSClassValue = BMS_CLASS_GAUGES[m_iBMSClassGauge].init;
+		if (c.classShown < 0) {
+			// first song: every course gauge starts full
+			m_iBMSClassGauge = std::clamp(c.classGauge, 0, 2);
+			m_iBMSClassTop = m_iBMSClassGauge;
+			for (auto g = 0; g < 3; g++)
+				m_fBMSClassValues[g] = BMS_CLASS_GAUGES[g].init;
+			SaveBMSClassState();
+		} else {
+			// later songs go on from where the last one ended
+			m_iBMSClassTop = std::clamp(c.classTop, 0, 2);
+			m_iBMSClassGauge = std::clamp(c.classShown, 0, m_iBMSClassTop);
+			for (auto g = 0; g < 3; g++)
+				m_fBMSClassValues[g] = c.classValues[g];
+		}
 		m_fBMSMin = BMS_CLASS_GAUGES[m_iBMSClassGauge].min;
 		m_fBMSBorder = BMS_CLASS_GAUGES[m_iBMSClassGauge].border;
-		m_fLifePercentage = m_fBMSClassValue / 100.f;
+		m_fLifePercentage = m_fBMSClassValues[m_iBMSClassGauge] / 100.f;
+		RecordBMSClassGauge(0.f);
 		static const char* names[] = { "CLASS", "EX CLASS", "EX HARD CLASS" };
-		Locator::getLogger()->info("BMS course gauge: {}",
-								   names[m_iBMSClassGauge]);
+		Locator::getLogger()->info("BMS course gauge: {}{}",
+								   names[m_iBMSClassGauge],
+								   m_bBMSClassAutoShift ? " (auto shift)" : "");
+		return;
+	}
+
+	// O2Jam chart: the O2Jam hard gauge only, no auto shift
+	m_bO2Jam = OJNLoader::IsO2JamSteps(GAMESTATE->m_pCurSteps);
+	if (m_bO2Jam) {
+		m_bBMSAutoShift = false;
+		for (auto g = 0; g < NUM_BMSGauge; g++) {
+			m_bBMSTracked[g] = g == BMSGauge_Hard;
+			for (auto i = 0; i < NUM_BMSJudge; i++)
+				m_fBMSChange[g][i] = O2JAM_HARD_CHANGE[i];
+			m_fBMSValue[g] = 100.f;
+		}
+		Locator::getLogger()->info("O2Jam chart: O2Jam hard gauge");
+		SetBMSCurrentGauge(BMSGauge_Hard);
+		RecordBMSGauges(0.f);
 		return;
 	}
 
@@ -860,20 +901,73 @@ LifeMeterBar::PickBMSAutoShiftGauge() const
 void
 LifeMeterBar::ChangeBMSClassLife(BMSJudge judge)
 {
-	const auto& prop = BMS_CLASS_GAUGES[m_iBMSClassGauge];
-	auto& value = m_fBMSClassValue;
-	if (value <= 0.f)
-		return;
-	auto inc = prop.change[judge];
-	if (inc < 0 && value < prop.gutsBelow)
-		inc *= prop.gutsScale;
-	value = std::clamp(value + inc, prop.min, 100.f);
-	if (value < prop.death)
-		value = 0.f;
+	// without auto shift only the chosen course gauge runs, with it every
+	// course gauge from CLASS up to the chosen one
+	const auto lowest = m_bBMSClassAutoShift ? 0 : m_iBMSClassTop;
+	for (auto g = lowest; g <= m_iBMSClassTop; g++) {
+		const auto& prop = BMS_CLASS_GAUGES[g];
+		auto& value = m_fBMSClassValues[g];
+		// a dead course gauge stays dead
+		if (value <= 0.f)
+			continue;
+		auto inc = prop.change[judge];
+		if (inc < 0 && value < prop.gutsBelow)
+			inc *= prop.gutsScale;
+		value = std::clamp(value + inc, prop.min, 100.f);
+		if (value < prop.death)
+			value = 0.f;
+	}
+	// shown: the strongest one still alive, else the bottom one (dead)
+	auto shown = lowest;
+	for (auto g = lowest; g <= m_iBMSClassTop; g++)
+		if (m_fBMSClassValues[g] > 0.f)
+			shown = g;
+	if (shown != m_iBMSClassGauge) {
+		static const char* names[] = { "CLASS", "EX CLASS", "EX HARD CLASS" };
+		Locator::getLogger()->info("BMS course gauge shifts to {}",
+								   names[shown]);
+		m_iBMSClassGauge = shown;
+		m_fBMSMin = BMS_CLASS_GAUGES[shown].min;
+		m_fBMSBorder = BMS_CLASS_GAUGES[shown].border;
+		Message msg("BMSGaugeShift");
+		msg.SetParam("Player", m_pPlayerState->m_PlayerNumber);
+		msg.SetParam("ClassGauge", shown);
+		MESSAGEMAN->Broadcast(msg);
+	}
+	SaveBMSClassState();
 	const auto InitialLife = m_fLifePercentage;
-	m_fLifePercentage = value / 100.f;
+	m_fLifePercentage = m_fBMSClassValues[m_iBMSClassGauge] / 100.f;
+	RecordBMSClassGauge(GAMESTATE->m_Position.m_fMusicSeconds /
+						GAMESTATE->m_SongOptions.GetCurrent().m_fMusicRate);
 	if (InitialLife != m_fLifePercentage)
 		AfterLifeChanged();
+}
+
+// the course gauge shown, as a step record for the result screen graph and
+// the site, filed under every gauge since the result screen and the upload
+// look it up by the gauge picked on song select
+void
+LifeMeterBar::RecordBMSClassGauge(float fStepsSecond) const
+{
+	if (m_pPlayerStageStats == nullptr)
+		return;
+	for (auto g = 0; g < NUM_BMSGauge; g++)
+		m_pPlayerStageStats->SetBMSGaugeRecordAt(
+		  g, m_fLifePercentage, std::max(fStepsSecond, 0.f));
+}
+
+// the course gauges go into the course, the next song's life meter picks
+// them up there
+void
+LifeMeterBar::SaveBMSClassState() const
+{
+	if (SONGMAN == nullptr || m_iBMSClassGauge < 0)
+		return;
+	auto& c = SONGMAN->bmsCourse;
+	c.classTop = m_iBMSClassTop;
+	c.classShown = m_iBMSClassGauge;
+	for (auto g = 0; g < 3; g++)
+		c.classValues[g] = m_fBMSClassValues[g];
 }
 
 void
@@ -892,11 +986,12 @@ LifeMeterBar::ChangeBMSLife(BMSJudge judge)
 			continue;
 		const auto& prop = BMS_GAUGES[g];
 		auto inc = m_fBMSChange[g][judge];
-		// hard gauge takes less damage below 32%
-		if (inc < 0 && value < prop.gutsBelow)
+		// hard gauge takes less damage below 32% (not O2Jam's)
+		if (inc < 0 && value < prop.gutsBelow && !m_bO2Jam)
 			inc *= prop.gutsScale;
 		value = std::clamp(value + inc, prop.min, 100.f);
-		if (value < prop.death)
+		// the O2Jam gauge is dead at 0, the LR2 ones below 2
+		if (value < prop.death && !m_bO2Jam)
 			value = 0.f;
 	}
 
@@ -1093,11 +1188,14 @@ LifeMeterBar::ChangeLife(float fDeltaLife)
 		  std::clamp(m_fLifePercentage + fDeltaLife, m_fBMSMin / 100.f, 1.f);
 		const auto death = m_iBMSClassGauge >= 0
 							 ? BMS_CLASS_GAUGES[m_iBMSClassGauge].death
-							 : BMS_GAUGES[m_BMSGauge].death;
+						   : m_bO2Jam ? 0.f
+									  : BMS_GAUGES[m_BMSGauge].death;
 		if (m_fLifePercentage * 100.f < death)
 			m_fLifePercentage = 0.f;
-		if (m_iBMSClassGauge >= 0)
-			m_fBMSClassValue = m_fLifePercentage * 100.f;
+		if (m_iBMSClassGauge >= 0) {
+			m_fBMSClassValues[m_iBMSClassGauge] = m_fLifePercentage * 100.f;
+			SaveBMSClassState();
+		}
 		else
 			m_fBMSValue[m_BMSGauge] = m_fLifePercentage * 100.f;
 		if (InitialLife != m_fLifePercentage)

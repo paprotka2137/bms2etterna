@@ -13,6 +13,8 @@ local bottomY = SCREEN_HEIGHT - 82 -- above the window strip
 local detailY -- set once the list size is known
 
 local onTab = false
+local sets = {}
+local setIdx = 1 -- which course file (GENOSIDE, Satellite, Stella...) is listed
 local courses = {}
 local found = {} -- [i] = {resolved, count}
 local sel = 1
@@ -31,7 +33,13 @@ local function selected()
 end
 
 local function load()
-	courses = D.allCourses()
+	D.loadSite() -- results from the ranking site too, when logged in
+	D.allCourses() -- tags every course with its set name
+	sets = D.load()
+	if setIdx > #sets then
+		setIdx = 1
+	end
+	courses = sets[setIdx] and sets[setIdx].courses or {}
 	found = {}
 	for i, c in ipairs(courses) do
 		local res, n = D.resolve(c)
@@ -87,6 +95,16 @@ local t = Def.ActorFrame {
 		self:queuecommand("Set")
 	end,
 	-- the gauge picked on song select decides the course gauge
+	BMSDanSiteLoadedMessageCommand = function(self)
+		if onTab then
+			self:playcommand("Show")
+		end
+	end,
+	BMSOptionChangedMessageCommand = function(self)
+		if onTab then
+			self:playcommand("Show")
+		end
+	end,
 	PlayerOptionsChangedMessageCommand = function(self)
 		if onTab then
 			self:playcommand("Show")
@@ -105,13 +123,44 @@ t[#t + 1] = Def.Quad {
 t[#t + 1] = text(8, frameY + 12, 0.42, 0) .. {
 	ShowCommand = function(self)
 		local c = selected()
-		self:settext(c and c.set or "No dan courses (Assets/BMSCourses)")
-		self:maxwidth((frameWidth - 16) / 0.42)
+		if c then
+			self:settext(c.set .. (#sets > 1 and ("  (" .. setIdx .. "/" .. #sets .. ")") or ""))
+		else
+			self:settext("No dan courses (Assets/BMSCourses)")
+		end
+		self:maxwidth((frameWidth - 76) / 0.42)
 	end,
 }
+
+-- < > : the previous / next course set
+local function setButton(x, label, step)
+	return Def.ActorFrame {
+		UIElements.QuadButton(1, 1) .. {
+			InitCommand = function(self)
+				self:xy(frameX + x, frameY + 12):zoomto(24, 16)
+			end,
+			ShowCommand = function(self)
+				self:diffuse(#sets > 1 and blue or gray):diffusealpha(#sets > 1 and 0.5 or 0.15)
+			end,
+			MouseDownCommand = function(self, params)
+				if params.event == "DeviceButton_left mouse button" and onTab and #sets > 1 then
+					setIdx = (setIdx - 1 + step) % #sets + 1
+					sel = 1
+					load()
+					self:GetParent():GetParent():playcommand("Show")
+				end
+			end,
+		},
+		text(x, frameY + 12, 0.4, 0.5, function(self)
+			self:settext(label)
+		end),
+	}
+end
+t[#t + 1] = setButton(frameWidth - 44, "<", -1)
+t[#t + 1] = setButton(frameWidth - 16, ">", 1)
 t[#t + 1] = text(8, frameY + 30, 0.34, 0) .. {
 	ShowCommand = function(self)
-		local b = D.best()
+		local b = D.best(sets[setIdx] and sets[setIdx].name)
 		if b then
 			local r = D.record(b.id) or {}
 			self:settext("Best: " .. (b.short or b.name) .. "  (" .. (D.gaugeNames[r.gauge_type] or "CLASS") .. ")"):diffuse(gold)
@@ -123,7 +172,8 @@ t[#t + 1] = text(8, frameY + 30, 0.34, 0) .. {
 t[#t + 1] = text(frameWidth - 8, frameY + 30, 0.32, 1) .. {
 	ShowCommand = function(self)
 		local g = gaugeFromOption[getBMSOption("Gauge")] or "Class"
-		self:settext("Course gauge: " .. D.gaugeNames[g]):diffuse(gray)
+		local shift = getBMSAutoShift and getBMSAutoShift() and g ~= "Class"
+		self:settext("Course gauge: " .. D.gaugeNames[g] .. (shift and " + AUTO SHIFT" or "")):diffuse(gray)
 	end,
 }
 
@@ -138,7 +188,7 @@ t[#t + 1] = text(frameWidth - 12, listY - 14, 0.3, 1, function(self)
 	self:settext("RESULT"):diffuse(gray)
 end)
 
-local maxRows = 12
+local maxRows = 13
 for i = 1, maxRows do
 	local y = listY + (i - 1) * rowH
 	t[#t + 1] = Def.ActorFrame {
