@@ -65,7 +65,11 @@ NetworkSyncManager::NetworkSyncManager(LoadingWindow* ld)
 	}
 }
 
-NetworkSyncManager::~NetworkSyncManager() {}
+NetworkSyncManager::~NetworkSyncManager()
+{
+	if (m_ReconnectThread && m_ReconnectThread->joinable())
+		m_ReconnectThread->join();
+}
 
 void
 NetworkSyncManager::OnMusicSelect()
@@ -114,6 +118,11 @@ NetworkSyncManager::CloseConnection()
 		return;
 	m_sChatText = "";
 	need_to_disconnect = false;
+	reconnecting = false;
+	m_bReconnectLoggingIn = false;
+	m_vHeldMessages.clear();
+	m_sRoomName.clear();
+	m_sRoomPass.clear();
 	useSMserver = false;
 	isSMOnline = false;
 	loggedIn = false;
@@ -174,6 +183,8 @@ NetworkSyncManager::PostStartUp(const std::string& ServerIP)
 
 	if (ETTP->Connect(this, iPort, sAddress))
 		curProtocol = ETTP;
+	m_sServerAddress = sAddress;
+	m_iServerPort = iPort;
 	if (curProtocol == nullptr)
 		return;
 	g_sLastServer.Set(ServerIP);
@@ -241,8 +252,11 @@ NetworkSyncManager::Logout()
 void
 NetworkSyncManager::Login(std::string user, std::string pass)
 {
-	if (ShouldSendMessage(false))
+	if (ShouldSendMessage(false)) {
+		m_sLoginUser = user;
+		m_sLoginPass = pass;
 		curProtocol->Login(user, pass);
+	}
 }
 
 void
@@ -349,13 +363,184 @@ NetworkSyncManager::DisplayStartupStatus() const
 void
 NetworkSyncManager::Update(float fDeltaTime)
 {
+	if (reconnecting) {
+		UpdateReconnect(fDeltaTime);
+		return;
+	}
 	if (curProtocol != nullptr) {
 		if (need_to_disconnect) {
-			CloseConnection();
+			// logged in: try to get the connection (and the room) back
+			if (loggedIn && !m_sLoginUser.empty() && !m_sServerAddress.empty())
+				StartReconnect();
+			else {
+				SCREENMAN->SystemMessage("Disconnected from the multiplayer server.");
+				CloseConnection();
+			}
 		} else {
 			curProtocol->Update(this, fDeltaTime);
 		}
 	}
+}
+
+// ------------------------------------------------------------ reconnecting
+
+static constexpr int RECONNECT_TRIES = 6;
+static constexpr float RECONNECT_LOGIN_SECONDS = 15.F;
+
+void
+NetworkSyncManager::RememberRoom(const std::string& name,
+								 const std::string& pass)
+{
+	m_sRoomName = name;
+	m_sRoomPass = pass;
+}
+
+void
+NetworkSyncManager::RejoinFinished(bool ok)
+{
+	// only noted here: this is called from inside ETTProtocol::Update
+	m_iRejoinResult = ok ? 1 : -1;
+}
+
+void
+NetworkSyncManager::StartReconnect()
+{
+	Locator::getLogger()->warn("Multiplayer connection lost, reconnecting");
+	SCREENMAN->SystemMessage("Multiplayer connection lost, reconnecting...");
+	need_to_disconnect = false;
+	reconnecting = true;
+	m_bReconnectLoggingIn = false;
+	m_iReconnectTries = 0;
+	m_iRejoinResult = 0;
+	m_fReconnectWait = 0.5F;
+	m_sRejoinRoom = m_sRoomName;
+	m_sRejoinRoomPass = m_sRoomPass;
+	m_vHeldMessages.clear();
+	// the old connection stays as curProtocol so whatever the game sends
+	// meanwhile (the score at the end of the song) queues up in it
+	if (curProtocol != nullptr) {
+		curProtocol->close();
+		auto* old = dynamic_cast<ETTProtocol*>(curProtocol);
+		if (old != nullptr)
+			old->holding = false;
+	}
+}
+
+// what of the dead connection's queue is still worth sending
+static bool
+KeepAfterReconnect(const std::string& msg)
+{
+	static const std::set<std::string> keep = { "score",	   "gameover",
+												"openeval",	   "closeeval",
+												"openoptions", "closeoptions",
+												"chat",		   "leaveroom" };
+	return keep.count(ETTProtocol::MessageType(msg)) > 0;
+}
+
+void
+NetworkSyncManager::UpdateReconnect(float fDeltaTime)
+{
+	auto* cur = dynamic_cast<ETTProtocol*>(curProtocol);
+
+	// connected again: logging in and getting back into the room
+	if (m_bReconnectLoggingIn) {
+		if (cur != nullptr)
+			cur->Update(this, fDeltaTime);
+		m_fReconnectWait += fDeltaTime;
+		const bool failed = need_to_disconnect || m_iRejoinResult < 0 ||
+							m_fReconnectWait > RECONNECT_LOGIN_SECONDS;
+		if (m_iRejoinResult > 0 && !need_to_disconnect) {
+			// back: everything held goes out now
+			reconnecting = false;
+			m_bReconnectLoggingIn = false;
+			if (cur != nullptr) {
+				for (auto& m : m_vHeldMessages)
+					cur->Send(m);
+				m_vHeldMessages.clear();
+				cur->ReleaseHeld();
+			}
+			Locator::getLogger()->info("Multiplayer reconnected");
+			SCREENMAN->SystemMessage("Reconnected to the multiplayer server.");
+			return;
+		}
+		if (!failed)
+			return;
+		// the room is gone or the login was refused: give up
+		if (m_iRejoinResult < 0) {
+			SCREENMAN->SystemMessage(
+			  "Reconnected, but could not get back into the room.");
+			CloseConnection();
+			return;
+		}
+		// the new connection died too: keep what it held and try again
+		need_to_disconnect = false;
+		m_bReconnectLoggingIn = false;
+		if (cur != nullptr) {
+			cur->close();
+			for (auto& m : cur->heldMessages)
+				if (KeepAfterReconnect(m))
+					m_vHeldMessages.push_back(m);
+			cur->heldMessages.clear();
+		}
+		m_fReconnectWait = 2.F;
+	}
+
+	// a connection attempt is running in the background
+	if (m_ReconnectThread) {
+		if (!m_bReconnectDone)
+			return;
+		m_ReconnectThread->join();
+		m_ReconnectThread.reset();
+		auto* fresh = m_pReconnected;
+		m_pReconnected = nullptr;
+		if (fresh != nullptr) {
+			// move what the old connection never sent over to the new one
+			if (cur != nullptr) {
+				for (auto& m : cur->TakeUnsent())
+					if (KeepAfterReconnect(m))
+						m_vHeldMessages.push_back(m);
+				for (auto& m : cur->heldMessages)
+					if (KeepAfterReconnect(m))
+						m_vHeldMessages.push_back(m);
+				cur->heldMessages.clear();
+				delete cur;
+			}
+			fresh->holding = true;
+			curProtocol = fresh;
+			isSMOnline = true;
+			m_iRejoinResult = 0;
+			m_fReconnectWait = 0.F;
+			m_bReconnectLoggingIn = true;
+			fresh->Login(m_sLoginUser, m_sLoginPass);
+			return;
+		}
+		m_fReconnectWait = std::min(1.F * (1 << m_iReconnectTries), 8.F);
+		return;
+	}
+
+	m_fReconnectWait -= fDeltaTime;
+	if (m_fReconnectWait > 0.F)
+		return;
+	if (m_iReconnectTries >= RECONNECT_TRIES) {
+		Locator::getLogger()->error("Multiplayer reconnect failed");
+		SCREENMAN->SystemMessage(
+		  "Could not reconnect to the multiplayer server.");
+		CloseConnection();
+		return;
+	}
+	m_iReconnectTries++;
+	m_bReconnectDone = false;
+	const auto address = m_sServerAddress;
+	const auto port = m_iServerPort;
+	m_ReconnectThread = std::make_unique<std::thread>([this, address, port]() {
+		auto* p = new ETTProtocol;
+		if (!p->Connect(nullptr, port, address)) {
+			delete p;
+			p = nullptr;
+		}
+		m_pReconnected = p;
+		m_bReconnectDone = true;
+	});
 }
 
 void

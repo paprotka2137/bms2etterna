@@ -455,12 +455,14 @@ end
 
 t[#t + 1] = Box(0, 0, W, H, color("0,0,0,1"))
 
--- the picture sits between the side panels, shrunk to fit but never blown up
+-- the picture is stretched to fill the whole screen (nothing is cut off)
 local picture = cleared and rankPictures(curRank) or nil
 local songBG = song:GetBackgroundPath()
 local function centerPicture(self)
-	local z = math.min(1, 740 / self:GetWidth(), 790 / self:GetHeight())
-	self:zoom(z):xy(960, 540)
+	-- the layout is 1920x1080 zoomed to the screen height, so on wider
+	-- screens the frame does not reach the edges: cover those too
+	local side = math.max(0, (SCREEN_WIDTH / scale - W) / 2)
+	self:stretchto(-side, 0, W + side, H)
 end
 if picture then
 	t[#t + 1] = Def.Sprite {

@@ -1,8 +1,8 @@
 -- theme identification file
 
 themeInfo = {
-	Name = "'Til Death",
-	Version = "1.12",
+	Name = "res extensa",
+	Version = "0.0.8",
 	Date = "20260826"
 }
 

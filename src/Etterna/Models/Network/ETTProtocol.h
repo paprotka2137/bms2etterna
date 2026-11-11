@@ -88,11 +88,22 @@ class ETTProtocol : public NetProtocol
 	void ReportReplayMine(NetworkSyncManager* n, int row, int col) override;
 	void Send(const std::string& str);
 
+	// reconnect support (see NetworkSyncManager::StartReconnect): while
+	// holding, only the messages that log in and get back into the room go
+	// out, the rest waits in heldMessages
+	bool holding = false;
+	std::vector<std::string> heldMessages;
+	void ReleaseHeld();
+	// messages queued but never sent (the connection died first)
+	auto TakeUnsent() -> std::vector<std::string>;
+	// the type of an outgoing message ("score", "login", ...)
+	static auto MessageType(const std::string& msg) -> std::string;
+
 private:
 	std::mutex sendBufferMutex;
 	std::mutex messageBufferMutex;
 	std::mutex curlMutex;
-	CURL* curl;
+	CURL* curl{ nullptr };
 
 	std::unique_ptr<std::thread> receivingThread;
 	std::unique_ptr<std::thread> sendingThread;
@@ -110,6 +121,9 @@ private:
 	std::string roomDesc;
 	bool creatingRoom{ false };
 	bool inRoom{ false };
+	std::string pendingRoomPass; // password of the room being created/entered
+	bool rejoining{ false };	 // the enterroom of a reconnect
+	bool rejoinTried{ false };
 
 	// login timeout stuff
 	bool waitingForTimeout{ false };

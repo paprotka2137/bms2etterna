@@ -284,6 +284,19 @@ local function readDensity()
 	data.bpmLine = line
 end
 
+-- how hard the chart is to EASY clear and HARD clear, on the scale of the
+-- chart's table: sl, st, oj or insane ★ (Scripts/BMSClearCalc.lua). Waits for the wheel like the densities.
+local function readClearDifficulty()
+	data.easyClear, data.hardClear, data.clearPrefix = nil, nil, nil
+	if not data.steps or data.o2jam or not getBMSClearDifficulty then
+		return
+	end
+	local ok, e, _, h, prefix = pcall(getBMSClearDifficulty, data.steps, data.rate or 1)
+	if ok then
+		data.easyClear, data.hardClear, data.clearPrefix = e, h, prefix
+	end
+end
+
 ---------------------------------------------------------------------------
 -- drawing helpers, all of them read `data` on Refresh
 ---------------------------------------------------------------------------
@@ -493,6 +506,10 @@ local t = Def.ActorFrame {
 	BMSOptionChangedMessageCommand = function(self)
 		self:playcommand("Refresh")
 	end,
+	BMSClearScaleChangedMessageCommand = function(self)
+		readClearDifficulty()
+		self:playcommand("Refresh")
+	end,
 	ChartCommand = function(self)
 		readChart()
 		-- the densities need to wait for the wheel, until then they are blank
@@ -503,6 +520,7 @@ local t = Def.ActorFrame {
 		readChart()
 		readDensity()
 		readReplay()
+		readClearDifficulty()
 		self:playcommand("Refresh")
 		self:playcommand("Graph")
 	end,
@@ -871,18 +889,58 @@ end))
 p[#p + 1] = Num("num_small 11x1.png", 553, 651, 13, 15, 3, stepsOnly(function()
 	return data.density and math.floor(data.average + 0.5)
 end))
--- NOTE LONG SCRATCH BSS MINES, 7k charts have no scratch lane
+-- NOTE LONG SCRATCH BSS MINES, 7k charts have no scratch lane: its two
+-- cells show the EASY and HARD clear difficulty instead
 do
 	local counts = {
 		function() return data.taps end,
 		function() return data.longs end,
-		function() return 0 end,
-		function() return 0 end,
+		false,
+		false,
 		function() return data.mines end,
 	}
 	for i, get in ipairs(counts) do
-		p[#p + 1] = Num("num_small 11x1.png", 618 + 91 * (i - 1), 651, 15, 15, 4, stepsOnly(get), {align = "center"})
+		if get then
+			p[#p + 1] = Num("num_small 11x1.png", 618 + 91 * (i - 1), 651, 15, 15, 4, stepsOnly(get), {align = "center"})
+		end
 	end
+	local function stars(v)
+		if v == nil then
+			return nil
+		end
+		return (data.clearPrefix or "") .. string.format("%.1f", math.max(v, -9.9))
+	end
+	local clears = {
+		{label = "EASY", c = color("#80ff60"), get = function() return data.easyClear end},
+		{label = "HARD", c = color("#ff5050"), get = function() return data.hardClear end},
+	}
+	for k, cl in ipairs(clears) do
+		local x = 789 + 91 * (k - 1)
+		-- the SCRATCH / BSS labels painted over
+		p[#p + 1] = Box(x, 627, 82, 18, color("#141414"))
+		p[#p + 1] = Text(x + 41, 636, 16, 0.5, 78, function()
+			return cl.label
+		end, cl.c)
+		p[#p + 1] = Text(x + 41, 660, 18, 0.5, 78, stepsOnly(function()
+			return stars(cl.get())
+		end))
+	end
+	-- click the numbers for another table's scale: left forward, right back
+	local scaleNames = {insane = "insane (sp)", satellite = "Satellite (sl)", stella = "Stella (st)", overjoy = "Overjoy (oj)"}
+	p[#p + 1] = Click(789, 627, 173, 50, function(event)
+		local dir
+		if event == "DeviceButton_left mouse button" then
+			dir = 1
+		elseif event == "DeviceButton_right mouse button" then
+			dir = -1
+		end
+		if not dir or not cycleBMSClearScale or not data.steps or data.o2jam then
+			return
+		end
+		local s = cycleBMSClearScale(dir)
+		SCREENMAN:SystemMessage("Clear ratings on " .. (s and scaleNames[s] or "the chart's own table") .. " scale")
+		MESSAGEMAN:Broadcast("BMSClearScaleChanged")
+	end)
 end
 
 -- notes per second: normal notes, long notes and mines stacked, the BPM line over them

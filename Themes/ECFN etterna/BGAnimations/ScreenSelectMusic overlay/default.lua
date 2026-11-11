@@ -139,6 +139,10 @@ t[#t + 1] = UIElements.TextToolTip(1, 1, "Common Large") .. {
 	end
 }
 
+-- clear calc debug view (F5), over everything but the cursor
+if ecfn then
+	t[#t + 1] = LoadActor("calcdebug")
+end
 t[#t + 1] = LoadActor("../_cursor")
 t[#t + 1] = LoadActor("../_halppls")
 

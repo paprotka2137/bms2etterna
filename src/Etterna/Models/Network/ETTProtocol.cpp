@@ -202,7 +202,10 @@ ETTProtocol::Connect(NetworkSyncManager* n,
 					 std::string address)
 {
 	close();
-	n->isSMOnline = false;
+	// n is null for a reconnect in the background (NetworkSyncManager swaps
+	// this in when it worked)
+	if (n != nullptr)
+		n->isSMOnline = false;
 	msgId = 0;
 	bool finished_connecting = false;
 
@@ -262,13 +265,14 @@ ETTProtocol::Connect(NetworkSyncManager* n,
 	}
 
 	finished_connecting = true;
-	n->isSMOnline = true;
+	if (n != nullptr)
+		n->isSMOnline = true;
 	Locator::getLogger()->info("Connected to ett server: {}", address.c_str());
 
 	LaunchPollingThread();
 	LaunchSendingThread();
 
-	return n->isSMOnline;
+	return true;
 }
 
 void
@@ -363,7 +367,49 @@ ETTProtocol::Send(const std::string& str)
 	}
 
 	std::scoped_lock<std::mutex> lock(sendBufferMutex);
+	if (holding) {
+		const auto type = MessageType(str);
+		if (type != "login" && type != "hello" && type != "ping" &&
+			type != "enterroom") {
+			heldMessages.push_back(str);
+			return;
+		}
+	}
 	messagesToSend.push_back(str);
+}
+
+std::string
+ETTProtocol::MessageType(const std::string& msg)
+{
+	// newMsg writes {"id":N,"type":"..."
+	const std::string key = "\"type\":\"";
+	const auto at = msg.find(key);
+	if (at == std::string::npos)
+		return "";
+	const auto start = at + key.size();
+	const auto end = msg.find('"', start);
+	return end == std::string::npos ? "" : msg.substr(start, end - start);
+}
+
+void
+ETTProtocol::ReleaseHeld()
+{
+	std::scoped_lock<std::mutex> lock(sendBufferMutex);
+	holding = false;
+	// live scores from while we were away are stale by now
+	for (auto& m : heldMessages)
+		if (MessageType(m) != "gameplayupdate")
+			messagesToSend.push_back(m);
+	heldMessages.clear();
+}
+
+std::vector<std::string>
+ETTProtocol::TakeUnsent()
+{
+	std::scoped_lock<std::mutex> lock(sendBufferMutex);
+	auto out = std::move(messagesToSend);
+	messagesToSend.clear();
+	return out;
 }
 
 void
@@ -500,8 +546,6 @@ ETTProtocol::LaunchPollingThread()
 						  curl_easy_strerror(result));
 						stopPolling = true;
 						NSMAN->need_to_disconnect = true;
-						SCREENMAN->SystemMessage(
-						  "Disconnecting due to network error.");
 						break;
 					} else {
 						buffer[rlen] = '\0';
@@ -745,6 +789,10 @@ ETTProtocol::handleLogin(rapidjson::Value& payload) {
 		else
 			NSMAN->loginResponse = "";
 		NSMAN->loggedInUsername.clear();
+		if (NSMAN->reconnecting) {
+			NSMAN->RejoinFinished(false);
+			return;
+		}
 	} else {
 		NSMAN->loginResponse = "";
 		// the server may know us under a different spelling (logged in
@@ -752,6 +800,13 @@ ETTProtocol::handleLogin(rapidjson::Value& payload) {
 		if (payload.HasMember("name") && payload["name"].IsString() &&
 			payload["name"].GetStringLength() > 0)
 			NSMAN->loggedInUsername = payload["name"].GetString();
+		// a reconnect outside of a room is done here, one in a room goes
+		// on when the room list comes (handleRoomlist)
+		if (NSMAN->reconnecting) {
+			if (NSMAN->RejoinRoom().empty())
+				NSMAN->RejoinFinished(true);
+			return;
+		}
 	}
 	SCREENMAN->SendMessageToTopScreen(ETTP_LoginResponse);
 }
@@ -1076,6 +1131,7 @@ ETTProtocol::handleCreateRoomResponse(rapidjson::Value& payload)
 	inRoom = created;
 
 	if (created) {
+		NSMAN->RememberRoom(roomName, pendingRoomPass);
 		Message msg(MessageIDToString(Message_UpdateScreenHeader));
 		msg.SetParam("Header", roomName);
 		msg.SetParam("Subheader", roomDesc);
@@ -1107,10 +1163,24 @@ ETTProtocol::handleChartRequest(rapidjson::Value& payload)
 void
 ETTProtocol::handleEnterRoomResponse(rapidjson::Value& payload)
 {
-	bool entered = payload["entered"].GetBool();
+	bool entered = payload.HasMember("entered") && payload["entered"].IsBool() &&
+				   payload["entered"].GetBool();
 	inRoom = false;
 
+	// back in the room after a reconnect: stay on the current screen
+	if (rejoining) {
+		rejoining = false;
+		inRoom = entered;
+		if (!entered) {
+			roomName = "";
+			roomDesc = "";
+		}
+		NSMAN->RejoinFinished(entered);
+		return;
+	}
+
 	if (entered) {
+		NSMAN->RememberRoom(roomName, pendingRoomPass);
 		try {
 			Message msg(MessageIDToString(Message_UpdateScreenHeader));
 			msg.SetParam("Header", roomName);
@@ -1241,6 +1311,24 @@ ETTProtocol::handleRoomlist(rapidjson::Value& payload)
 	for (auto& room : rooms.GetArray()) {
 		if (room.IsObject())
 			NSMAN->m_Rooms.push_back(jsonToRoom(room));
+	}
+
+	// reconnecting: get back into the room we were in
+	if (NSMAN->reconnecting && !NSMAN->RejoinRoom().empty() && !rejoinTried &&
+		NSMAN->loggedIn) {
+		rejoinTried = true;
+		const auto& want = NSMAN->RejoinRoom();
+		const auto it = std::find_if(
+		  NSMAN->m_Rooms.begin(),
+		  NSMAN->m_Rooms.end(),
+		  [&want](const RoomData& r) { return r.Name() == want; });
+		if (it == NSMAN->m_Rooms.end()) {
+			NSMAN->RejoinFinished(false);
+		} else {
+			rejoining = true;
+			EnterRoom(want, NSMAN->RejoinRoomPassword());
+		}
+		return;
 	}
 
 	SCREENMAN->SendMessageToTopScreen(ETTP_RoomsChange);
@@ -1493,6 +1581,7 @@ ETTProtocol::CreateNewRoom(std::string name,
 	onTimeout = [this](void) { this->creatingRoom = false; };
 	roomName = name.c_str();
 	roomDesc = desc.c_str();
+	pendingRoomPass = password;
 
 	auto doc = newMsg(ettpc_createroom);
 	auto& allocator = doc.GetAllocator();
@@ -1525,6 +1614,7 @@ ETTProtocol::LeaveRoom(NetworkSyncManager* n)
 
 	auto doc = newMsg(ettpc_leaveroom);
 	completeAndSend(doc);
+	n->RememberRoom("", "");
 
 	roomName = "";
 	roomDesc = "";
@@ -1547,6 +1637,7 @@ ETTProtocol::EnterRoom(std::string name, std::string password)
 
 	roomName = name.c_str();
 	roomDesc = it->Description().c_str();
+	pendingRoomPass = password;
 
 	auto doc = newMsg(ettpc_enterroom);
 	auto& allocator = doc.GetAllocator();

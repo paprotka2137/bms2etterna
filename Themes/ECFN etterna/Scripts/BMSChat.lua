@@ -207,9 +207,15 @@ function C.syncRoom()
 		return
 	end
 	C.room = room
+	-- the channel of the last room is kept aside, so a reconnect into the
+	-- same room keeps its messages
+	if C.channels[C.ROOM] then
+		C.lastRoomChannel = C.channels[C.ROOM]
+	end
 	C.channels[C.ROOM] = nil
 	if room ~= "" then
-		C.channels[C.ROOM] = {name = room, msgs = {}, unread = 0, last = 0, room = true}
+		local old = C.lastRoomChannel
+		C.channels[C.ROOM] = (old and old.name == room) and old or {name = room, msgs = {}, unread = 0, last = 0, room = true}
 		C.current = C.ROOM
 	elseif C.current == C.ROOM then
 		C.current = ""

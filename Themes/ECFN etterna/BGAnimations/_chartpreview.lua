@@ -256,4 +256,266 @@ t[#t + 1] = UIElements.QuadButton(1, 1) .. {
 	end
 }
 
+
+-- 7k: the patterns the clear calc finds (Scripts/BMSClearCalc.lua) on the
+-- chart preview, scrolling with its notes.
+--   F7  note colours: every note in the colour of its pattern, then one
+--       pattern at a time (its notes coloured, the rest grey), then off
+--   F8  pattern lanes and names right of the notes on / off
+-- The preview can't recolour its own notes, so the colours are drawn over
+-- them.
+if hideMSD() and getBMSClearDebug then
+	local MAXLABELS = 14
+	local laneW, laneGap = 5, 2
+	local kinds = BMSCalcPatterns
+	local nKinds = #kinds
+	-- a note's own colour in the "all" mode: the first of these it has
+	local priority = {"chordjack", "jack", "delay", "trill", "chordstream", "stream", "chord", "spike", "bpm"}
+	local state = {key = nil}
+	-- the 7k preview background spans skin y 44..402 (see "BG" above)
+	local clipTop, clipBottom = 44 - yPos, 402 - yPos
+	-- note colouring: 0 off, -1 every pattern, k only pattern k
+	BMSPreviewNoteMode = BMSPreviewNoteMode or 0
+
+	local function loadChart()
+		local steps = GAMESTATE:GetCurrentSteps()
+		local key = steps and steps:GetChartKey() or nil
+		if key == state.key then
+			return
+		end
+		state = {key = key}
+		if not steps then
+			return
+		end
+		-- chart time (rate 1): the preview scrolls by the chart's beats
+		local ok, d = pcall(getBMSClearDebug, steps, 1)
+		if not ok or not d then
+			return
+		end
+		local td = steps:GetTimingData()
+		local ranges = {}
+		for k, pk in ipairs(kinds) do
+			for _, r in ipairs(d.patterns[pk.key] or {}) do
+				ranges[#ranges + 1] = {
+					kind = k,
+					b1 = td:GetBeatFromElapsedTime(r[1]),
+					-- a single moment still gets a short mark
+					b2 = td:GetBeatFromElapsedTime(math.max(r[2], r[1] + 0.12)),
+				}
+			end
+		end
+		local beats = {}
+		for i, time in ipairs(d.t) do
+			beats[i] = td:GetBeatFromElapsedTime(time)
+		end
+		state.ranges = ranges
+		state.beats = beats
+		state.col = d.col
+		state.noteKinds = d.noteKinds or {}
+	end
+
+	local kindIndex = {}
+	for k, pk in ipairs(kinds) do
+		kindIndex[pk.key] = k
+	end
+
+	-- first note at or after this beat
+	local function firstNote(beats, beat)
+		local lo, hi = 1, #beats + 1
+		while lo < hi do
+			local mid = math.floor((lo + hi) / 2)
+			if beats[mid] < beat then lo = mid + 1 else hi = mid end
+		end
+		return lo
+	end
+
+	local function quad(v, x1, y1, x2, y2, c)
+		v[#v + 1] = {{x1, y1, 0}, c}
+		v[#v + 1] = {{x2, y1, 0}, c}
+		v[#v + 1] = {{x2, y2, 0}, c}
+		v[#v + 1] = {{x1, y2, 0}, c}
+	end
+
+	local labels = {}
+	local modeText
+	local f = Def.ActorFrame {
+		Name = "PatternMarks",
+		InitCommand = function(self)
+			self:draworder(95)
+		end,
+		BeginCommand = function(self)
+			SCREENMAN:GetTopScreen():AddInputCallback(function(event)
+				if event.type ~= "InputEventType_FirstPress" then
+					return false
+				end
+				local b = event.DeviceInput.button
+				if b == "DeviceButton_F8" then
+					BMSPreviewPatterns = not BMSPreviewPatterns
+					SCREENMAN:SystemMessage("Chart preview pattern lanes: " .. (BMSPreviewPatterns and "on" or "off"))
+					return true
+				elseif b == "DeviceButton_F7" and self:GetParent():GetVisible() then
+					-- off -> all -> each pattern -> off
+					local m = BMSPreviewNoteMode
+					if m == 0 then
+						m = -1
+					elseif m == -1 then
+						m = 1
+					elseif m < nKinds then
+						m = m + 1
+					else
+						m = 0
+					end
+					BMSPreviewNoteMode = m
+					return true
+				end
+				return false
+			end)
+			self:SetUpdateFunction(function(a)
+				if not a:GetParent():GetVisible() then
+					return
+				end
+				a:GetChild("Draw"):playcommand("Place")
+			end)
+		end,
+		CurrentStepsChangedMessageCommand = function(self)
+			state = {key = nil}
+		end,
+		Def.ActorMultiVertex {
+			Name = "Draw",
+			PlaceCommand = function(self)
+				local lanes = BMSPreviewPatterns == true
+				local mode = BMSPreviewNoteMode or 0
+				local verts = {}
+				local used = 0
+				if lanes or mode ~= 0 then
+					loadChart()
+				end
+				local nf = self:GetParent():GetParent():GetChild("NoteField")
+				local ps = GAMESTATE:GetPlayerState()
+				if (lanes or mode ~= 0) and state.ranges and nf and ps then
+					local z = nf:GetZoom()
+					local nx, ny = nf:GetX(), nf:GetY()
+					local function yAt(beat)
+						local off = ArrowEffects.GetYOffset(ps, 1, beat)
+						return ny + ArrowEffects.GetYPos(ps, 1, off) * z, off
+					end
+
+					-- the notes: coloured, or grey when not the picked pattern
+					if mode ~= 0 then
+						local beats, cols, nk = state.beats, state.col, state.noteKinds
+						local x1 = ArrowEffects.GetXPos(ps, 1, 0)
+						local x2 = ArrowEffects.GetXPos(ps, 2, 0)
+						local w = math.abs(x2 - x1) * z
+						if w <= 0 then w = 40 end
+						local h = w * 0.5
+						local grey = color("0.25,0.25,0.28,0.85")
+						local now = GAMESTATE:GetSongPosition():GetSongBeatVisible()
+						local i = firstNote(beats, now - 2)
+						local outside = 0
+						while i <= #beats and outside < 24 do
+							local y, off = yAt(beats[i])
+							if y < clipTop - h or y > clipBottom + h then
+								-- count the notes past the far end of the field
+								if off > 0 then outside = outside + 1 end
+							else
+								outside = 0
+								local c
+								local k = nk[i] or {}
+								if mode == -1 then
+									for _, key in ipairs(priority) do
+										if k[key] then
+											c = color(kinds[kindIndex[key]].color)
+											c[4] = 0.8
+											break
+										end
+									end
+								elseif k[kinds[mode].key] then
+									c = color(kinds[mode].color)
+									c[4] = 0.85
+								else
+									c = grey
+								end
+								if c then
+									local x = nx + ArrowEffects.GetXPos(ps, cols[i] + 1, off) * z
+									quad(verts, x - w / 2, y - h / 2, x + w / 2, y + h / 2, c)
+								end
+							end
+							i = i + 1
+						end
+					end
+
+					-- one lane per pattern right of the field, names where they start
+					if lanes then
+						local x0 = nx + 24 * 7 + 3
+						local placed = {}
+						for _, r in ipairs(state.ranges) do
+							local y1, y2 = yAt(r.b1), yAt(r.b2)
+							local startY = y1
+							if y1 > y2 then
+								y1, y2 = y2, y1
+							end
+							if y2 >= clipTop and y1 <= clipBottom then
+								local c = color(kinds[r.kind].color)
+								c[4] = (mode > 0 and mode ~= r.kind) and 0.3 or 0.85
+								local x = x0 + (r.kind - 1) * (laneW + laneGap)
+								quad(verts, x, math.max(y1, clipTop), x + laneW, math.min(y2, clipBottom), c)
+								local free = startY >= clipTop and startY <= clipBottom and used < MAXLABELS
+								for _, py in ipairs(placed) do
+									if math.abs(py - startY) < 7 then
+										free = false
+									end
+								end
+								if free then
+									placed[#placed + 1] = startY
+									used = used + 1
+									local l = labels[used]
+									l:visible(true):xy(x0 + nKinds * (laneW + laneGap) + 4, startY)
+									l:settext(kinds[r.kind].name):diffuse(color(kinds[r.kind].color))
+								end
+							end
+						end
+					end
+				end
+				for i = used + 1, MAXLABELS do
+					labels[i]:visible(false)
+				end
+				-- which colouring is on
+				if mode == 0 then
+					modeText:visible(false)
+				else
+					modeText:visible(true)
+					if mode == -1 then
+						modeText:settext("F7: ALL PATTERNS"):diffuse(color("1,1,1,1"))
+					else
+						modeText:settext("F7: " .. kinds[mode].name):diffuse(color(kinds[mode].color))
+					end
+				end
+				if #verts == 0 then
+					self:visible(false)
+				else
+					self:visible(true):SetVertices(verts)
+					self:SetDrawState {Mode = "DrawMode_Quads", First = 1, Num = #verts}
+				end
+			end,
+		},
+		LoadFont("Common Normal") .. {
+			InitCommand = function(self)
+				modeText = self
+				self:halign(0):valign(0):xy(wodth / 2 - 24 * 7 + 4, clipTop + 4):zoom(0.4):visible(false)
+				self:shadowlength(1):shadowcolor(0, 0, 0, 1)
+			end,
+		},
+	}
+	for i = 1, MAXLABELS do
+		f[#f + 1] = LoadFont("Common Normal") .. {
+			InitCommand = function(self)
+				labels[i] = self
+				self:halign(0):valign(0.5):zoom(0.32):visible(false)
+				self:shadowlength(1):shadowcolor(0, 0, 0, 1)
+			end,
+		}
+	end
+	t[#t + 1] = f
+end
+
 return t

@@ -315,9 +315,14 @@ local slowColor = color("#ffa050")
 -- layout
 ---------------------------------------------------------------------------
 
+-- the screen resets its decorations frame (zoom and position), so the
+-- scaling sits on an inner frame like ecfn.lua
 local t = Def.ActorFrame {
 	Name = "ECFNCourseResult",
 	InitCommand = function(self)
+		self:xy((SCREEN_WIDTH - W * scale) / 2, 0):zoom(scale)
+	end,
+	OnCommand = function(self)
 		self:xy((SCREEN_WIDTH - W * scale) / 2, 0):zoom(scale)
 	end,
 }
@@ -578,4 +583,4 @@ end
 
 -- START / BACK go on to song select (ScreenSplash, metrics.ini)
 
-return t
+return Def.ActorFrame {t}

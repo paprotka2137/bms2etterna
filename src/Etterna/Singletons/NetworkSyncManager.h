@@ -6,11 +6,16 @@
 
 #include "Etterna/Models/Network/NetworkConstants.h"
 
+#include <atomic>
+#include <memory>
+#include <thread>
+
 class LoadingWindow;
 class RoomData;
 class Song;
 class PlayerStageStats;
 class NetProtocol;
+class ETTProtocol;
 
 const int ETTPCVERSION = 5;
 const int NETNUMTAPSCORES = 8;
@@ -211,11 +216,47 @@ class NetworkSyncManager
 	bool spectating = false;
 	std::string spectatingWho{};
 
+	// After a network error the connection is made again in the background
+	// (also during a song), logged in with the same account and put back in
+	// the same room, without leaving the current screen. Score and status
+	// messages sent meanwhile wait and go out once the room is joined again.
+	bool reconnecting = false;
+	// set by ETTProtocol: the room could be joined again / could not
+	void RejoinFinished(bool ok);
+	[[nodiscard]] auto RejoinRoom() const -> const std::string&
+	{
+		return m_sRejoinRoom;
+	}
+	[[nodiscard]] auto RejoinRoomPassword() const -> const std::string&
+	{
+		return m_sRejoinRoomPass;
+	}
+	// remembered for a reconnect (ETTProtocol keeps them when a room is
+	// created or entered)
+	void RememberRoom(const std::string& name, const std::string& pass);
+
 	// Lua
 	void PushSelf(lua_State* L);
 
   private:
 	void StartUp();
+	void StartReconnect();
+	void UpdateReconnect(float fDeltaTime);
+
+	std::string m_sServerAddress; // what PostStartUp connected to
+	unsigned short m_iServerPort = 0;
+	std::string m_sLoginUser, m_sLoginPass;
+	std::string m_sRoomName, m_sRoomPass; // the room we are in
+	std::string m_sRejoinRoom, m_sRejoinRoomPass; // the room to get back to
+	int m_iReconnectTries = 0;
+	int m_iRejoinResult = 0; // set by RejoinFinished: 1 ok, -1 failed
+	float m_fReconnectWait = 0.F;
+	bool m_bReconnectLoggingIn = false;
+	std::unique_ptr<std::thread> m_ReconnectThread;
+	std::atomic<bool> m_bReconnectDone{ false };
+	ETTProtocol* m_pReconnected = nullptr; // set by the thread
+	std::vector<std::string> m_vHeldMessages; // sent once the room is back
+
 	bool ShouldSendMessage(bool requiresLogin = false) const;
 };
 

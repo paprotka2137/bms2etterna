@@ -4,71 +4,117 @@ end
 
 local t = Def.ActorFrame {}
 
-local frameX = THEME:GetMetric("ScreenTitleMenu", "ScrollerX") - 10
-local frameY = THEME:GetMetric("ScreenTitleMenu", "ScrollerY")
+-- title menu in the look of the beatoraja ECFN skin: its select background
+-- and vignette, the theme name on the left and the choices as wheel bars on
+-- the right (Graphics/ScreenTitleMenu scroll.lua). Everything is placed in
+-- the skin's 1920x1080 space and scaled to the screen.
+local s = ecfnScale()
+local dir = THEME:GetCurrentThemeDirectory()
+if dir:sub(1, 1) ~= "/" then
+	dir = "/" .. dir
+end
+dir = dir .. "BGAnimations/ScreenSelectMusic decorations/ecfn/"
 
---Left gray rectangle
+-- text fitted to a height in skin pixels
+local function fit(self, h)
+	local txt = self:GetText()
+	self:settext("Ag")
+	local z = h * s * 0.8 / self:GetHeight()
+	self:settext(txt):zoom(z)
+	return z
+end
+
 t[#t + 1] = Def.Quad {
 	InitCommand = function(self)
-		self:xy(0, 0):halign(0):valign(0):zoomto(250, 900):diffuse(getTitleColor('BG_Left')):diffusealpha(1)
-	end
+		self:halign(0):valign(0):zoomto(SCREEN_WIDTH, SCREEN_HEIGHT):diffuse(color("0,0,0,1"))
+	end,
 }
-
---Right gray rectangle
-t[#t + 1] =	Def.Quad {
+t[#t + 1] = Def.Sprite {
+	Texture = dir .. "background.png",
 	InitCommand = function(self)
-		self:xy(250, 0):halign(0):valign(0):zoomto(1000, 900):diffuse(getTitleColor('BG_Right')):diffusealpha(1)
-	end
+		self:halign(0):valign(0):zoomto(SCREEN_WIDTH, SCREEN_HEIGHT)
+	end,
+}
+t[#t + 1] = Def.Sprite {
+	Texture = dir .. "shadow.png",
+	InitCommand = function(self)
+		self:halign(0):valign(0):zoomto(SCREEN_WIDTH, SCREEN_HEIGHT)
+	end,
 }
 
---Light purple line
+-- top left screen name, like the skin's ":SELECT A MUSIC"
+t[#t + 1] = LoadFont("ECFN Normal") .. {
+	Text = ":TITLE MENU",
+	InitCommand = function(self)
+		fit(self, 26)
+		self:halign(0):xy(ecfnX(14), 40 * s):diffuse(color("#ffffff"))
+	end,
+}
+
+-- thin silver-blue strips along the top and above the footer
+local function strip(y)
+	return Def.Quad {
+		InitCommand = function(self)
+			self:halign(0):valign(0):xy(0, y):zoomto(SCREEN_WIDTH, 2 * s)
+			self:diffuseleftedge(color("#c8d2e0")):diffuserightedge(color("#3f9fff")):diffusealpha(0.55)
+		end,
+	}
+end
+t[#t + 1] = strip(72 * s)
+
+-- footer with the keys
 t[#t + 1] = Def.Quad {
 	InitCommand = function(self)
-		self:xy(250, 0):halign(0):valign(0):zoomto(10, 900):diffuse(getTitleColor('Line_Left')):diffusealpha(1)
-	end
+		self:halign(0):valign(0):xy(0, SCREEN_HEIGHT - 40 * s):zoomto(SCREEN_WIDTH, 40 * s)
+		self:diffuse(color("0,0,0,0.55"))
+	end,
 }
-
---Dark purple line
-t[#t + 1] = Def.Quad {
+t[#t + 1] = strip(SCREEN_HEIGHT - 40 * s)
+t[#t + 1] = LoadFont("ECFN Normal") .. {
+	Text = "UP / DOWN  SELECT        START  DECIDE        BACK  EXIT",
 	InitCommand = function(self)
-		self:xy(260, 0):halign(0):valign(0):zoomto(10, 900):diffuse(getTitleColor('Line_Right')):diffusealpha(1)
-	end
+		fit(self, 16)
+		self:halign(1):xy(ecfnX(1900), SCREEN_HEIGHT - 20 * s):diffuse(color("#aab9d7"))
+	end,
 }
 
+local logoX, logoY = ecfnX(560), SCREEN_CENTER_Y - 60 * s
 local playingMusic = {}
 local playingMusicCounter = 1
---Title text
-t[#t + 1] = UIElements.TextToolTip(1, 1, "Common Large") .. {
-	InitCommand=function(self)
-		self:xy(125,frameY-82):zoom(0.7):align(0.5,1)
-		self:diffusetopedge(Saturation(getMainColor("highlight"), 0.5))
-		self:diffusebottomedge(Saturation(getMainColor("positive"), 0.8))
-		self:diffusealpha(0)
+
+-- what the build is for, above the name
+t[#t + 1] = LoadFont("ECFN Normal") .. {
+	Text = "BMS  /  O2JAM    7KEYS",
+	InitCommand = function(self)
+		fit(self, 20)
+		self:halign(0):valign(1):xy(logoX - 425 * s, logoY - 92 * s):diffuse(color("#a0bef0"))
+		self:shadowlength(2 * s):shadowcolor(color("0,0,0,0.6"))
 	end,
-	OnCommand=function(self)
-		self:settext("Etterna")
-		self:queuecommand("lazy")
+}
+
+-- line under the name, version at its right end
+t[#t + 1] = Def.Sprite {
+	Texture = dir .. "name_line.png",
+	InitCommand = function(self)
+		self:xy(logoX, logoY + 98 * s):zoomto(853 * s, 20 * s)
 	end,
-	lazyCommand = function(self)
-		if SOUND:GetMusicPath() ~= "" then
-			self:playcommand("PlayingMusic", {file = SOUND:GetMusicPath()})
-		end
+}
+
+-- theme name, click to play random songs (right click stops them)
+t[#t + 1] = UIElements.SpriteButton(1, 1, THEME:GetPathG("", "_title logo")) .. {
+	Name = "Logo",
+	InitCommand = function(self)
+		self:z(1):xy(logoX, logoY):zoom(0.8 * s)
 	end,
 	MouseOverCommand = function(self)
-		self:diffusealpha(0.6)
+		self:diffusealpha(0.75)
 	end,
 	MouseOutCommand = function(self)
 		self:diffusealpha(1)
 	end,
 	PlayingMusicMessageCommand = function(self, params)
 		if params.file ~= "" and params.file:find("_missing") == nil then
-			self:effectclock("beat")
-			self:heartbeat()
-			if playingMusicCounter == 1 then
-				self:diffusealpha(0):smooth(2):diffusealpha(1)
-			end
-		else
-			self:diffusealpha(1)
+			self:effectclock("beat"):heartbeat()
 		end
 	end,
 	StoppedMusicMessageCommand = function(self)
@@ -80,9 +126,9 @@ t[#t + 1] = UIElements.TextToolTip(1, 1, "Common Large") .. {
 				local sngs = SONGMAN:GetAllSongs()
 				if #sngs == 0 then ms.ok("No songs to play") return end
 
-				local s = sngs[math.random(#sngs)]
-				local p = s:GetMusicPath()
-				local l = s:MusicLengthSeconds()
+				local song = sngs[math.random(#sngs)]
+				local p = song:GetMusicPath()
+				local l = song:MusicLengthSeconds()
 				local top = SCREENMAN:GetTopScreen()
 
 				local thisSong = playingMusicCounter
@@ -90,9 +136,9 @@ t[#t + 1] = UIElements.TextToolTip(1, 1, "Common Large") .. {
 
 				SOUND:StopMusic()
 				SOUND:PlayMusicPart(p, 0, l)
-	
-				ms.ok("NOW PLAYING: "..s:GetMainTitle() .. " | LENGTH: "..SecondsToMMSS(l))
-	
+
+				ms.ok("NOW PLAYING: " .. song:GetMainTitle() .. " | LENGTH: " .. SecondsToMMSS(l))
+
 				top:setTimeout(
 					function()
 						if not playingMusic[thisSong] then return end
@@ -101,9 +147,8 @@ t[#t + 1] = UIElements.TextToolTip(1, 1, "Common Large") .. {
 					end,
 					l
 				)
-	
 			end
-	
+
 			SCREENMAN:GetTopScreen():setTimeout(function()
 					playingMusic[playingMusicCounter] = false
 					playingMusicCounter = playingMusicCounter + 1
@@ -119,34 +164,15 @@ t[#t + 1] = UIElements.TextToolTip(1, 1, "Common Large") .. {
 	end,
 }
 
---Theme text
-t[#t + 1] = LoadFont("Common Large") .. {
-	InitCommand=function(self)
-		self:xy(125,frameY-52):zoom(0.325):align(0.5,1)
-		self:diffusetopedge(Saturation(getMainColor("highlight"), 0.5))
-		self:diffusebottomedge(Saturation(getMainColor("positive"), 0.8))
-	end,
-	OnCommand=function(self)
-		self:settext(getThemeName())
-	end
-}
-
---Version number
-t[#t + 1] = UIElements.TextToolTip(1, 1, "Common Large") .. {
+-- version
+t[#t + 1] = LoadFont("ECFN Normal") .. {
 	Name = "Version",
-	InitCommand=function(self)
-		self:xy(125,frameY-35):zoom(0.25):align(0.5,1)
-		self:diffusetopedge(Saturation(getMainColor("highlight"), 0.5))
-		self:diffusebottomedge(Saturation(getMainColor("positive"), 0.8))
+	InitCommand = function(self)
+		self:settext("ver " .. getThemeVersion())
+		fit(self, 26)
+		self:halign(1):xy(logoX + 420 * s, logoY + 135 * s):diffuse(color("#6eb4ff"))
+		self:shadowlength(2 * s):shadowcolor(color("0,0,0,0.7"))
 	end,
-	BeginCommand = function(self)
-		self:settext(GAMESTATE:GetEtternaVersion())
-	end,
-	MouseDownCommand = function(self, params)
-		if params.event == "DeviceButton_left mouse button" then
-			DLMAN:ShowProjectReleases()
-		end
-	end
 }
 
 --game update button
@@ -205,21 +231,17 @@ local function mysplit(inputstr, sep)
 	return t
 end
 
-local transformF = THEME:GetMetric("ScreenTitleMenu", "ScrollerTransform")
 local scrollerX = THEME:GetMetric("ScreenTitleMenu", "ScrollerX")
 local scrollerY = THEME:GetMetric("ScreenTitleMenu", "ScrollerY")
 local scrollerChoices = THEME:GetMetric("ScreenTitleMenu", "ChoiceNames")
-local _, count = string.gsub(scrollerChoices, "%,", "")
 local choices = mysplit(scrollerChoices, ",")
-local choiceCount = count + 1
-local i
+local choiceCount = #choices
 for i = 1, choiceCount do
+	-- same place as the bar of the choice (metrics ScrollerTransform)
 	t[#t + 1] = UIElements.QuadButton(1, 1) .. {
 		OnCommand = function(self)
-			self:xy(scrollerX, scrollerY):zoomto(260, 16)
-			transformF(self, 0, i, choiceCount)
-			self:addx(SCREEN_CENTER_X - 20)
-			self:addy(SCREEN_CENTER_Y - 20)
+			self:halign(0):zoomto(730 * s, 52 * s)
+			self:xy(scrollerX - 40 * s, scrollerY + 60 * s * ((i - 1) - (choiceCount - 1) / 2))
 			self:diffusealpha(0)
 		end,
 		MouseDownCommand = function(self, params)
