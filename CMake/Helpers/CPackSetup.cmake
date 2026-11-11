@@ -1,7 +1,9 @@
 ## CPack Setup
-set(CPACK_PACKAGE_NAME "Etterna")
+# package files are named res-extensa-<version>-<system>
+set(CPACK_PACKAGE_NAME "res-extensa")
+set(CPACK_PACKAGE_VERSION "${APP_DISPLAY_VERSION}")
 set(CPACK_PACKAGE_VENDOR "Etterna Team")
-set(CMAKE_PACKAGE_DESCRIPTION "Advanced cross-platform rhythm game focused on keyboard play")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Etterna with BMS (LR2/beatoraja) and O2Jam rules for 7k")
 set(CPACK_RESOURCE_FILE_LICENSE ${PROJECT_SOURCE_DIR}/CMake/CPack/license_install.txt)
 set(CPACK_COMPONENT_ETTERNA_REQUIRED TRUE)  # Require Etterna component to be installed
 
@@ -44,18 +46,20 @@ if(WIN32)
     set(CPACK_GENERATOR "NSIS")
     set(CPACK_NSIS_INSTALL_ROOT "C:\\\\Games") # Default install directory
     set(CPACK_NSIS_EXECUTABLES_DIRECTORY Program)
+    set(CPACK_NSIS_PACKAGE_NAME "${APP_DISPLAY_NAME} ${APP_DISPLAY_VERSION}")
+    set(CPACK_NSIS_DISPLAY_NAME "${APP_DISPLAY_NAME} ${APP_DISPLAY_VERSION}")
     set(CPACK_NSIS_MUI_FINISHPAGE_RUN Etterna.exe)
     set(CPACK_NSIS_MUI_ICON ${PROJECT_SOURCE_DIR}/CMake/CPack/Windows/Install.ico)
     set(CPACK_NSIS_MUI_UNIICON ${PROJECT_SOURCE_DIR}/CMake/CPack/Windows/Install.ico)
     set(CPACK_NSIS_MUI_WELCOMEFINISHPAGE_BITMAP ${PROJECT_SOURCE_DIR}/CMake/CPack/Windows/welcome-ett.bmp)
 	set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
 	set(CPACK_NSIS_MODIFY_PATH OFF)
-    set(CPACK_PACKAGE_INSTALL_DIRECTORY Etterna)
-    set(CPACK_PACKAGE_EXECUTABLES Etterna;Etterna)
-	set(CPACK_CREATE_DESKTOP_LINKS Etterna.exe)
+    set(CPACK_PACKAGE_INSTALL_DIRECTORY "${APP_DISPLAY_NAME}")
+    set(CPACK_PACKAGE_EXECUTABLES "Etterna;${APP_DISPLAY_NAME}")
+	set(CPACK_CREATE_DESKTOP_LINKS Etterna)
     set(CPACK_PACKAGE_ICON ${PROJECT_SOURCE_DIR}\\\\CMake\\\\CPack\\\\Windows\\\\header-ett.bmp)
-    set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "CreateShortCut \\\"$INSTDIR\\\\Etterna.lnk\\\" \\\"$INSTDIR\\\\Program\\\\Etterna.exe\\\"")
-    set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS "Delete \\\"$INSTDIR\\\\Etterna.lnk\\\"")
+    set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "CreateShortCut \\\"$INSTDIR\\\\${APP_DISPLAY_NAME}.lnk\\\" \\\"$INSTDIR\\\\Program\\\\Etterna.exe\\\"")
+    set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS "Delete \\\"$INSTDIR\\\\${APP_DISPLAY_NAME}.lnk\\\"")
 
     ## Switch the strings below to use backslashes. NSIS requires it for those variables in particular. Copied from original script.
     string(REGEX REPLACE "/" "\\\\\\\\" CPACK_NSIS_MUI_WELCOMEFINISHPAGE_BITMAP "${CPACK_NSIS_MUI_WELCOMEFINISHPAGE_BITMAP}")
@@ -79,7 +83,7 @@ if(WIN32)
 elseif(APPLE)
     # CPack Packaging
     set(CPACK_GENERATOR DragNDrop)
-    set(CPACK_DMG_VOLUME_NAME Etterna)
+    set(CPACK_DMG_VOLUME_NAME "${APP_DISPLAY_NAME}")
 
     # Workaround XProtect race condition for "hdiutil create" for MacOS 13
     set(CPACK_COMMAND_HDIUTIL "${CMAKE_CURRENT_LIST_DIR}/hdiutil_repeat.sh")

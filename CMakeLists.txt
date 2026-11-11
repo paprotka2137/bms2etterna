@@ -24,6 +24,11 @@ project(Etterna
         HOMEPAGE_URL https://github.com/etternagame/etterna/
         LANGUAGES C CXX ASM)
 
+# the name and version players see: window, installer, packages. The
+# executable and its folders keep the Etterna name.
+set(APP_DISPLAY_NAME "res extensa")
+set(APP_DISPLAY_VERSION "0.0.7")
+
 ## CMake and Compiler Setup
 set(CMAKE_CXX_STANDARD 20)                                      # Minimum C++ Version
 set(CMAKE_CXX_EXTENSIONS OFF)                                   # True if compiler extensions are necessary. (Changes -std flag)
