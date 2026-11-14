@@ -13,10 +13,10 @@ local function IgnoreTabInputs()
 	end
 end
 
-local tabNames = {"General", "MSD", "Scores", "Search", "Profile", "Filters", "Goals", "Playlists", "Packs", "Tags", "Ranking", "Dan"} -- this probably should be in tabmanager.
+local tabNames = {"General", "MSD", "Scores", "Search", "Profile", "Filters", "Goals", "Playlists", "Packs", "Tags", "Ranking", "Dan", "Recommend"} -- this probably should be in tabmanager.
 -- 7k (ECFN song select) works like beatoraja's option windows: General is
--- always up and holding 1 2 3 4 5 slides out Ranking, Profile, Goals, Playlists
--- and Tags until the key is let go. The bar shows those keys instead of tabs,
+-- always up and holding 1 2 3 4 5 6 slides out Ranking, Profile, Goals, Playlists,
+-- Dan and Recommend until the key is let go. The bar shows those keys instead of tabs,
 -- clicking one keeps its window open until it is clicked again. MSD, Search,
 -- Filters and Packs are gone (search opens from the search box at the top).
 local ecfn = hideMSD()
@@ -28,14 +28,14 @@ ecfnDir = ecfnDir .. "BGAnimations/ScreenSelectMusic decorations/ecfn/"
 local shownTabs = {}
 if ecfn then
 	-- Ranking (the BMS 7k ranking site, with the local scores) in place of
-	-- Scores, no Tags
-	shownTabs = {11, 5, 7, 8, 12}
+	-- Scores, no Tags; Recommend (charts to clear / hard clear) on key 6
+	shownTabs = {11, 5, 7, 8, 12, 13}
 else
-	for i = 1, #tabNames - 2 do
+	for i = 1, #tabNames - 3 do
 		shownTabs[#shownTabs + 1] = i
 	end
 end
-local ecfnKeys = {"1", "2", "3", "4", "5"}
+local ecfnKeys = {"1", "2", "3", "4", "5", "6"}
 
 local function switchTab(to)
 	local tind = getTabIndex()
@@ -129,7 +129,7 @@ local t =
 	end,
 }
 
-local frameWidth = capWideScale(get43size(450), 450) / (#tabNames - 3)
+local frameWidth = capWideScale(get43size(450), 450) / (#tabNames - 4)
 if ecfn then
 	frameWidth = (ecfnX(1160) - 4) / #shownTabs
 end

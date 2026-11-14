@@ -78,12 +78,24 @@ PlayerSpectate::Init(const std::string& sType,
 											  "ComboBreakOnImmediateHoldLetGo");
 	if (m_pPlayerStageStats)
 		m_pPlayerStageStats->m_bDisqualified = true;
+
+	// live spectating judges like the player: the same rules (LR2, O2Jam,
+	// BMS gauges, empty POORs) from the keys they pressed and let go
+	m_bLiveJudging = NSMAN->liveSpectate;
+	m_iLiveInputsTaken = 0;
+	if (m_bLiveJudging) {
+		const auto* style = GAMESTATE->GetCurrentStyle(PLAYER_1);
+		m_vbLiveDown.assign(style != nullptr ? style->m_iColsPerPlayer : 0,
+							false);
+	}
 }
 
 void
 PlayerSpectate::Load()
 {
 	Player::Load();
+	if (m_bLiveJudging)
+		return;
 
 	const auto fSongBeat = GAMESTATE->m_Position.m_fSongBeat;
 	const auto iSongRow = BeatToNoteRow(fSongBeat);
@@ -117,6 +129,8 @@ PlayerSpectate::UpdateHoldNotes(int iSongRow,
 							  std::vector<TrackRowTapNote>& vTN)
 {
 	Player::UpdateHoldNotes(iSongRow, fDeltaTime, vTN);
+	if (m_bLiveJudging)
+		return;
 	ASSERT(!vTN.empty());
 
 	const auto iStartRow = vTN[0].iRow;
@@ -189,6 +203,10 @@ PlayerSpectate::UpdateHoldsAndRolls(
   float fDeltaTime,
   const std::chrono::steady_clock::time_point& now)
 {
+	if (m_bLiveJudging) {
+		Player::UpdateHoldsAndRolls(fDeltaTime, now);
+		return;
+	}
 	const auto fSongBeat = GAMESTATE->m_Position.m_fSongBeat;
 	const auto iSongRow = BeatToNoteRow(fSongBeat);
 
@@ -269,6 +287,13 @@ PlayerSpectate::UpdateHoldsAndRolls(
 void
 PlayerSpectate::Update(float fDeltaTime)
 {
+	if (m_bLiveJudging) {
+		if (m_bLoaded && GAMESTATE->m_pCurSong != nullptr &&
+			!GAMESTATE->GetPaused())
+			StepLiveInputs();
+		Player::Update(fDeltaTime);
+		return;
+	}
 	const auto now = std::chrono::steady_clock::now();
 	if (!m_bLoaded || GAMESTATE->m_pCurSong == nullptr)
 		return;
@@ -303,6 +328,32 @@ PlayerSpectate::Update(float fDeltaTime)
 	// Check for completely judged rows.
 	UpdateJudgedRows(fDeltaTime);
 	UpdateTapNotesMissedOlderThan(GetMaxStepDistanceSeconds());
+}
+
+void
+PlayerSpectate::StepLiveInputs()
+{
+	auto* replay = REPLAYS->GetSpectateReplay(NSMAN->spectatingWho);
+	if (replay == nullptr)
+		return;
+	// the stream adds them in the order they were pressed
+	const auto& inputs = replay->GetInputDataVector();
+	const auto now = std::chrono::steady_clock::now();
+	const auto fNow = GAMESTATE->m_Position.m_fMusicSeconds;
+	const auto cols = static_cast<int>(m_vbLiveDown.size());
+	while (m_iLiveInputsTaken < inputs.size()) {
+		const auto& e = inputs[m_iLiveInputsTaken];
+		if (e.songPositionSeconds > fNow)
+			break;
+		++m_iLiveInputsTaken;
+		if (e.column < 0 || e.column >= cols)
+			continue;
+		m_vbLiveDown[e.column] = e.is_press;
+		m_bLiveStepTime = true;
+		m_fLiveStepSeconds = e.songPositionSeconds;
+		Player::Step(e.column, -1, now, false, !e.is_press, 0.F);
+		m_bLiveStepTime = false;
+	}
 }
 
 void
@@ -430,6 +481,10 @@ PlayerSpectate::CheckForSteps(const std::chrono::steady_clock::time_point& tm)
 void
 PlayerSpectate::UpdatePressedFlags()
 {
+	if (m_bLiveJudging) {
+		Player::UpdatePressedFlags();
+		return;
+	}
 	const auto iNumCols =
 	  GAMESTATE->GetCurrentStyle(GetPlayerState()->m_PlayerNumber)
 		->m_iColsPerPlayer;
@@ -450,6 +505,10 @@ void
 PlayerSpectate::CrossedRows(int iLastRowCrossed,
 						  const std::chrono::steady_clock::time_point& now)
 {
+	if (m_bLiveJudging) {
+		Player::CrossedRows(iLastRowCrossed, now);
+		return;
+	}
 	auto& iter = *m_pIterUncrossedRows;
 	auto iLastSeenRow = -1;
 	for (; !iter.IsAtEnd() && iter.Row() <= iLastRowCrossed; ++iter) {
@@ -495,6 +554,12 @@ PlayerSpectate::CrossedRows(int iLastRowCrossed,
 void
 PlayerSpectate::HandleMessage(const Message& msg)
 {
+	// live: the presses are stepped in Update, holds and mines judge
+	// themselves from the keys down like for the player
+	if (m_bLiveJudging) {
+		Player::HandleMessage(msg);
+		return;
+	}
 	if (msg == Message_SpectatorInputUpdate) {
 		std::string playerID;
 		msg.GetParam("playerID", playerID);
@@ -549,6 +614,10 @@ PlayerSpectate::HandleMessage(const Message& msg)
 void
 PlayerSpectate::HandleTapRowScore(unsigned row)
 {
+	if (m_bLiveJudging) {
+		Player::HandleTapRowScore(row);
+		return;
+	}
 	const auto scoreOfLastTap =
 	  NoteDataWithScoring::LastTapNoteWithResult(m_NoteData, row).result.tns;
 	const auto iOldCombo =
@@ -631,6 +700,10 @@ PlayerSpectate::HandleTapRowScore(unsigned row)
 void
 PlayerSpectate::UpdateTapNotesMissedOlderThan(float fMissIfOlderThanSeconds)
 {
+	if (m_bLiveJudging) {
+		Player::UpdateTapNotesMissedOlderThan(fMissIfOlderThanSeconds);
+		return;
+	}
 	int iMissIfOlderThanThisRow;
 	const auto fEarliestTime =
 	  GAMESTATE->m_Position.m_fMusicSeconds - fMissIfOlderThanSeconds;

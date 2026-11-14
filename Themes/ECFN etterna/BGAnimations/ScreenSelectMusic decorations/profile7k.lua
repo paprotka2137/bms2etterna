@@ -1,6 +1,7 @@
 -- 7k: the "Profile" window (key 2) in the Dan window's look (Scripts/
--- ECFNWindow.lua). BEST lists the best play of every 7k chart sorted by level
--- and lamp, RECENT the latest plays, TOP the best EX rates. Clicking a row
+-- ECFNWindow.lua). BEST lists the best play of every 7k chart sorted by its
+-- Good enough rating (like the site's profile; O2Jam charts by level and
+-- lamp), RECENT the latest plays, TOP the best EX rates. Clicking a row
 -- moves the wheel to its song. Logged in to the ranking site, the lists come
 -- from the site (every computer's plays), else from this computer's scores.
 -- BMS / O2JAM switches between BMS charts (EX%, LR2 lamps) and O2Jam charts
@@ -45,8 +46,72 @@ local function bestO2Jam(ck)
 	return lamp, bestScore, bestValue
 end
 
+-- Good enough rating of a chart: its clear calc Easy and Hard values on the
+-- insane ★ scale, the numbers the site shows. They come from the site's
+-- calcrating.json when it is on this computer (the exact site numbers), else
+-- from the game's clear calc.
+local GR_FILE = "/leaderboard/site/public/calcrating.json"
+local function loadGR()
+	if BMSGoodRatingFile then
+		return BMSGoodRatingFile
+	end
+	local out = {}
+	local f = RageFileUtil.CreateRageFile()
+	if f:Open(GR_FILE, 1) then
+		local str = f:Read() or ""
+		f:Close()
+		for k, e, h in str:gmatch('"([^"]+)":%[(-?[%d%.]+),(-?[%d%.]+)%]') do
+			out[k] = {tonumber(e), tonumber(h)}
+		end
+	end
+	f:destroy()
+	-- kept in a global: read once per game start
+	BMSGoodRatingFile = out
+	return out
+end
+
+local grCalc = {}
+local function chartGR(ck, steps)
+	local v = loadGR()[ck]
+	if v then
+		return v
+	end
+	if grCalc[ck] ~= nil then
+		return grCalc[ck] or nil
+	end
+	grCalc[ck] = false
+	steps = steps or SONGMAN:GetStepsByChartKey(ck)
+	if steps and getBMSClearDifficulty then
+		-- the calc on the insane scale, whatever scale the wheel shows
+		local was = BMSClearScale
+		BMSClearScale = "insane"
+		local ok, e, _, h = pcall(getBMSClearDifficulty, steps, 1)
+		BMSClearScale = was
+		if ok and e and h then
+			grCalc[ck] = {e, h}
+		end
+	end
+	return grCalc[ck] or nil
+end
+
+-- the rating a lamp is worth: Easy value for EASY and CLEAR, Hard value for
+-- HARD, EX HARD and FC, nil when failed or the chart has no rating
+local function lampGR(e)
+	if e.o2 or not e.lamp or e.lamp < 1 or e.lamp > 5 then
+		return nil
+	end
+	local g = chartGR(e.ck, e.steps)
+	return g and (e.lamp <= 3 and g[2] or g[1]) or nil
+end
+
 local function sortLists(best, top)
+	for _, e in ipairs(best) do
+		e.gr = lampGR(e)
+	end
 	table.sort(best, function(a, b)
+		-- highest rating first, charts without one after (like the site)
+		local ga, gb = a.gr or -99, b.gr or -99
+		if ga ~= gb then return ga > gb end
 		if a.level ~= b.level then return a.level > b.level end
 		if a.lamp ~= b.lamp then return a.lamp < b.lamp end
 		return a.rate > b.rate
@@ -308,7 +373,7 @@ t.BMSProfileRefreshMessageCommand = function(self)
 end
 
 -- column names
-local col = {num = 18, lv = 24, title = 62, rateX = W.width - 150, ex = W.width - 92, lamp = W.width - 62, date = W.width - 10}
+local col = {num = 18, lv = 24, title = 62, gr = W.width - 172, rateX = W.width - 150, ex = W.width - 92, lamp = W.width - 62, date = W.width - 10}
 local function head(x, align, label, o2label)
 	t[#t + 1] = W.text(x, listY - 14, 0.3, align, function(self)
 		self:settext(label):diffuse(W.gray)
@@ -320,6 +385,13 @@ local function head(x, align, label, o2label)
 end
 head(col.lv, 0, "LV")
 head(col.title, 0, "TITLE")
+t[#t + 1] = W.text(col.gr, listY - 14, 0.3, 1, function(self)
+	self:diffuse(W.gray)
+end) .. {
+	ShowCommand = function(self)
+		self:settext(isO2() and "" or "RATING")
+	end,
+}
 head(col.rateX, 0.5, "RATE")
 head(col.ex, 1, "EX%", "SCORE")
 head(col.lamp, 0.5, "LAMP")
@@ -349,13 +421,21 @@ for i = 1, rows do
 			end,
 		},
 		W.text(col.title, y, 0.32, 0, function(self)
-			self:maxwidth((col.rateX - col.title - 24) / 0.32)
+			self:maxwidth((col.gr - 40 - col.title) / 0.32)
 		end) .. {
 			ShowCommand = function(self)
 				local e = entry(i)
 				self:settext(e and e.title or "")
 				-- invalid scores in red like Til Death
 				self:diffuse(e and not e.valid and W.red or W.white)
+			end,
+		},
+		-- the Good enough rating of the lamp (BEST), as on the site
+		W.text(col.gr, y, 0.3, 1) .. {
+			ShowCommand = function(self)
+				local e = entry(i)
+				local v = e and not e.o2 and (e.gr or lampGR(e))
+				self:settext(v and string.format("★%.2f", v) or ""):diffuse(color("#ffd080"))
 			end,
 		},
 		W.text(col.rateX, y, 0.3, 0.5) .. {

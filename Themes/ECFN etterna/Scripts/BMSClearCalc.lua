@@ -74,10 +74,13 @@ local ROLL_JACK = 0.3
 -- HARD: a note's miss chance is at most HARD_MISS_MAX, a burst is got through
 -- by hitting part of it
 local HARD_MISS_MAX = 0.3
+-- luck / mashing: a note harder than LUCK_SPIKE x the chart's median note is
+-- got through with luck or by mashing; it counts LUCK_KEEP of the excess
+local LUCK_SPIKE, LUCK_KEEP = 1.8, 0.4
 
 -- HARD's skill is moved by this (ln) before it becomes a level, so that HARD
 -- sits about 2.5 ★ over EASY on the insane table
-local HARD_SHIFT = -0.0660
+local HARD_SHIFT = -0.0646
 
 -- Every scale is set 0.5 lower than the folder medians, by request (the
 -- folder fit read about 1 point high in play).
@@ -86,86 +89,86 @@ local HARD_SHIFT = -0.0660
 -- table comparison sheet, st and oj from the Stella / Overjoy comparison,
 -- Overjoy = ★ + 20). sl, st, oj: that table's own levels.
 local SCALES = {
-	insane = {prefix = "sp", lo = 12.8272, hi = 1.5535, knots = {
-		{3.6824, 2.911},
-		{3.7729, 3.292},
-		{3.8311, 4.658},
-		{3.8794, 6.117},
-		{3.9227, 8.426},
-		{3.9662, 9.745},
-		{4.0107, 11.805},
-		{4.0535, 14.064},
-		{4.0959, 16.163},
-		{4.1393, 18.468},
-		{4.1627, 19.255},
-		{4.1852, 19.936},
-		{4.2063, 20.102},
-		{4.2225, 20.539},
-		{4.2335, 20.685},
-		{4.2463, 20.967},
-		{4.2590, 21.218},
-		{4.2685, 21.344},
-		{4.2799, 21.647},
-		{4.2876, 21.835},
-		{4.2988, 22.098},
-		{4.3089, 22.358},
-		{4.3165, 22.437},
-		{4.3319, 22.655},
-		{4.3448, 22.907},
-		{4.3560, 23.083},
-		{4.3693, 23.133},
-		{4.3808, 23.397},
-		{4.3927, 23.685},
-		{4.4048, 23.779},
-		{4.4187, 23.835},
-		{4.4384, 24.113},
-		{4.4511, 24.283},
-		{4.4627, 24.500},
-		{4.4672, 24.637},
-		{4.4869, 24.767},
-		{4.5044, 24.998},
-		{4.5390, 25.273},
-		{4.5887, 25.810},
-		{4.6911, 26.992},
+	insane = {prefix = "sp", lo = 9.8746, hi = 0.9671, knots = {
+		{3.6806, 2.911},
+		{3.7712, 3.292},
+		{3.8295, 4.658},
+		{3.8771, 6.117},
+		{3.9209, 8.426},
+		{3.9638, 9.745},
+		{4.0085, 11.805},
+		{4.0507, 14.064},
+		{4.0944, 16.163},
+		{4.1369, 18.468},
+		{4.1612, 19.255},
+		{4.1814, 19.936},
+		{4.2040, 20.102},
+		{4.2204, 20.539},
+		{4.2317, 20.685},
+		{4.2437, 20.967},
+		{4.2562, 21.218},
+		{4.2660, 21.344},
+		{4.2771, 21.647},
+		{4.2836, 21.835},
+		{4.2949, 22.098},
+		{4.3047, 22.358},
+		{4.3140, 22.437},
+		{4.3271, 22.655},
+		{4.3404, 22.907},
+		{4.3515, 23.083},
+		{4.3651, 23.133},
+		{4.3780, 23.397},
+		{4.3888, 23.685},
+		{4.4016, 23.779},
+		{4.4154, 23.835},
+		{4.4362, 24.113},
+		{4.4482, 24.283},
+		{4.4579, 24.500},
+		{4.4620, 24.637},
+		{4.4823, 24.767},
+		{4.4998, 24.998},
+		{4.5322, 25.273},
+		{4.5842, 25.810},
+		{4.6833, 26.992},
 	}},
-	satellite = {prefix = "sl", lo = 29.4422, hi = 26.9347, knots = {
-		{3.5235, -0.500},
-		{3.6480, 0.500},
-		{3.7359, 1.500},
-		{3.8031, 2.500},
-		{3.8624, 3.500},
-		{3.9013, 4.500},
-		{3.9483, 5.500},
-		{3.9856, 6.500},
-		{4.0249, 7.500},
-		{4.0509, 8.500},
-		{4.0779, 9.500},
-		{4.1170, 10.500},
-		{4.1487, 11.500},
+	satellite = {prefix = "sl", lo = 16.4945, hi = 17.7414, knots = {
+		{3.5216, -0.500},
+		{3.6469, 0.500},
+		{3.7339, 1.500},
+		{3.8016, 2.500},
+		{3.8591, 3.500},
+		{3.8987, 4.500},
+		{3.9470, 5.500},
+		{3.9844, 6.500},
+		{4.0220, 7.500},
+		{4.0485, 8.500},
+		{4.0739, 9.500},
+		{4.1150, 10.500},
+		{4.1473, 11.500},
 	}},
-	stella = {prefix = "st", lo = 19.0950, hi = 142.5705, knots = {
-		{4.1968, -0.500},
-		{4.2254, 0.500},
-		{4.2715, 1.500},
-		{4.3129, 2.500},
-		{4.3504, 3.500},
-		{4.3985, 4.500},
-		{4.4373, 5.500},
-		{4.4760, 6.500},
-		{4.4992, 7.500},
-		{4.5278, 8.500},
-		{4.5952, 9.500},
-		{4.6761, 10.500},
-		{4.7035, 11.500},
+	stella = {prefix = "st", lo = 16.6576, hi = 125.6057, knots = {
+		{4.1935, -0.500},
+		{4.2231, 0.500},
+		{4.2686, 1.500},
+		{4.3092, 2.500},
+		{4.3464, 3.500},
+		{4.3945, 4.500},
+		{4.4327, 5.500},
+		{4.4713, 6.500},
+		{4.4960, 7.500},
+		{4.5241, 8.500},
+		{4.5890, 9.500},
+		{4.6720, 10.500},
+		{4.7008, 11.500},
 	}},
-	overjoy = {prefix = "oj", lo = 27.9526, hi = 0.9326, knots = {
-		{4.2264, 0.500},
-		{4.2615, 1.500},
-		{4.3061, 2.500},
-		{4.3836, 3.500},
-		{4.4837, 4.500},
-		{4.5662, 5.500},
-		{4.7130, 6.500},
+	overjoy = {prefix = "oj", lo = 29.5872, hi = 5.1029, knots = {
+		{4.2240, 0.500},
+		{4.2590, 1.500},
+		{4.3022, 2.500},
+		{4.3806, 3.500},
+		{4.4794, 4.500},
+		{4.5618, 5.500},
+		{4.7045, 6.500},
 	}},
 }
 local SCALE_ORDER = {"insane", "satellite", "stella", "overjoy"}
@@ -265,13 +268,23 @@ local function noteDifficulty(t, col, parts)
 			if dt < SWEEP_GAP then jack = jack * ROLL_JACK end
 			lastGap[c], lastCol[c] = gap, t[k]
 			local hand, jk, ch = hw * h / ts, jw * jack * jc, cw * (chord - 1)
-			d[k] = log(base + hand + jk + ch)
+			d[k] = base + hand + jk + ch
 			if parts then
 				parts[k] = {base, hand, jk, ch}
 			end
 		end
 		i = j
 	end
+	if n > 10 then
+		local sorted = {}
+		for k = 1, n do sorted[k] = d[k] end
+		table.sort(sorted)
+		local cap = LUCK_SPIKE * sorted[floor(n / 2) + 1]
+		for k = 1, n do
+			if d[k] > cap then d[k] = cap + LUCK_KEEP * (d[k] - cap) end
+		end
+	end
+	for k = 1, n do d[k] = log(d[k]) end
 	return d
 end
 
@@ -328,6 +341,18 @@ local function toLevel(lnS, g, sc)
 end
 
 local function toStar(lnS, g) return toLevel(lnS, g, SCALES.insane) end
+
+-- Satellite and Stella are one table: sl0..sl12, then st0 is the level after
+-- sl12. On either scale a level under st0 (below st -0.5) is shown as sl and
+-- one above sl12 as st. Returns the level and its prefix.
+local function shownLevel(lnS, g, sc)
+	if sc == SCALES.satellite or sc == SCALES.stella then
+		local st = toLevel(lnS, g, SCALES.stella)
+		if st >= -0.5 then return st, "st" end
+		return toLevel(lnS, g, SCALES.satellite), "sl"
+	end
+	return toLevel(lnS, g, sc), sc.prefix
+end
 
 local function gaugeChanges(g, total, n)
 	if g < 3 then
@@ -435,7 +460,8 @@ local function shownScale(steps)
 end
 
 -- EASY, GROOVE and HARD clear levels of a chart at a music rate, on the
--- scale picked above, and that scale's prefix ("sp", "sl", "st", "oj").
+-- scale picked above, then the prefix ("sp", "sl", "st", "oj") of EASY, HARD
+-- and GROOVE (sl / st can differ per gauge, see shownLevel).
 -- nil for charts that are not 7k BMS (O2Jam charts play on their own gauge)
 local cache = {}
 function getBMSClearDifficulty(steps, rate)
@@ -451,7 +477,10 @@ function getBMSClearDifficulty(steps, rate)
 		cache[key] = sk
 	end
 	local sc = shownScale(steps)
-	return toLevel(sk[1], 1, sc), toLevel(sk[2], 2, sc), toLevel(sk[3], 3, sc), sc.prefix
+	local e, pe = shownLevel(sk[1], 1, sc)
+	local gr, pg = shownLevel(sk[2], 2, sc)
+	local h, ph = shownLevel(sk[3], 3, sc)
+	return e, gr, h, pe, ph, pg
 end
 
 ---------------------------------------------------------------------------
@@ -675,7 +704,8 @@ function getBMSClearDebug(steps, rate)
 		local s = neededSkill(ld, g, gain, poor) + 1e-6
 		local trace = {gauge = {}, miss = {}}
 		clears(ld, g, s, gain, poor, trace)
-		dbg.gauges[g] = {skill = s, star = toLevel(s, g, sc), gain = gain, poor = poor, gauge = trace.gauge, miss = trace.miss}
+		local lv, pre = shownLevel(s, g, sc)
+		dbg.gauges[g] = {skill = s, star = lv, prefix = pre, gain = gain, poor = poor, gauge = trace.gauge, miss = trace.miss}
 	end
 	local ok, found, kinds = pcall(findPatterns, t, col, steps, rate)
 	dbg.patterns = ok and found or {}

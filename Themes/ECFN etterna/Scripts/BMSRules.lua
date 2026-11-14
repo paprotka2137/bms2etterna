@@ -145,6 +145,21 @@ function editBMSLanes()
 	})
 end
 
+-- switches to a given lane order (custom arrange), e.g. the RANDOM of a
+-- score clicked in the ranking; false when the order is not valid
+function setBMSLanes(order)
+	order = tostring(order or ""):gsub("%s", "")
+	if not isValidLaneOrder(order) then
+		return false
+	end
+	local ps = GAMESTATE:GetPlayerState()
+	for _, lvl in ipairs(modsLevels) do
+		ps:GetPlayerOptions(lvl):BMSLanes(order)
+	end
+	setBMSOption("Arrange", #bmsOptionValues.Arrange)
+	return true
+end
+
 function isBMSCustomArrange()
 	return bmsOptionValues.Arrange[getBMSOption("Arrange")] == "Custom"
 end

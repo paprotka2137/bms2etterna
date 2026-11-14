@@ -287,13 +287,13 @@ end
 -- how hard the chart is to EASY clear and HARD clear, on the scale of the
 -- chart's table: sl, st, oj or insane ★ (Scripts/BMSClearCalc.lua). Waits for the wheel like the densities.
 local function readClearDifficulty()
-	data.easyClear, data.hardClear, data.clearPrefix = nil, nil, nil
+	data.easyClear, data.hardClear, data.clearPrefix, data.hardPrefix = nil, nil, nil, nil
 	if not data.steps or data.o2jam or not getBMSClearDifficulty then
 		return
 	end
-	local ok, e, _, h, prefix = pcall(getBMSClearDifficulty, data.steps, data.rate or 1)
+	local ok, e, _, h, pe, ph = pcall(getBMSClearDifficulty, data.steps, data.rate or 1)
 	if ok then
-		data.easyClear, data.hardClear, data.clearPrefix = e, h, prefix
+		data.easyClear, data.hardClear, data.clearPrefix, data.hardPrefix = e, h, pe, ph or pe
 	end
 end
 
@@ -904,15 +904,15 @@ do
 			p[#p + 1] = Num("num_small 11x1.png", 618 + 91 * (i - 1), 651, 15, 15, 4, stepsOnly(get), {align = "center"})
 		end
 	end
-	local function stars(v)
+	local function stars(v, prefix)
 		if v == nil then
 			return nil
 		end
-		return (data.clearPrefix or "") .. string.format("%.1f", math.max(v, -9.9))
+		return (prefix or "") .. string.format("%.1f", math.max(v, -9.9))
 	end
 	local clears = {
-		{label = "EASY", c = color("#80ff60"), get = function() return data.easyClear end},
-		{label = "HARD", c = color("#ff5050"), get = function() return data.hardClear end},
+		{label = "EASY", c = color("#80ff60"), get = function() return data.easyClear, data.clearPrefix end},
+		{label = "HARD", c = color("#ff5050"), get = function() return data.hardClear, data.hardPrefix end},
 	}
 	for k, cl in ipairs(clears) do
 		local x = 789 + 91 * (k - 1)

@@ -2,6 +2,7 @@
 #define PLAYER_H
 
 #include "Etterna/Actor/Base/ActorFrame.h"
+#include "Etterna/Models/Misc/GameInput.h"
 #include "Etterna/Actor/Base/AutoActor.h"
 #include "Etterna/Screen/Others/ScreenMessage.h"
 #include "RageUtil/Sound/RageSound.h"
@@ -215,6 +216,16 @@ class Player : public ActorFrame
 	// column of the note HandleTapRowScore is called for, when notes are
 	// judged separately (-1 = the whole row); BMS gauges need it
 	int m_iTapRowScoreCol = -1;
+	// live spectating: judged by the same rules as a human player, with the
+	// keys down that the stream says, and each press at its own song time
+	bool m_bLiveJudging = false;
+	std::vector<bool> m_vbLiveDown;
+	bool m_bLiveStepTime = false;
+	float m_fLiveStepSeconds = 0.F;
+	[[nodiscard]] auto JudgesAsHuman() const -> bool;
+	[[nodiscard]] auto IsColumnDown(int col,
+									const std::vector<GameInput>& GameI) const
+	  -> bool;
 	void HandleHoldScore(const TapNote& tn) const;
 	void HandleHoldCheckpoint(int iRow,
 							  int iNumHoldsHeldThisRow,

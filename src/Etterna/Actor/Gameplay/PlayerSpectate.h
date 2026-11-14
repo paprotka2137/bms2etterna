@@ -57,6 +57,9 @@ class PlayerSpectate : public Player
 	void UpdateTapNotesMissedOlderThan(float fMissIfOlderThanSeconds) override;
 	void UpdatePressedFlags() override;
 	void CheckForSteps(const std::chrono::steady_clock::time_point& tm);
+	// live: step the player's presses whose time has come
+	void StepLiveInputs();
+	size_t m_iLiveInputsTaken = 0;
 
 	std::map<int, std::vector<PlaybackEvent>> playbackEvents{};
 	std::map<int, std::set<int>> droppedHolds{};

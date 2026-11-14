@@ -101,7 +101,8 @@ ScreenSyncOverlay::UpdateText(bool forcedChange)
 				vs.push_back(AUTO_PLAY_REPLAY);
 				break;
 			case PC_SPECTATE:
-				vs.push_back(AUTO_PLAY_SPECTATE);
+				// the theme shows who is being watched (BMSSpectate.lua),
+				// the big box would cover the top of the playfield
 				break;
 			default:
 				FAIL_M(ssprintf("Invalid PlayerController: %i", pc));

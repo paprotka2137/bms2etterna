@@ -382,9 +382,13 @@ NetworkSyncManager::FeedLiveEvents(const std::string& who,
 	const auto* style = GAMESTATE->GetCurrentStyle(PLAYER_1);
 	const auto cols = style != nullptr ? style->m_iColsPerPlayer : 0;
 	const auto okCol = [cols](int c) { return c >= 0 && c < cols; };
-	const auto okTnt = [](int t) { return t >= 0 && t < NUM_TapNoteType; };
+	// a tap has no subtype (TapNoteSubType_Invalid) and a press far from any
+	// note no type either, so the _Invalid values are fine too
+	const auto okTnt = [](int t) {
+		return t >= 0 && t <= TapNoteType_Invalid;
+	};
 	const auto okTnst = [](int t) {
-		return t >= 0 && t < NUM_TapNoteSubType;
+		return t >= 0 && t <= TapNoteSubType_Invalid;
 	};
 
 	auto n = 0;

@@ -204,7 +204,8 @@ t[#t + 1] = Text(m, 72, 26, 0, SW * 0.45, function()
 	end
 	local g = d.gauges
 	local pre = d.prefix or ""
-	return string.format("EASY %s%.1f    GROOVE %s%.1f    HARD %s%.1f", pre, g[1].star, pre, g[2].star, pre, g[3].star)
+	return string.format("EASY %s%.1f    GROOVE %s%.1f    HARD %s%.1f", g[1].prefix or pre, g[1].star,
+		g[2].prefix or pre, g[2].star, g[3].prefix or pre, g[3].star)
 end)
 t[#t + 1] = Text(SW - m, 72, 17, 1, SW * 0.5, function()
 	local d = dbg.data

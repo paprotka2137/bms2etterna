@@ -28,6 +28,8 @@
 #include "Etterna/Singletons/LuaManager.h"
 #include "Etterna/Models/Misc/PlayerState.h"
 #include "Etterna/Models/Songs/SongOptions.h"
+#include "Etterna/Actor/Gameplay/LifeMeter.h"
+#include "Etterna/Singletons/SongManager.h"
 
 REGISTER_SCREEN_CLASS(ScreenGameplaySpectate);
 
@@ -184,6 +186,41 @@ ScreenGameplaySpectate::Update(const float fDeltaTime)
 
 	m_AutoKeysounds.Update(fDeltaTime);
 
+	// the gauge here is filled by the same judgments the player got, so it
+	// fails (and ends the song) where theirs did; same rules as ScreenGameplay
+	auto failtype =
+	  GAMESTATE->GetPlayerFailType(GetPlayerInfo()->GetPlayerState());
+	if (failtype == FailType_Off && GetPlayerInfo()->m_pLifeMeter != nullptr &&
+		GetPlayerInfo()->m_pLifeMeter->IsBMSGauge()) {
+		failtype = FailType_ImmediateContinue;
+	}
+	if (SONGMAN->InBMSCourse() && GetPlayerInfo()->m_pLifeMeter != nullptr &&
+		GetPlayerInfo()->m_pLifeMeter->IsBMSGauge()) {
+		failtype = FailType_Immediate;
+	}
+	if (GetPlayerInfo()->m_pLifeMeter != nullptr) {
+		auto& hs = GetPlayerInfo()->GetPlayerState()->m_HealthState;
+		const auto OldHealthState = hs;
+		if (failtype != FailType_Off &&
+			GetPlayerInfo()->m_pLifeMeter->IsFailing()) {
+			hs = HealthState_Dead;
+		} else if (GetPlayerInfo()->m_pLifeMeter->IsHot()) {
+			hs = HealthState_Hot;
+		} else if (failtype != FailType_Off &&
+				   GetPlayerInfo()->m_pLifeMeter->IsInDanger()) {
+			hs = HealthState_Danger;
+		} else {
+			hs = HealthState_Alive;
+		}
+		if (hs != OldHealthState) {
+			Message msg("HealthStateChanged");
+			msg.SetParam("PlayerNumber", GetPlayerInfo()->m_pn);
+			msg.SetParam("HealthState", hs);
+			msg.SetParam("OldHealthState", OldHealthState);
+			MESSAGEMAN->Broadcast(msg);
+		}
+	}
+
 	GetPlayerInfo()->m_SoundEffectControl.Update(fDeltaTime);
 
 	{
@@ -197,6 +234,20 @@ ScreenGameplaySpectate::Update(const float fDeltaTime)
 
 	switch (m_DancingState) {
 		case STATE_DANCING: {
+			if (GetPlayerInfo()->m_pLifeMeter != nullptr &&
+				failtype != FailType_Off &&
+				GetPlayerInfo()->m_pLifeMeter->IsFailing() &&
+				!GetPlayerInfo()->GetPlayerStageStats()->m_bFailed) {
+				GetPlayerInfo()->GetPlayerStageStats()->m_bFailed = true;
+				Message msg("PlayerFailed");
+				msg.SetParam("PlayerNumber", GetPlayerInfo()->m_pn);
+				MESSAGEMAN->Broadcast(msg);
+				if (failtype == FailType_Immediate) {
+					m_pSoundMusic->StopPlaying();
+					SCREENMAN->PostMessageToTopScreen(SM_NotesEnded, 0);
+					m_LyricDisplay.Stop();
+				}
+			}
 			{
 				float fSecondsToStartFadingOutMusic;
 				float fSecondsToStartTransitioningOut;

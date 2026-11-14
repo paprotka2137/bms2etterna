@@ -628,6 +628,24 @@ Player::NeedsHoldJudging(const TapNote& tn) -> bool
 	}
 }
 
+auto
+Player::JudgesAsHuman() const -> bool
+{
+	return m_bLiveJudging ||
+		   m_pPlayerState->m_PlayerController == PC_HUMAN;
+}
+
+auto
+Player::IsColumnDown(int col, const std::vector<GameInput>& GameI) const
+  -> bool
+{
+	if (m_bLiveJudging) {
+		return col >= 0 && col < static_cast<int>(m_vbLiveDown.size()) &&
+			   m_vbLiveDown[col];
+	}
+	return INPUTMAPPER->IsBeingPressed(GameI, m_pPlayerState->m_mp);
+}
+
 static TapNoteScore
 GetAutoplayTapNoteScore(const PlayerState* pPlayerState)
 {
@@ -965,11 +983,13 @@ Player::UpdatePressedFlags()
 		std::vector<GameInput> GameI;
 		GAMESTATE->GetCurrentStyle(PLAYER_1)->StyleInputToGameInput(col, GameI);
 
-		const auto bIsHoldingButton = INPUTMAPPER->IsBeingPressed(GameI);
+		const auto bIsHoldingButton =
+		  m_bLiveJudging ? IsColumnDown(col, GameI)
+						 : INPUTMAPPER->IsBeingPressed(GameI);
 
 		// TODO(Sam): Make this work for non-human-controlled players
 		if (bIsHoldingButton &&
-			m_pPlayerState->m_PlayerController == PC_HUMAN) {
+			JudgesAsHuman()) {
 			if (m_pNoteField != nullptr) {
 				m_pNoteField->SetPressed(col);
 			}
@@ -984,7 +1004,7 @@ Player::UpdateHoldsAndRolls(float fDeltaTime,
 	const auto fSongBeat = GAMESTATE->m_Position.m_fSongBeat;
 	const auto iSongRow = BeatToNoteRow(fSongBeat);
 	// handle Autoplay for rolls
-	if (m_pPlayerState->m_PlayerController != PC_HUMAN) {
+	if (!JudgesAsHuman()) {
 		for (auto iTrack = 0; iTrack < m_NoteData.GetNumTracks(); ++iTrack) {
 			int iHeadRow;
 			if (!m_NoteData.IsHoldNoteAtRow(iTrack, iSongRow, &iHeadRow)) {
@@ -1090,7 +1110,7 @@ Player::UpdateCrossedRows(const std::chrono::steady_clock::time_point& now)
 				}
 			} else {
 				if (m_bDelay) {
-					if (m_pPlayerState->m_PlayerController != PC_HUMAN) {
+					if (!JudgesAsHuman()) {
 						CrossedRows(iRowNow - 1, now);
 					}
 					m_bDelay = false;
@@ -1252,7 +1272,7 @@ Player::UpdateHoldNotes(int iSongRow,
 	// O2Jam long notes (human): the release judges the tail (Step), a head
 	// MISS or BAD has made the tail a MISS already. Still holding once the
 	// tail's BAD window is over is a MISS too.
-	if (IsO2JamJudging() && m_pPlayerState->m_PlayerController == PC_HUMAN &&
+	if (IsO2JamJudging() && JudgesAsHuman() &&
 		subType == TapNoteSubType_Hold) {
 		const auto fMusicSeconds = GAMESTATE->m_Position.m_fMusicSeconds;
 		for (auto& trtn : vTN) {
@@ -1272,7 +1292,7 @@ Player::UpdateHoldNotes(int iSongRow,
 			std::vector<GameInput> GameI;
 			GAMESTATE->GetCurrentStyle(GetPlayerState()->m_PlayerNumber)
 			  ->StyleInputToGameInput(iTrack, GameI);
-			if (!INPUTMAPPER->IsBeingPressed(GameI, m_pPlayerState->m_mp)) {
+			if (!IsColumnDown(iTrack, GameI)) {
 				// a release Step has not judged yet
 				O2JamRelease(iTrack, fMusicSeconds, MusicRate());
 				continue;
@@ -1302,7 +1322,8 @@ Player::UpdateHoldNotes(int iSongRow,
 			bInitiatedNote = true;
 		else*/
 		bInitiatedNote =
-		  bSteppedOnHead || m_pPlayerState->m_PlayerController == PC_SPECTATE;
+		  bSteppedOnHead ||
+		  (m_pPlayerState->m_PlayerController == PC_SPECTATE && !m_bLiveJudging);
 	} else {
 		bInitiatedNote = true;
 		bHeadJudged = true;
@@ -1311,7 +1332,7 @@ Player::UpdateHoldNotes(int iSongRow,
 	// LR2 long notes (7k, human): letting go within the GOOD window before
 	// the end finishes the long note, letting go earlier is a BAD right away
 	const auto bLR2Hold = IsLR2Judging() &&
-						  m_pPlayerState->m_PlayerController == PC_HUMAN &&
+						  JudgesAsHuman() &&
 						  !m_bTickHolds;
 	auto bLR2Finished = false;
 
@@ -1325,7 +1346,7 @@ Player::UpdateHoldNotes(int iSongRow,
 			(iStartRow + trtn.pTN->iDuration) > iSongRow) {
 			const auto iTrack = trtn.iTrack;
 
-			if (m_pPlayerState->m_PlayerController != PC_HUMAN) {
+			if (!JudgesAsHuman()) {
 				if (m_pPlayerState->m_PlayerController == PC_AUTOPLAY) {
 					STATSMAN->m_CurStageStats.m_bUsedAutoplay = true;
 					if (m_pPlayerStageStats != nullptr) {
@@ -1341,8 +1362,9 @@ Player::UpdateHoldNotes(int iSongRow,
 				// spectators are always holding the button
 				// and hold drops are forced by the replay
 				bIsHoldingButton &=
-				  INPUTMAPPER->IsBeingPressed(GameI, m_pPlayerState->m_mp) ||
-				  m_pPlayerState->m_PlayerController == PC_SPECTATE;
+				  IsColumnDown(iTrack, GameI) ||
+				  (m_pPlayerState->m_PlayerController == PC_SPECTATE &&
+				   !m_bLiveJudging);
 			}
 		}
 	}
@@ -2229,7 +2251,7 @@ Player::O2JamJudgeTail(int col,
 	if (tn.HoldResult.hns != HNS_None) {
 		return;
 	}
-	if (m_pPlayerState->m_PlayerController == PC_HUMAN) {
+	if (JudgesAsHuman()) {
 		tns = O2JamPill(tns);
 	}
 	const auto bOk = tns == TNS_W1 || tns == TNS_W2 || tns == TNS_W3;
@@ -2461,8 +2483,11 @@ Player::Step(int col,
 		GAMESTATE->m_SongOptions.GetCurrent().m_fMusicRate;
 	const auto fHitUpdateDelta =
 		(GAMESTATE->m_Position.m_LastBeatUpdate - RageTimer(tm)) - padStickSeconds;
+	// live spectating steps at the time the player pressed
 	const auto fMusicSeconds =
-		GAMESTATE->m_Position.m_fMusicSeconds - (fHitUpdateDelta * fMusicRate);
+	  m_bLiveStepTime
+		? m_fLiveStepSeconds
+		: GAMESTATE->m_Position.m_fMusicSeconds - (fHitUpdateDelta * fMusicRate);
 	const auto fSongBeat =
 		GAMESTATE->m_pCurSteps ? m_Timing->GetBeatFromElapsedTime(fMusicSeconds)
 							   : GAMESTATE->m_Position.m_fSongBeat;
@@ -2472,7 +2497,7 @@ Player::Step(int col,
 	// O2Jam: letting go of a long note judges its tail
 	const auto bO2Jam = IsO2JamJudging();
 	if (bO2Jam && bRelease && col != -1 &&
-		m_pPlayerState->m_PlayerController == PC_HUMAN) {
+		JudgesAsHuman()) {
 		O2JamRelease(col, fMusicSeconds, fMusicRate);
 	}
 
@@ -2649,7 +2674,7 @@ Player::Step(int col,
 	auto iRowOfOverlappingNoteOrRow = row;
 	const auto bLR2Press = row == -1 && col != -1 && !bRelease &&
 						   IsLR2Judging() &&
-						   m_pPlayerState->m_PlayerController == PC_HUMAN;
+						   JudgesAsHuman();
 	if (bLR2Press) {
 		iRowOfOverlappingNoteOrRow =
 		  bO2Jam ? GetO2JamNote(col, fMusicSeconds, fMusicRate)
@@ -2718,7 +2743,8 @@ Player::Step(int col,
 			return;
 		}
 
-		switch (m_pPlayerState->m_PlayerController) {
+		switch (JudgesAsHuman() ? PC_HUMAN
+								 : m_pPlayerState->m_PlayerController) {
 			case PC_HUMAN:
 				switch (pTN->type) {
 					case TapNoteType_Mine:
@@ -2887,7 +2913,8 @@ Player::Step(int col,
 								m_pPlayerState->m_PlayerController));
 		}
 
-		if (m_pPlayerState->m_PlayerController == PC_HUMAN && score >= TNS_W3) {
+		if (JudgesAsHuman() && score >= TNS_W3 &&
+			!m_bLiveJudging) {
 			AdjustSync::HandleAutosync(fNoteOffset, fStepSeconds);
 		}
 
@@ -2907,7 +2934,7 @@ Player::Step(int col,
 		}
 		// O2Jam: a pill turns a BAD into a COOL
 		if (bO2Jam && score != TNS_None &&
-			m_pPlayerState->m_PlayerController == PC_HUMAN &&
+			JudgesAsHuman() &&
 			(pTN->type == TapNoteType_Tap ||
 			 pTN->type == TapNoteType_HoldHead)) {
 			score = O2JamPill(score);
@@ -2957,7 +2984,7 @@ Player::Step(int col,
 		// MISS right away (it can't be pressed again).
 		if (bO2Jam && !bRelease && score != TNS_None &&
 			pTN->type == TapNoteType_HoldHead &&
-			m_pPlayerState->m_PlayerController == PC_HUMAN &&
+			JudgesAsHuman() &&
 			col < static_cast<int>(m_O2JamHolds.size())) {
 			if (score == TNS_W1 || score == TNS_W2 || score == TNS_W3) {
 				m_O2JamHolds[col] = { iRowOfOverlappingNoteOrRow, pTN };
@@ -3001,7 +3028,7 @@ Player::Step(int col,
 	}
 
 	if (score == TNS_None && !bRelease && col != -1 &&
-		m_pPlayerState->m_PlayerController == PC_HUMAN &&
+		JudgesAsHuman() &&
 		m_pLifeMeter != nullptr && m_pLifeMeter->IsBMSGauge() &&
 		IsEmptyPoorPress(col, fMusicSeconds, fMusicRate)) {
 		DoEmptyPoor(col);
@@ -3102,7 +3129,7 @@ Player::CrossedRows(int iLastRowCrossed,
 					std::vector<GameInput> GameI;
 					GAMESTATE->GetCurrentStyle(GetPlayerState()->m_PlayerNumber)
 					  ->StyleInputToGameInput(iTrack, GameI);
-					if (PREFSMAN->m_fPadStickSeconds > 0.F) {
+					if (PREFSMAN->m_fPadStickSeconds > 0.F && !m_bLiveJudging) {
 						for (auto& i : GameI) {
 							const auto fSecsHeld =
 							  INPUTMAPPER->GetSecsHeld(i, m_pPlayerState->m_mp);
@@ -3116,8 +3143,7 @@ Player::CrossedRows(int iLastRowCrossed,
 							}
 						}
 					} else {
-						if (INPUTMAPPER->IsBeingPressed(GameI,
-														m_pPlayerState->m_mp)) {
+						if (IsColumnDown(iTrack, GameI)) {
 							Step(iTrack, -1, now, true, false);
 						}
 					}
@@ -3131,7 +3157,7 @@ Player::CrossedRows(int iLastRowCrossed,
 				std::vector<GameInput> GameI;
 				GAMESTATE->GetCurrentStyle(GetPlayerState()->m_PlayerNumber)
 				  ->StyleInputToGameInput(iTrack, GameI);
-				if (PREFSMAN->m_fPadStickSeconds > 0.0F) {
+				if (PREFSMAN->m_fPadStickSeconds > 0.0F && !m_bLiveJudging) {
 					for (auto& i : GameI) {
 						const auto fSecsHeld =
 						  INPUTMAPPER->GetSecsHeld(i, m_pPlayerState->m_mp);
@@ -3144,8 +3170,7 @@ Player::CrossedRows(int iLastRowCrossed,
 								 PREFSMAN->m_fPadStickSeconds);
 						}
 					}
-				} else if (INPUTMAPPER->IsBeingPressed(GameI,
-													   m_pPlayerState->m_mp)) {
+				} else if (IsColumnDown(iTrack, GameI)) {
 					Step(iTrack, iRow, now, true, false);
 				}
 				break;
@@ -3155,7 +3180,7 @@ Player::CrossedRows(int iLastRowCrossed,
 		}
 
 		// check to see if there's a note at the crossed row
-		if (m_pPlayerState->m_PlayerController != PC_HUMAN) {
+		if (!JudgesAsHuman()) {
 			if (tn.type != TapNoteType_Empty && tn.type != TapNoteType_Fake &&
 				tn.type != TapNoteType_AutoKeysound &&
 				tn.result.tns == TNS_None &&
@@ -3191,7 +3216,7 @@ Player::CrossedRows(int iLastRowCrossed,
 	/* Update hold checkpoints
 	 *
 	 * TODO: Move this to a separate function. */
-	if (m_bTickHolds && m_pPlayerState->m_PlayerController == PC_HUMAN) {
+	if (m_bTickHolds && JudgesAsHuman()) {
 		// Few rows typically cross per update. Easier to check all crossed
 		// rows than to calculate from timing segments.
 		for (auto r = m_iFirstUncrossedRow; r <= iLastRowCrossed; ++r) {
@@ -3312,7 +3337,7 @@ Player::UpdateTapNotesMissedOlderThan(float fMissIfOlderThanSeconds)
 			}
 			// O2Jam: a miss starts the COOL streak over
 			if (bO2Jam && tn.result.tns == TNS_Miss &&
-				m_pPlayerState->m_PlayerController == PC_HUMAN) {
+				JudgesAsHuman()) {
 				O2JamPill(TNS_Miss);
 			}
 			if (GAMESTATE->CountNotesSeparately()) {
@@ -3324,7 +3349,7 @@ Player::UpdateTapNotesMissedOlderThan(float fMissIfOlderThanSeconds)
 			// O2Jam: a missed long note head misses its tail too
 			if (bO2Jam && tn.type == TapNoteType_HoldHead &&
 				tn.result.tns == TNS_Miss &&
-				m_pPlayerState->m_PlayerController == PC_HUMAN) {
+				JudgesAsHuman()) {
 				O2JamJudgeTail(iter.Track(), iter.Row(), tn, TNS_Miss, 0.F);
 			}
 		}
@@ -3798,7 +3823,7 @@ Player::SetMineJudgment(TapNoteScore tns, int iTrack, int iRow)
 					msg.SetParam("WifePBGoal", wifescorepersonalbest);
 				}
 			}
-			if (m_pPlayerState->m_PlayerController == PC_HUMAN ||
+			if (JudgesAsHuman() ||
 				m_pPlayerState->m_PlayerController == PC_REPLAY ||
 				m_pPlayerState->m_PlayerController == PC_SPECTATE) {
 				m_pPlayerStageStats->m_fWifeScore =
@@ -3910,7 +3935,7 @@ Player::SetJudgment(int iRow,
 					msg.SetParam("WifePBGoal", wifescorepersonalbest);
 				}
 			}
-			if (m_pPlayerState->m_PlayerController == PC_HUMAN ||
+			if (JudgesAsHuman() ||
 				m_pPlayerState->m_PlayerController == PC_REPLAY ||
 				m_pPlayerState->m_PlayerController == PC_SPECTATE) {
 				m_pPlayerStageStats->m_fWifeScore =
@@ -4032,7 +4057,7 @@ Player::SetHoldJudgment(TapNote& tn, int iTrack, int iRow)
 					msg.SetParam("WifePBGoal", wifescorepersonalbest);
 				}
 			}
-			if (m_pPlayerState->m_PlayerController == PC_HUMAN ||
+			if (JudgesAsHuman() ||
 				m_pPlayerState->m_PlayerController == PC_REPLAY ||
 				m_pPlayerState->m_PlayerController == PC_SPECTATE) {
 				m_pPlayerStageStats->m_fWifeScore =

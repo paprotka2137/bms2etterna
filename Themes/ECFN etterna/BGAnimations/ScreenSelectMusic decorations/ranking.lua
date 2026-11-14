@@ -443,7 +443,7 @@ for i = 1, rowsShown do
 		MouseOverCommand = function(self)
 			self:GetParent():GetChild("RowButton"):playcommand("MouseOver")
 			if onTab and not opened and self.order and rowFor(i) then
-				TOOLTIP:SetText("LANE ORDER  " .. self.order)
+				TOOLTIP:SetText("LANE ORDER  " .. self.order .. "  (click to play it)")
 				TOOLTIP:Show()
 				self.tip = true
 			end
@@ -455,12 +455,19 @@ for i = 1, rowsShown do
 				self.tip = false
 			end
 		end,
+		-- clicking the lane takes that lane order as your own option (custom
+		-- lanes) instead of opening the row
 		MouseDownCommand = function(self, params)
 			if self.tip then
 				TOOLTIP:Hide()
 				self.tip = false
 			end
-			self:GetParent():GetChild("RowButton"):playcommand("MouseDown", params)
+			if params.event ~= "DeviceButton_left mouse button" or not onTab or opened then
+				return
+			end
+			if self.order and setBMSLanes and setBMSLanes(self.order) then
+				SCREENMAN:SystemMessage(THEME:GetString("GeneralInfo", "ProfileArrange") .. ": " .. getBMSArrangeText())
+			end
 		end,
 	}
 	r[#r + 1] = text(col.ex, y, 0.36, 1) .. {
