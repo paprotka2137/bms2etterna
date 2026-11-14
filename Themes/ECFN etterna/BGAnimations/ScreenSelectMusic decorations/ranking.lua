@@ -19,6 +19,10 @@ local localRows = {}
 local localPage = 0
 local selected -- the local score the buttons act on
 local netScreen = false
+-- IR: the board row whose play is open over the list, and its details
+-- from the site (nil while they load)
+local opened
+local detail
 
 local white = color("#ffffff")
 local gray = color("#9aa3b5")
@@ -80,6 +84,8 @@ local t = Def.ActorFrame {
 	end,
 	LoadCommand = function(self, params)
 		ck = currentKey()
+		opened = nil
+		detail = nil
 		if BMSRankingMode == "ir" then
 			board = R.chart(ck, params and params.force)
 		else
@@ -126,6 +132,7 @@ local t = Def.ActorFrame {
 				ex = ex,
 				bp = getBMSMissCount(sc),
 				lane = R.shortLane(R.laneOf(sc:GetModifiers())),
+				laneOrder = R.laneOrderOf(sc),
 				rateText = rateText,
 				score = sc,
 			}
@@ -144,6 +151,12 @@ local t = Def.ActorFrame {
 	BMSBoardLoadedMessageCommand = function(self, params)
 		if onTab and params.chartkey == ck then
 			board = R.cache[ck] and R.cache[ck].board
+			self:playcommand("Show")
+		end
+	end,
+	BMSScoreDetailLoadedMessageCommand = function(self, params)
+		if onTab and opened and params.chartkey == ck and params.name == opened.name then
+			detail = R.scoreDetail(ck, opened)
 			self:playcommand("Show")
 		end
 	end,
@@ -291,6 +304,8 @@ t[#t + 1] = text(110, frameY + 42, 0.34, 0) .. {
 			end
 			if board.notes <= 0 and R.chartNotes() <= 0 then
 				s = s .. "   (rate shows once someone clears it)"
+			else
+				s = s .. "   click a player to see the play"
 			end
 			self:settext(s)
 		end
@@ -342,6 +357,7 @@ for i = 1, rowsShown do
 	-- your own row (IR) or the picked score (LOCAL) is lit; clicking a
 	-- local score picks it
 	r[#r + 1] = UIElements.QuadButton(1, 1) .. {
+		Name = "RowButton",
 		InitCommand = function(self)
 			self:xy(frameX + 4, y):halign(0):zoomto(frameWidth - 8, rowH - 2)
 		end,
@@ -352,16 +368,34 @@ for i = 1, rowsShown do
 			else
 				mine = board and board.me == p.row
 			end
-			self:diffuse(mine and blue or color("#ffffff")):diffusealpha(mine and 0.25 or (i % 2 == 0 and 0.04 or 0))
+			self.baseAlpha = mine and 0.25 or (i % 2 == 0 and 0.04 or 0)
+			self:diffuse(mine and blue or color("#ffffff")):diffusealpha(self.baseAlpha)
+		end,
+		MouseOverCommand = function(self)
+			if onTab and not opened and rowFor(i) then
+				self:diffusealpha(math.max(self.baseAlpha or 0, 0.14))
+			end
+		end,
+		MouseOutCommand = function(self)
+			self:diffusealpha(self.baseAlpha or 0)
 		end,
 		MouseDownCommand = function(self, params)
-			if params.event == "DeviceButton_left mouse button" and onTab and BMSRankingMode == "local" then
-				local row = rowFor(i)
-				if row then
-					selected = row
-					self:GetParent():GetParent():playcommand("Show")
-				end
+			if params.event ~= "DeviceButton_left mouse button" or not onTab or opened then
+				return
 			end
+			local row = rowFor(i)
+			if not row then
+				return
+			end
+			if BMSRankingMode == "local" then
+				selected = row
+			else
+				-- a player's play on the site: open it over the list
+				opened = row
+				detail = R.scoreDetail(ck, row)
+			end
+			self:diffusealpha(self.baseAlpha or 0)
+			self:GetParent():GetParent():playcommand("Show")
 		end,
 	}
 	r[#r + 1] = text(col.rank, y, 0.34, 1) .. {
@@ -396,6 +430,39 @@ for i = 1, rowsShown do
 			self:settext(p.row.lane or "-")
 		end,
 	}
+	-- RANDOM plays: hovering the lane shows the lane order it was played on
+	-- (clicks and the row highlight still go to the row under it)
+	r[#r + 1] = UIElements.QuadButton(2, 1) .. {
+		InitCommand = function(self)
+			self:xy(frameX + col.lane, y):zoomto(44, rowH - 2):diffusealpha(0)
+		end,
+		RowCommand = function(self, p)
+			self.order = p.row.laneOrder
+			self:visible(self.order ~= nil)
+		end,
+		MouseOverCommand = function(self)
+			self:GetParent():GetChild("RowButton"):playcommand("MouseOver")
+			if onTab and not opened and self.order and rowFor(i) then
+				TOOLTIP:SetText("LANE ORDER  " .. self.order)
+				TOOLTIP:Show()
+				self.tip = true
+			end
+		end,
+		MouseOutCommand = function(self)
+			self:GetParent():GetChild("RowButton"):playcommand("MouseOut")
+			if self.tip then
+				TOOLTIP:Hide()
+				self.tip = false
+			end
+		end,
+		MouseDownCommand = function(self, params)
+			if self.tip then
+				TOOLTIP:Hide()
+				self.tip = false
+			end
+			self:GetParent():GetChild("RowButton"):playcommand("MouseDown", params)
+		end,
+	}
 	r[#r + 1] = text(col.ex, y, 0.36, 1) .. {
 		RowCommand = function(self, p)
 			-- O2Jam: the score is in the RATE column
@@ -414,6 +481,304 @@ for i = 1, rowsShown do
 	}
 	t[#t + 1] = r
 end
+
+-- IR: one player's play over the list, like the site's score window and
+-- the result screen: lamp, EX, rate, judgments, the gauge over the song,
+-- lane, judge and modifiers. The judgments come with the board, the rest
+-- from the site once it answers.
+local panelY = listY - 20
+local panelH = rowsShown * rowH + 14
+local graphX, graphY = 8, panelY + 120
+local graphW, graphH = frameWidth - 16, 74
+local panelBG = color("#0b0f18")
+local gaugeStyle = {
+	EASY = {bg = {color("#004444cc"), color("#440000cc")}, line = {color("#00ffff"), color("#ff0000")}, border = 0.8},
+	GROOVE = {bg = {color("#004400cc"), color("#440000cc")}, line = {color("#00ff00"), color("#ff0000")}, border = 0.8},
+	HARD = {bg = {color("#440000cc")}, line = {color("#ff0000")}},
+	EXHARD = {bg = {color("#444400cc")}, line = {color("#ffff00")}},
+	DEATH = {bg = {color("#444444cc")}, line = {color("#cccccc")}},
+}
+gaugeStyle["O2JAM HARD"] = gaugeStyle.HARD
+gaugeStyle["CLASS"] = gaugeStyle.HARD
+gaugeStyle["EX CLASS"] = gaugeStyle.HARD
+gaugeStyle["EX HARD CLASS"] = gaugeStyle.EXHARD
+
+local function openGauge()
+	return (detail and not detail.err and detail.gauge) or (opened and opened.gauge) or ""
+end
+local function openLamp()
+	if detail and not detail.err and tonumber(detail.lamp) then
+		return tonumber(detail.lamp)
+	end
+	return opened and opened.lamp or 6
+end
+local function playDate(d)
+	d = tostring(d or ""):gsub("T", " ")
+	return d:sub(1, 16)
+end
+-- the copy of the play on this computer (your own plays), for the eval
+-- screen and the replay
+local function openLocal()
+	if netScreen or not opened or not detail or detail.err or not detail.score_key then
+		return nil
+	end
+	return R.localScore(ck, detail.score_key)
+end
+
+local p = Def.ActorFrame {
+	Name = "Play",
+	InitCommand = function(self)
+		self:visible(false)
+	end,
+	ShowCommand = function(self)
+		self:visible(BMSRankingMode == "ir" and opened ~= nil)
+		if self:GetVisible() then
+			self:playcommand("Panel")
+		end
+	end,
+}
+-- background; it takes the clicks so the rows under it don't
+p[#p + 1] = UIElements.QuadButton(1, 1) .. {
+	InitCommand = function(self)
+		self:xy(frameX + 2, panelY):halign(0):valign(0):zoomto(frameWidth - 4, panelH)
+		self:diffuse(panelBG):diffusealpha(0.97)
+	end,
+}
+p[#p + 1] = Def.Quad {
+	InitCommand = function(self)
+		self:xy(frameX + 2, panelY):halign(0):valign(0):zoomto(frameWidth - 4, 2):diffuse(blue)
+	end,
+}
+-- "#3  name"
+p[#p + 1] = text(8, panelY + 12, 0.46, 0, function(self)
+	self:maxwidth((frameWidth - 90) / 0.46)
+end) .. {
+	PanelCommand = function(self)
+		self:settext(string.format("#%d  %s", opened.rank, opened.name))
+		self:diffuse(board and board.me == opened and blue or white)
+	end,
+}
+-- close
+p[#p + 1] = UIElements.TextToolTip(1, 1, "Common Normal") .. {
+	InitCommand = function(self)
+		self:xy(frameX + frameWidth - 8, panelY + 12):halign(1):zoom(0.34):settext("CLOSE  X"):diffuse(gray)
+	end,
+	MouseOverCommand = function(self)
+		self:diffuse(white)
+	end,
+	MouseOutCommand = function(self)
+		self:diffuse(gray)
+	end,
+	MouseDownCommand = function(self, params)
+		if params.event == "DeviceButton_left mouse button" and onTab and opened then
+			opened = nil
+			detail = nil
+			self:diffuse(gray)
+			self:GetParent():GetParent():playcommand("Show")
+		end
+	end,
+}
+-- lamp · gauge · lane · date
+p[#p + 1] = text(8, panelY + 29, 0.34, 0) .. {
+	PanelCommand = function(self)
+		local lamp = openLamp()
+		self:settext(getBMSLampInfo(lamp, 0) or getBMSLampInfo(lamp, 1)):diffuse(getBMSLampInfo(lamp, 2))
+	end,
+}
+p[#p + 1] = text(frameWidth - 8, panelY + 29, 0.3, 1) .. {
+	PanelCommand = function(self)
+		local lane = (detail and not detail.err and detail.lanes) or opened.lane or "-"
+		self:settext(string.format("%s GAUGE   LANE %s   %s", openGauge() ~= "" and openGauge() or "?", lane, playDate(opened.date)))
+		self:diffuse(gray):maxwidth((frameWidth - 150) / 0.3)
+	end,
+}
+-- EX, rate and DJ level (O2Jam: the score and its grade)
+p[#p + 1] = text(8, panelY + 50, 0.55, 0) .. {
+	PanelCommand = function(self)
+		if isO2JamPlay() then
+			self:settext(R.rate(board or {}, opened, R.chartNotes()) .. "  O2Jam score")
+			return
+		end
+		local n = R.chartNotes()
+		if n <= 0 and board then
+			n = board.notes or 0
+		end
+		local s = string.format("EX %d", opened.ex)
+		if n > 0 then
+			local r = opened.ex / (2 * n)
+			s = s .. string.format("    %.2f%%    %s", r * 100, R.djLevel(r))
+		end
+		self:settext(s)
+	end,
+}
+-- judgments
+local judgeCols = {
+	{"PGREAT", "COOL", "pg", color("#9ff3ff")},
+	{"GREAT", nil, "gr", color("#ffe066")},
+	{"GOOD", "GOOD", "gd", color("#7dff7d")},
+	{"BAD", "BAD", "bd", color("#ff9a3c")},
+	{"POOR", "MISS", "pr", color("#ff5c5c")},
+	{"COMBO", "COMBO", "combo", white},
+	{"BP", nil, "bp", gray},
+}
+local colW = (frameWidth - 16) / #judgeCols
+for k, jc in ipairs(judgeCols) do
+	local cx = 8 + colW * (k - 0.5)
+	p[#p + 1] = text(cx, panelY + 74, 0.27, 0.5) .. {
+		PanelCommand = function(self)
+			local label = isO2JamPlay() and jc[2] or jc[1]
+			self:visible(label ~= nil):settext(label or ""):diffuse(gray)
+		end,
+	}
+	p[#p + 1] = text(cx, panelY + 90, 0.46, 0.5) .. {
+		PanelCommand = function(self)
+			local label = isO2JamPlay() and jc[2] or jc[1]
+			self:visible(label ~= nil):settext(tostring(opened[jc[3]] or 0)):diffuse(jc[4])
+		end,
+	}
+end
+-- the gauge over the song
+p[#p + 1] = text(8, panelY + 110, 0.28, 0) .. {
+	PanelCommand = function(self)
+		self:settext("GAUGE " .. openGauge()):diffuse(gray)
+	end,
+}
+p[#p + 1] = text(frameWidth - 8, panelY + 110, 0.28, 1) .. {
+	PanelCommand = function(self)
+		local g = detail and not detail.err and detail.graph
+		self:settext(g and string.format("ends at %d%%", g[#g]) or ""):diffuse(gray)
+	end,
+}
+p[#p + 1] = Def.ActorMultiVertex {
+	InitCommand = function(self)
+		self:xy(frameX + graphX, graphY)
+	end,
+	PanelCommand = function(self)
+		local verts = {}
+		local function quad(x1, y1, x2, y2, c)
+			verts[#verts + 1] = {{x1, y1, 0}, c}
+			verts[#verts + 1] = {{x2, y1, 0}, c}
+			verts[#verts + 1] = {{x2, y2, 0}, c}
+			verts[#verts + 1] = {{x1, y2, 0}, c}
+		end
+		local st = gaugeStyle[string.upper(openGauge())] or gaugeStyle.GROOVE
+		local border = st.border or 0
+		local by = graphH * (1 - border)
+		quad(0, 0, graphW, graphH, color("#00000099"))
+		local g = detail and not detail.err and detail.graph
+		if g then
+			quad(0, by, graphW, graphH, st.bg[1])
+			if border > 0 then
+				quad(0, 0, graphW, by, st.bg[2])
+			end
+		end
+		for _, gl in ipairs({0.2, 0.4, 0.6, 0.8}) do
+			local y = graphH * (1 - gl)
+			quad(0, y, graphW, y + 1, color("#ffffff14"))
+		end
+		if g then
+			if border > 0 then
+				quad(0, by - 1, graphW, by + 1, color("#ff000088"))
+			end
+			local function lifeY(i)
+				local l = math.max(0, math.min(1, (tonumber(g[i]) or 0) / 100))
+				return math.max(1, math.min(graphH - 1, graphH * (1 - l))), l
+			end
+			local n = #g
+			local prev
+			for x = 0, graphW - 1 do
+				local i = math.floor(x / math.max(1, graphW - 1) * (n - 1) + 0.5) + 1
+				local y, l = lifeY(i)
+				local c = (border > 0 and l >= border) and st.line[2] or st.line[1]
+				prev = prev or y
+				quad(x, math.min(y, prev) - 1, x + 1, math.max(y, prev) + 1, c)
+				prev = y
+			end
+		end
+		self:SetVertices(verts)
+		self:SetDrawState {Mode = "DrawMode_Quads", First = 1, Num = #verts}
+	end,
+}
+-- what the graph box shows while there is no graph
+p[#p + 1] = text(graphX + graphW / 2, graphY + graphH / 2, 0.32, 0.5, function(self)
+	self:maxwidth((graphW - 16) / 0.32)
+end) .. {
+	PanelCommand = function(self)
+		local s = ""
+		if not detail then
+			s = "Loading the play from the site..."
+		elseif detail.err then
+			s = "Gauge graph not available: " .. detail.err
+		elseif not detail.graph then
+			s = "No gauge graph for this play (sent by an older game version or the upload script)"
+		end
+		self:settext(s):diffuse(detail and detail.err and color("#ff7777") or gray)
+	end,
+}
+-- judge and modifiers
+p[#p + 1] = text(8, graphY + graphH + 12, 0.3, 0, function(self)
+	self:maxwidth((frameWidth - 16) / 0.3)
+end) .. {
+	PanelCommand = function(self)
+		if detail and not detail.err then
+			local judge = (detail.judge and detail.judge ~= "") and detail.judge or "EASY"
+			self:settext("JUDGE " .. judge .. "     PLAYED " .. playDate(detail.played_at or opened.date))
+		else
+			self:settext("PLAYED " .. playDate(opened.date))
+		end
+		self:diffuse(gray)
+	end,
+}
+p[#p + 1] = text(8, graphY + graphH + 26, 0.28, 0, function(self)
+	self:maxwidth((frameWidth - 16) / 0.28)
+end) .. {
+	PanelCommand = function(self)
+		local mods = detail and not detail.err and detail.modifiers
+		self:visible(mods ~= nil and mods ~= false):settext(mods and ("MODIFIERS " .. tostring(mods)) or ""):diffuse(gray)
+	end,
+}
+-- your own play: the real eval screen and the replay from this computer
+local function playButton(x, label, act)
+	return UIElements.TextToolTip(1, 1, "Common Normal") .. {
+		InitCommand = function(self)
+			self:xy(frameX + x, graphY + graphH + 46):halign(0):zoom(0.34):settext(label)
+		end,
+		PanelCommand = function(self)
+			local sc = openLocal()
+			self:visible(sc ~= nil and sc:HasReplayData()):diffuse(white)
+		end,
+		MouseOverCommand = function(self)
+			self:diffuse(blue)
+		end,
+		MouseOutCommand = function(self)
+			self:diffuse(white)
+		end,
+		MouseDownCommand = function(self, params)
+			if params.event == "DeviceButton_left mouse button" and onTab and self:GetVisible() then
+				local sc = openLocal()
+				if sc then
+					act(sc)
+				end
+			end
+		end,
+	}
+end
+p[#p + 1] = playButton(8, "VIEW EVAL", function(sc)
+	SCREENMAN:GetTopScreen():ShowEvalScreenForScore(sc)
+end)
+p[#p + 1] = playButton(80, "WATCH REPLAY", function(sc)
+	SCREENMAN:GetTopScreen():PlayReplay(sc)
+end)
+p[#p + 1] = text(frameWidth - 8, graphY + graphH + 46, 0.28, 1) .. {
+	PanelCommand = function(self)
+		local s = ""
+		if detail and not detail.err and detail.has_replay and detail.has_replay ~= 0 and not openLocal() then
+			s = "replay is on the site"
+		end
+		self:settext(s):diffuse(gray)
+	end,
+}
+t[#t + 1] = p
 
 -- LOCAL: pages and the picked score's eval screen and replay
 local bottomY = listY + rowsShown * rowH + 2

@@ -20,6 +20,9 @@
 #include "Etterna/Singletons/ReplayManager.h"
 #include "Etterna/Models/ScoreKeepers/ScoreKeeperNormal.h"
 #include "Etterna/Singletons/NetworkSyncManager.h"
+#include "Etterna/Singletons/NoteSkinManager.h"
+#include "Etterna/Singletons/MessageManager.h"
+#include "Etterna/Models/HighScore/Replay.h"
 
 #include "Etterna/Models/Lua/LuaBinding.h"
 #include "Etterna/Singletons/LuaManager.h"
@@ -51,6 +54,15 @@ ScreenGameplaySpectate::ScreenGameplaySpectate()
 
 	auto* replay = REPLAYS->GetSpectateReplay(NSMAN->spectatingWho);
 	if (replay != nullptr) {
+		auto& pos = GAMESTATE->m_pPlayerState->m_PlayerOptions;
+		if (NSMAN->liveSpectate) {
+			m_bRestoreOptions = true;
+			m_OldPlayerOptions = pos.GetPreferred();
+			m_OldSongOptions = GAMESTATE->m_SongOptions.GetPreferred();
+			m_iOldStageSeed = GAMESTATE->m_iStageSeed;
+			m_iSpectateSeed = replay->GetRngSeed();
+		}
+
 		const auto r = replay->GetMusicRate();
 		// Set up rate
 		GAMESTATE->m_SongOptions.GetPreferred().m_fMusicRate = r;
@@ -63,17 +75,36 @@ ScreenGameplaySpectate::ScreenGameplaySpectate()
 		po.SetForReplay(true);
 		po.FromString(replay->GetModifiers());
 
-		// Set up transforming mods
-		{
+		if (NSMAN->liveSpectate) {
+			// live: everything the player plays with (scroll speed, lanes and
+			// random, gauge, noteskin when the spectator has it too)
+			const auto& mine = m_OldPlayerOptions;
+			if (po.m_sNoteSkin.empty() ||
+				!NOTESKIN->DoesNoteSkinExist(po.m_sNoteSkin))
+				po.m_sNoteSkin = mine.m_sNoteSkin;
+			po.m_bPractice = false;
+			// no seed: a random lane option would not match the player's
+			if (m_iSpectateSeed == 0) {
+				po.m_bTurns[PlayerOptions::TURN_SHUFFLE] = false;
+				po.m_bTurns[PlayerOptions::TURN_SOFT_SHUFFLE] = false;
+				po.m_bTurns[PlayerOptions::TURN_SUPER_SHUFFLE] = false;
+				po.m_bTurns[PlayerOptions::TURN_HRAN_SHUFFLE] = false;
+				if (po.UsesSeededBMSArrange())
+					po.m_BMSArrange = BMSArrange_Off;
+			}
+			po.SetForReplay(false);
+			pos.Assign(ModsLevel_Preferred, po);
+		} else {
+			// Set up transforming mods
 			auto f = [&po](PlayerOptions& playerOptions) {
 				std::copy(std::begin(po.m_bTurns),
 						  std::end(po.m_bTurns),
 						  std::begin(playerOptions.m_bTurns));
 			};
-			f(GAMESTATE->m_pPlayerState->m_PlayerOptions.GetPreferred());
-			f(GAMESTATE->m_pPlayerState->m_PlayerOptions.GetCurrent());
-			f(GAMESTATE->m_pPlayerState->m_PlayerOptions.GetSong());
-			f(GAMESTATE->m_pPlayerState->m_PlayerOptions.GetStage());
+			f(pos.GetPreferred());
+			f(pos.GetCurrent());
+			f(pos.GetSong());
+			f(pos.GetStage());
 		}
 	}
 }
@@ -87,12 +118,17 @@ ScreenGameplaySpectate::Init()
 void
 ScreenGameplaySpectate::LoadPlayer()
 {
+	// the player's seed, so Random / Shuffle give the same lanes
+	if (m_iSpectateSeed != 0)
+		GAMESTATE->m_iStageSeed = m_iSpectateSeed;
 	GetPlayerInfo()->m_pPlayer->Load();
 }
 
 void
 ScreenGameplaySpectate::LoadScoreKeeper()
 {
+	if (m_iSpectateSeed != 0)
+		GAMESTATE->m_iStageSeed = m_iSpectateSeed;
 	if (GetPlayerInfo()->m_pPrimaryScoreKeeper != nullptr) {
 		GetPlayerInfo()->m_pPrimaryScoreKeeper->Load(
 		  m_apSongsQueue, GetPlayerInfo()->m_vpStepsQueue);
@@ -103,6 +139,20 @@ ScreenGameplaySpectate::~ScreenGameplaySpectate()
 {
 	Locator::getLogger()->debug("ScreenGameplaySpectate::~ScreenGameplaySpectate()");
 
+	if (m_bRestoreOptions) {
+		GAMESTATE->m_pPlayerState->m_PlayerOptions.Assign(ModsLevel_Preferred,
+														  m_OldPlayerOptions);
+		GAMESTATE->m_SongOptions.Assign(ModsLevel_Preferred, m_OldSongOptions);
+		GAMESTATE->m_iStageSeed = m_iOldStageSeed;
+		MESSAGEMAN->Broadcast("RateChanged");
+		MESSAGEMAN->Broadcast("CurrentRateChanged");
+	}
+	// live: one song at a time, the theme starts the next one again
+	if (NSMAN->liveSpectate) {
+		NSMAN->spectating = false;
+		NSMAN->spectatingWho.clear();
+		NSMAN->liveSpectate = false;
+	}
 }
 
 void
@@ -228,6 +278,12 @@ ScreenGameplaySpectate::Input(const InputEventPlus& input) -> bool
 void
 ScreenGameplaySpectate::SaveStats()
 {
+	// live: there is no score behind this replay, nothing to reload
+	if (NSMAN->liveSpectate) {
+		ScreenGameplay::SaveStats();
+		return;
+	}
+
 	// Reload the notedata after finishing in case we truncated it
 	SetupNoteDataFromRow(GAMESTATE->m_pCurSteps, -1);
 
@@ -242,6 +298,12 @@ void
 ScreenGameplaySpectate::StageFinished(bool bBackedOut)
 {
 	Locator::getLogger()->info("Finishing Stage");
+	{
+		// the theme (BMSSpectate.lua) waits for the player's next song
+		Message msg("LiveSpectateFinished");
+		msg.SetParam("BackedOut", bBackedOut);
+		MESSAGEMAN->Broadcast(msg);
+	}
 	if (bBackedOut) {
 		GAMESTATE->CancelStage();
 		return;

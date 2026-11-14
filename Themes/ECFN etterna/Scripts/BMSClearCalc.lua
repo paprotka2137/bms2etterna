@@ -33,100 +33,139 @@ local SWEEP_GAP, SWEEP_W = 0.0240988, 0.622437
 -- notes less than CHORD_GAP (s) after the first note of a row are part of
 -- its chord: BMS charts often split one chord over rows a few ms apart
 local CHORD_GAP = 0.015
-local JACK_CHORD, JACK_EXP = 7, 0.7
+local JACK_CHORD, JACK_EXP = 6, 0.7
+
+-- a chordjack (a chord of 3+ that repeats 2+ columns of the row before it,
+-- less than 0.2 s later) is easier than its jacks say: its jack part counts
+-- CJ_JACK and its density CJ_DENS
+local CJ_JACK, CJ_DENS = 1, 1.03
 -- the same chord as the row before (a held-shape chordjack, it can be
 -- mashed): its jack part counts SAME_JACK and its densities SAME_DENS
 local SAME_JACK, SAME_DENS = 0.6, 0.5
+-- a delay or grace (a row less than DELAY_GAP after a row that came after a
+-- gap at least that long) is read and hit on its own: it counts DELAY_W, not
+-- SWEEP_W. A grace of 1-GRACE_MAX notes split off a chord of 2+ in a
+-- chordjack section is timed against it: it counts up to GRACE_W, fully when
+-- the recent share of chordjack rows (see CJ_RUN) is GRACE_CJ or more, fading
+-- to DELAY_W below that
+local DELAY_W, DELAY_GAP, GRACE_W, GRACE_MAX, GRACE_CJ = 1.2, 0.045, 6, 2, 0.3
+-- a long chordjack run: in a chordjack row, with f the share of chordjack
+-- rows in the recent ones (memory CS_MEM s), the jack and density parts count
+-- max(CJ_RUN_MIN, 1 - CJ_RUN * f) more
+local CJ_RUN, CJ_RUN_MIN = 0.04, 0.8
+-- slow chordjacks (more than CJ_SLOW s apart) are pumped with the wrist and
+-- need less control: a chordjack row counts (CJ_SLOW / gap)^CJ_SLOW_EXP.
+-- Chordjacks mixed into other patterns (recent chordjack share under
+-- CJ_MIXED) need control: they count CJ_MIXED_W. Both in jack and density
+local CJ_SLOW, CJ_SLOW_EXP, CJ_MIXED, CJ_MIXED_W = 0.11, 0.5, 0.4, 1.15
+-- a dense chordstream: the average chord size of the recent rows (a memory
+-- of CS_MEM s) is over CS_AVG. A chord of 3+ (less than 0.2 s after the row
+-- before, not a chordjack, not the same chord) then counts
+-- 1 - CS_SLOPE * (average - CS_AVG), never less than CS_MIN
+local CS_SLOPE, CS_AVG, CS_MEM, CS_MIN = 0.2, 2.6, 1.0, 0.95
+-- jacks: the jack part goes as (shortest jack gap / gap)^JACK_CURVE, so slow
+-- jacks count less and the fastest stay as they were. A minijack (a jack
+-- whose column gap before it was more than MINI_RATIO times longer, two
+-- notes and not a jack run) counts MINI_W of its jack part
+local JACK_CURVE, MINI_W, MINI_RATIO = 2, 0.7, 2
+-- a note in a roll / sweep row (less than SWEEP_GAP after the row before):
+-- its column comes back inside a rolling motion, its jack part counts ROLL_JACK
+local ROLL_JACK = 0.3
+-- HARD: a note's miss chance is at most HARD_MISS_MAX, a burst is got through
+-- by hitting part of it
+local HARD_MISS_MAX = 0.3
 
 -- HARD's skill is moved by this (ln) before it becomes a level, so that HARD
 -- sits about 2.5 ★ over EASY on the insane table
-local HARD_SHIFT = -0.0860
+local HARD_SHIFT = -0.0660
 
+-- Every scale is set 0.5 lower than the folder medians, by request (the
+-- folder fit read about 1 point high in play).
 -- ln(skill) -> level, through these points (the medians of the folders),
 -- straight lines past the ends. sp: every folder on one ★ scale (sl from the
 -- table comparison sheet, st and oj from the Stella / Overjoy comparison,
 -- Overjoy = ★ + 20). sl, st, oj: that table's own levels.
 local SCALES = {
-	insane = {prefix = "sp", lo = 33.3984, hi = 8.4461, knots = {
-		{4.0604, 2.000},
-		{4.1378, 3.000},
-		{4.1855, 5.000},
-		{4.2300, 6.000},
-		{4.2615, 9.000},
-		{4.2999, 10.000},
-		{4.3378, 12.000},
-		{4.3757, 14.000},
-		{4.4120, 16.000},
-		{4.4455, 20.000},
-		{4.4684, 20.000},
-		{4.4850, 20.497},
-		{4.4944, 20.497},
-		{4.5043, 21.000},
-		{4.5135, 21.000},
-		{4.5234, 21.000},
-		{4.5319, 21.000},
-		{4.5400, 22.000},
-		{4.5490, 22.000},
-		{4.5568, 22.000},
-		{4.5670, 22.497},
-		{4.5742, 22.497},
-		{4.5831, 23.000},
-		{4.5919, 23.000},
-		{4.6017, 23.000},
-		{4.6107, 23.000},
-		{4.6202, 23.700},
-		{4.6307, 23.700},
-		{4.6397, 23.700},
-		{4.6475, 24.300},
-		{4.6594, 24.300},
-		{4.6705, 24.300},
-		{4.6820, 24.300},
-		{4.6955, 25.000},
-		{4.7078, 25.200},
-		{4.7221, 25.200},
-		{4.7389, 25.400},
-		{4.7589, 25.400},
-		{4.7950, 25.700},
-		{4.8736, 26.600},
+	insane = {prefix = "sp", lo = 12.8272, hi = 1.5535, knots = {
+		{3.6824, 2.911},
+		{3.7729, 3.292},
+		{3.8311, 4.658},
+		{3.8794, 6.117},
+		{3.9227, 8.426},
+		{3.9662, 9.745},
+		{4.0107, 11.805},
+		{4.0535, 14.064},
+		{4.0959, 16.163},
+		{4.1393, 18.468},
+		{4.1627, 19.255},
+		{4.1852, 19.936},
+		{4.2063, 20.102},
+		{4.2225, 20.539},
+		{4.2335, 20.685},
+		{4.2463, 20.967},
+		{4.2590, 21.218},
+		{4.2685, 21.344},
+		{4.2799, 21.647},
+		{4.2876, 21.835},
+		{4.2988, 22.098},
+		{4.3089, 22.358},
+		{4.3165, 22.437},
+		{4.3319, 22.655},
+		{4.3448, 22.907},
+		{4.3560, 23.083},
+		{4.3693, 23.133},
+		{4.3808, 23.397},
+		{4.3927, 23.685},
+		{4.4048, 23.779},
+		{4.4187, 23.835},
+		{4.4384, 24.113},
+		{4.4511, 24.283},
+		{4.4627, 24.500},
+		{4.4672, 24.637},
+		{4.4869, 24.767},
+		{4.5044, 24.998},
+		{4.5390, 25.273},
+		{4.5887, 25.810},
+		{4.6911, 26.992},
 	}},
-	satellite = {prefix = "sl", lo = 12.6980, hi = 33.9894, knots = {
-		{3.9271, 0.000},
-		{4.0274, 1.000},
-		{4.1050, 2.000},
-		{4.1634, 3.000},
-		{4.2138, 4.000},
-		{4.2477, 5.000},
-		{4.2877, 6.000},
-		{4.3182, 7.000},
-		{4.3447, 8.000},
-		{4.3694, 9.000},
-		{4.3931, 10.000},
-		{4.4288, 11.000},
-		{4.4576, 12.000},
+	satellite = {prefix = "sl", lo = 29.4422, hi = 26.9347, knots = {
+		{3.5235, -0.500},
+		{3.6480, 0.500},
+		{3.7359, 1.500},
+		{3.8031, 2.500},
+		{3.8624, 3.500},
+		{3.9013, 4.500},
+		{3.9483, 5.500},
+		{3.9856, 6.500},
+		{4.0249, 7.500},
+		{4.0509, 8.500},
+		{4.0779, 9.500},
+		{4.1170, 10.500},
+		{4.1487, 11.500},
 	}},
-	stella = {prefix = "st", lo = 30.6779, hi = 21.3574, knots = {
-		{4.4905, 0.000},
-		{4.5132, 1.000},
-		{4.5527, 2.000},
-		{4.5883, 3.000},
-		{4.6212, 4.000},
-		{4.6528, 5.000},
-		{4.6846, 6.000},
-		{4.7115, 7.000},
-		{4.7344, 8.000},
-		{4.7577, 9.000},
-		{4.8049, 10.000},
-		{4.8637, 11.000},
-		{4.8982, 12.000},
+	stella = {prefix = "st", lo = 19.0950, hi = 142.5705, knots = {
+		{4.1968, -0.500},
+		{4.2254, 0.500},
+		{4.2715, 1.500},
+		{4.3129, 2.500},
+		{4.3504, 3.500},
+		{4.3985, 4.500},
+		{4.4373, 5.500},
+		{4.4760, 6.500},
+		{4.4992, 7.500},
+		{4.5278, 8.500},
+		{4.5952, 9.500},
+		{4.6761, 10.500},
+		{4.7035, 11.500},
 	}},
-	overjoy = {prefix = "oj", lo = 23.9550, hi = 11.2561, knots = {
-		{4.5155, 1.000},
-		{4.5431, 2.000},
-		{4.5781, 3.000},
-		{4.6407, 4.000},
-		{4.7109, 5.000},
-		{4.7745, 6.000},
-		{4.9072, 7.000},
+	overjoy = {prefix = "oj", lo = 27.9526, hi = 0.9326, knots = {
+		{4.2264, 0.500},
+		{4.2615, 1.500},
+		{4.3061, 2.500},
+		{4.3836, 3.500},
+		{4.4837, 4.500},
+		{4.5662, 5.500},
+		{4.7130, 6.500},
 	}},
 }
 local SCALE_ORDER = {"insane", "satellite", "stella", "overjoy"}
@@ -158,8 +197,11 @@ local function noteDifficulty(t, col, parts)
 	local ts, tl, lam, hw, jw, jf, cw, a = P[1], P[2], P[3], P[4], P[5], P[8], P[9], P[10]
 	local ds, dl, h0, h1, last = 0, 0, 0, 0, t[1]
 	local lastCol = {}
-	for c = 0, 6 do lastCol[c] = -1e9 end
+	local lastGap = {}
+	for c = 0, 6 do lastCol[c], lastGap[c] = -1e9, 1e9 end
 	local prevMask = -1
+	local prevCols, prevT = {}, -1e9
+	local prevDt, cavg, cjf, prevChord = 1e9, 0, 0, 0
 	local d = {}
 	local i = 1
 	while i <= n do
@@ -181,18 +223,47 @@ local function noteDifficulty(t, col, parts)
 		for k = i, j - 1 do mask = mask + 2 ^ col[k] end
 		local same = chord >= 2 and mask == prevMask
 		prevMask = mask
-		local rf = (dt < SWEEP_GAP and SWEEP_W or 1) * (same and SAME_DENS or 1)
+		local ov = 0
+		for k = i, j - 1 do if prevCols[col[k]] then ov = ov + 1 end end
+		local cj = chord >= 3 and ov >= 2 and t[i] - prevT < 0.2
+		prevCols, prevT = {}, t[i]
+		for k = i, j - 1 do prevCols[col[k]] = true end
+		local sweep = dt < SWEEP_GAP and SWEEP_W or 1
+		local ec = exp(-dt / CS_MEM)
+		cavg = cavg * ec + chord * (1 - ec)
+		cjf = cjf * ec + (cj and 1 or 0) * (1 - ec)
+		if dt < DELAY_GAP and prevDt >= DELAY_GAP then
+			sweep = DELAY_W
+			if prevChord >= 2 and chord <= GRACE_MAX then
+				sweep = DELAY_W + (GRACE_W - DELAY_W) * min(1, cjf / GRACE_CJ)
+			end
+		end
+		prevDt, prevChord = dt, chord
+		local cjm = 1
+		if cj then
+			cjm = max(CJ_RUN_MIN, 1 - CJ_RUN * cjf)
+			if cjf < CJ_MIXED then cjm = cjm * CJ_MIXED_W end
+			if dt > CJ_SLOW then cjm = cjm * (CJ_SLOW / dt) ^ CJ_SLOW_EXP end
+		end
+		local csw = 1
+		if chord >= 3 and not cj and not same and dt < 0.2 and cavg > CS_AVG then
+			csw = max(CS_MIN, 1 - CS_SLOPE * (cavg - CS_AVG))
+		end
+		local rf = sweep * (same and SAME_DENS or 1) * (cj and CJ_DENS * cjm or 1) * csw
 		local rw = chord ^ a * rf
 		ds, dl = ds + rw, dl + rw
 		if c0 > 0 then h0 = h0 + rf * c0 ^ a end
 		if c1 > 0 then h1 = h1 + rf * c1 ^ a end
-		local jc = (chord >= JACK_CHORD and chord ^ (JACK_EXP - 1) or 1) * (same and SAME_JACK or 1)
+		local jc = (chord >= JACK_CHORD and chord ^ (JACK_EXP - 1) or 1) * (same and SAME_JACK or 1) * (cj and CJ_JACK * cjm or 1)
 		local base = (1 - lam) * ds / ts + lam * dl / tl
 		for k = i, j - 1 do
 			local c = col[k]
 			local h = c < 3 and h0 or (c > 3 and h1 or .5 * (h0 + h1))
-			local jack = 1 / max(t[k] - lastCol[c], jf)
-			lastCol[c] = t[k]
+			local gap = t[k] - lastCol[c]
+			local jack = (jf / max(gap, jf)) ^ JACK_CURVE / jf
+			if lastGap[c] > MINI_RATIO * gap then jack = jack * MINI_W end
+			if dt < SWEEP_GAP then jack = jack * ROLL_JACK end
+			lastGap[c], lastCol[c] = gap, t[k]
 			local hand, jk, ch = hw * h / ts, jw * jack * jc, cw * (chord - 1)
 			d[k] = log(base + hand + jk + ch)
 			if parts then
@@ -216,6 +287,7 @@ local function clears(ld, g, lnS, gain, poor, trace, sum)
 		if dead then
 			v = 0
 		elseif g == 3 then
+			if p > HARD_MISS_MAX then p = HARD_MISS_MAX end
 			local dmg = poor * (v < 32 and .6 or 1)
 			v = v + (1 - p) * gain + p * dmg
 			var = var + p * (1 - p) * (gain - dmg) ^ 2

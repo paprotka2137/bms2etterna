@@ -10,6 +10,7 @@
 #include "Etterna/Models/Misc/NoteTypes.h"
 #include "Etterna/Singletons/GameState.h"
 #include "Etterna/Models/NoteData/NoteData.h"
+#include "Etterna/Models/NoteData/NoteDataUtil.h"
 #include "Etterna/Models/Misc/TimingData.h"
 #include "Etterna/Models/StepsAndStyles/Steps.h"
 #include "RageUtil/File/RageFileManager.h"
@@ -183,6 +184,14 @@ HighScoreImpl::CreateEttNode() const -> XNode*
 	}
 	if (iEmptyPoors != 0) {
 		pNode->AppendChild("EmptyPoors", iEmptyPoors);
+	}
+	{
+		// the lane order of a RANDOM play, for the upload script and the site
+		const auto lanes =
+		  NoteDataUtil::BMSLaneOrderFromMods(sModifiers, stage_seed);
+		if (!lanes.empty()) {
+			pNode->AppendChild("BMSLanes", lanes);
+		}
 	}
 	pNode->AppendChild("PlayedSeconds", played_seconds);
 	pNode->AppendChild("MaxCombo", iMaxCombo);
@@ -581,6 +590,13 @@ auto
 HighScore::GetEmptyPoors() const -> int
 {
 	return m_Impl->iEmptyPoors;
+}
+
+auto
+HighScore::GetBMSLaneOrder() const -> std::string
+{
+	return NoteDataUtil::BMSLaneOrderFromMods(m_Impl->sModifiers,
+											  m_Impl->stage_seed);
 }
 auto
 HighScore::IsUploadedToServer(const std::string& s) const -> bool
@@ -1720,6 +1736,7 @@ class LunaHighScore : public Luna<HighScore>
 	DEFINE_METHOD(HasReplayData, HasReplayData())
 	DEFINE_METHOD(GetChartKey, GetChartKey())
 	DEFINE_METHOD(GetEmptyPoorCount, GetEmptyPoors())
+	DEFINE_METHOD(GetBMSLaneOrder, GetBMSLaneOrder())
 	DEFINE_METHOD(GetScoreKey, GetScoreKey())
 	DEFINE_METHOD(GetReplayType, GetReplayType())
 	DEFINE_METHOD(GetDisplayName, GetDisplayName())
@@ -1754,6 +1771,7 @@ class LunaHighScore : public Luna<HighScore>
 		ADD_METHOD(HasReplayData);
 		ADD_METHOD(GetChartKey);
 		ADD_METHOD(GetEmptyPoorCount);
+		ADD_METHOD(GetBMSLaneOrder);
 		ADD_METHOD(GetReplayType);
 		ADD_METHOD(GetReplay);
 		ADD_METHOD(GetJudgmentString);

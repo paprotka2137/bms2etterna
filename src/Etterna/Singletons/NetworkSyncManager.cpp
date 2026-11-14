@@ -13,10 +13,18 @@
 #include "arch/LoadingWindow/LoadingWindow.h"
 
 #include "Etterna/Models/Network/ETTProtocol.h"
+#include "Etterna/Models/HighScore/Replay.h"
+#include "Etterna/Models/Misc/NoteTypes.h"
+#include "Etterna/Models/Misc/PlayerState.h"
+#include "Etterna/Models/StepsAndStyles/Style.h"
+#include "Etterna/Singletons/ReplayManager.h"
 
 NetworkSyncManager* NSMAN;
 
 #include <cerrno>
+#include <cstdarg>
+#include <cstdio>
+#include <sstream>
 #include <chrono>
 #include <cmath>
 #include <array>
@@ -275,6 +283,16 @@ NetworkSyncManager::ReportReplayInput(bool isPress,
 									  int tapNoteType,
 									  int tapNoteSubType)
 {
+	// times in microseconds: whole numbers read back the same in any locale
+	if (liveBroadcast && !spectating)
+		LiveEvent("I %d %d %d %lld %lld %d %d",
+				  isPress ? 1 : 0,
+				  col,
+				  row,
+				  std::llround(fMusicSeconds * 1e6),
+				  std::llround(fNoteOffset * 1e6),
+				  tapNoteType,
+				  tapNoteSubType);
 	if (SEND_REPLAY_STREAM && ShouldSendMessage(true) && !spectating)
 		curProtocol->ReportReplayInput(this,
 									   isPress,
@@ -292,6 +310,8 @@ NetworkSyncManager::ReportReplayMiss(int col,
 									 int tapNoteType,
 									 int tapNoteSubType)
 {
+	if (liveBroadcast && !spectating)
+		LiveEvent("M %d %d %d %d", col, row, tapNoteType, tapNoteSubType);
 	if (SEND_REPLAY_STREAM && ShouldSendMessage(true) && !spectating)
 		curProtocol->ReportReplayMiss(
 		  this, col, row, tapNoteType, tapNoteSubType);
@@ -300,6 +320,8 @@ NetworkSyncManager::ReportReplayMiss(int col,
 void
 NetworkSyncManager::ReportReplayHold(int col, int row, int subType)
 {
+	if (liveBroadcast && !spectating)
+		LiveEvent("H %d %d %d", col, row, subType);
 	if (SEND_REPLAY_STREAM && ShouldSendMessage(true) && !spectating)
 		curProtocol->ReportReplayHold(this, col, row, subType);
 }
@@ -307,6 +329,8 @@ NetworkSyncManager::ReportReplayHold(int col, int row, int subType)
 void
 NetworkSyncManager::ReportReplayMine(int row, int col)
 {
+	if (liveBroadcast && !spectating)
+		LiveEvent("N %d %d", col, row);
 	if (SEND_REPLAY_STREAM && ShouldSendMessage(true) && !spectating)
 		curProtocol->ReportReplayMine(this, row, col);
 }
@@ -319,6 +343,131 @@ NetworkSyncManager::ReportV2Data(int col,
 {
 	if (SEND_REPLAY_STREAM && ShouldSendMessage(true) && !spectating)
 		curProtocol->ReportV2Data(col, row, offset, tapNoteType);
+}
+
+// ------------------------------------------------------------ live spectating
+
+void
+NetworkSyncManager::LiveEvent(const char* fmt, ...)
+{
+	// only a real play of a chart is sent (not a replay, practice or spectate)
+	if (GAMESTATE->GetGameplayMode() != GameplayMode_Normal ||
+		GAMESTATE->m_pPlayerState == nullptr ||
+		GAMESTATE->m_pPlayerState->m_PlayerController != PC_HUMAN)
+		return;
+	// the theme takes them every second or so; if it stops, stop growing
+	if (liveEvents.size() > 4 * 1024 * 1024)
+		return;
+	char buf[128];
+	va_list args;
+	va_start(args, fmt);
+	const auto n = std::vsnprintf(buf, sizeof(buf), fmt, args);
+	va_end(args);
+	if (n <= 0 || n >= static_cast<int>(sizeof(buf)))
+		return;
+	liveEvents.append(buf, n);
+	liveEvents.push_back('\n');
+}
+
+auto
+NetworkSyncManager::FeedLiveEvents(const std::string& who,
+								   const std::string& text) -> int
+{
+	auto* replay = REPLAYS->GetSpectateReplay(who);
+	if (replay == nullptr ||
+		SONGMAN->GetStepsByChartkey(replay->GetChartKey()) == nullptr)
+		return 0;
+	// lines come from the site: anything out of range is skipped, the
+	// spectating Player indexes its columns with these
+	const auto* style = GAMESTATE->GetCurrentStyle(PLAYER_1);
+	const auto cols = style != nullptr ? style->m_iColsPerPlayer : 0;
+	const auto okCol = [cols](int c) { return c >= 0 && c < cols; };
+	const auto okTnt = [](int t) { return t >= 0 && t < NUM_TapNoteType; };
+	const auto okTnst = [](int t) {
+		return t >= 0 && t < NUM_TapNoteSubType;
+	};
+
+	auto n = 0;
+	std::istringstream in(text);
+	std::string line;
+	while (std::getline(in, line)) {
+		if (line.size() < 2)
+			continue;
+		const auto* rest = line.c_str() + 1;
+		int a = 0, col = 0, row = 0, t1 = 0, t2 = 0;
+		long long secs = 0, offset = 0;
+		switch (line[0]) {
+			case 'I':
+				if (std::sscanf(rest,
+								"%d %d %d %lld %lld %d %d",
+								&a,
+								&col,
+								&row,
+								&secs,
+								&offset,
+								&t1,
+								&t2) != 7 ||
+					!okCol(col) || row < -1 || !okTnt(t1) || !okTnst(t2))
+					continue;
+				// the Player reports minus its note offset, IngestInputData
+				// takes the offset itself (ETTProtocol does the same)
+				replay->IngestInputData(a != 0,
+										col,
+										row,
+										static_cast<float>(secs / 1e6),
+										static_cast<float>(-offset / 1e6),
+										static_cast<TapNoteType>(t1),
+										static_cast<TapNoteSubType>(t2));
+				{
+					Message msg(Message_SpectatorInputUpdate);
+					msg.SetParam("playerID", who);
+					MESSAGEMAN->Broadcast(msg);
+				}
+				break;
+			case 'M':
+				if (std::sscanf(rest, "%d %d %d %d", &col, &row, &t1, &t2) !=
+					  4 ||
+					!okCol(col) || row < 0 || !okTnt(t1) || !okTnst(t2))
+					continue;
+				replay->IngestMissData(col,
+									   row,
+									   static_cast<TapNoteType>(t1),
+									   static_cast<TapNoteSubType>(t2));
+				{
+					Message msg(Message_SpectatorMissUpdate);
+					msg.SetParam("playerID", who);
+					MESSAGEMAN->Broadcast(msg);
+				}
+				break;
+			case 'H':
+				if (std::sscanf(rest, "%d %d %d", &col, &row, &t1) != 3 ||
+					!okCol(col) || row < 0 || !okTnst(t1))
+					continue;
+				replay->IngestHoldDrop(
+				  col, row, static_cast<TapNoteSubType>(t1));
+				{
+					Message msg(Message_SpectatorHoldUpdate);
+					msg.SetParam("playerID", who);
+					MESSAGEMAN->Broadcast(msg);
+				}
+				break;
+			case 'N':
+				if (std::sscanf(rest, "%d %d", &col, &row) != 2 ||
+					!okCol(col) || row < 0)
+					continue;
+				replay->IngestMineHit(col, row);
+				{
+					Message msg(Message_SpectatorMineUpdate);
+					msg.SetParam("playerID", who);
+					MESSAGEMAN->Broadcast(msg);
+				}
+				break;
+			default:
+				continue;
+		}
+		n++;
+	}
+	return n;
 }
 
 void
@@ -778,8 +927,73 @@ class LunaNetworkSyncManager : public Luna<NetworkSyncManager>
 		}
 		return 1;
 	}
+	// live spectating through the ranking site (Scripts/BMSSpectate.lua)
+	static int SetLiveBroadcast(T* p, lua_State* L)
+	{
+		p->liveBroadcast = BArg(1);
+		p->liveEvents.clear();
+		return 0;
+	}
+	static int TakeLiveEvents(T* p, lua_State* L)
+	{
+		lua_pushlstring(L, p->liveEvents.data(), p->liveEvents.size());
+		p->liveEvents.clear();
+		return 1;
+	}
+	static int GetStageSeed(T* p, lua_State* L)
+	{
+		lua_pushinteger(L, GAMESTATE->m_iStageSeed);
+		return 1;
+	}
+	// StartLiveSpectate(who, chartkey, rate, songoffset, globaloffset, rng, mods)
+	static int StartLiveSpectate(T* p, lua_State* L)
+	{
+		const std::string who = SArg(1);
+		const std::string ck = SArg(2);
+		if (who.empty() || SONGMAN->GetStepsByChartkey(ck) == nullptr) {
+			lua_pushboolean(L, false);
+			return 1;
+		}
+		p->spectating = true;
+		p->spectatingWho = who;
+		p->liveSpectate = true;
+		REPLAYS->InitReplayPlaybackForSpectate(
+		  who, ck, FArg(3), FArg(4), FArg(5), IArg(6), SArg(7));
+		lua_pushboolean(L, true);
+		return 1;
+	}
+	static int FeedLiveEvents(T* p, lua_State* L)
+	{
+		if (!p->liveSpectate) {
+			lua_pushinteger(L, 0);
+			return 1;
+		}
+		lua_pushinteger(L, p->FeedLiveEvents(SArg(1), SArg(2)));
+		return 1;
+	}
+	static int StopLiveSpectate(T* p, lua_State* L)
+	{
+		if (p->liveSpectate) {
+			p->spectating = false;
+			p->spectatingWho.clear();
+			p->liveSpectate = false;
+		}
+		return 0;
+	}
+	static int IsLiveSpectating(T* p, lua_State* L)
+	{
+		lua_pushboolean(L, p->liveSpectate);
+		return 1;
+	}
 	LunaNetworkSyncManager()
 	{
+		ADD_METHOD(SetLiveBroadcast);
+		ADD_METHOD(TakeLiveEvents);
+		ADD_METHOD(GetStageSeed);
+		ADD_METHOD(StartLiveSpectate);
+		ADD_METHOD(FeedLiveEvents);
+		ADD_METHOD(StopLiveSpectate);
+		ADD_METHOD(IsLiveSpectating);
 		ADD_METHOD(GetEvalScores);
 		ADD_METHOD(GetMPLeaderboard);
 		ADD_METHOD(GetChartRequests);

@@ -53,6 +53,9 @@ struct HighScore
 	[[nodiscard]] auto GetDSFlag() const -> bool;
 	[[nodiscard]] auto GetStageSeed() const -> int;
 	[[nodiscard]] auto GetEmptyPoors() const -> int;
+	// LR2 lane order of a RANDOM / R-RANDOM / MIRROR 7k play ("3527164"), from
+	// the modifiers and the stage seed; "" when there is none
+	[[nodiscard]] auto GetBMSLaneOrder() const -> std::string;
 	[[nodiscard]] auto IsUploadedToServer(const std::string& s) const -> bool;
 	std::vector<float> timeStamps;
 	[[nodiscard]] auto GetOffsetVector() -> const std::vector<float>&;

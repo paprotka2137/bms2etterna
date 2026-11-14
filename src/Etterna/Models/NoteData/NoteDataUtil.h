@@ -276,6 +276,18 @@ SnapToNearestNoteType(NoteData& inout,
 auto
 RowPassesValidMask(NoteData& inout, int row, const bool bValidMask[]) -> bool;
 
+// LR2 style lane order of a 7k play, one digit per lane: "3527164" means
+// lane 1 shows the chart's lane 3 and so on. "" when there is none (off,
+// S-RANDOM, H-RANDOM). arrange is a BMSArrange, seed the stage seed.
+auto
+BMSLaneOrder(int arrange,
+			 const std::string& customLanes,
+			 int seed,
+			 int numTracks = 7) -> std::string;
+// the same from a score's modifiers ("BMSRandom, ...") and stage seed
+auto
+BMSLaneOrderFromMods(const std::string& mods, int seed) -> std::string;
+
 void
 TransformNoteData(NoteData& nd,
 				  TimingData const& timing_data,

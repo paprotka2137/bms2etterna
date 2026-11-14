@@ -1384,6 +1384,38 @@ ScreenSelectMusic::SelectCurrent(PlayerNumber pn, GameplayMode mode)
 }
 
 bool
+ScreenSelectMusic::StartLiveSpectate(Steps* steps)
+{
+	if (steps == nullptr || !NSMAN->liveSpectate ||
+		m_SelectionState == SelectionState_Finalized)
+		return false;
+	auto* song = SONGMAN->GetSongByChartkey(steps->GetChartKey());
+	// not on the wheel (a search or a filter hides it)
+	if (song == nullptr || !m_MusicWheel.SelectSong(song))
+		return false;
+	// the wheel tells the screen about the new song a bit later, do it now
+	// so the steps below stay picked
+	ClearMessageQueue(SM_SongChanged);
+	GAMESTATE->m_PreferredDifficulty.Set(steps->GetDifficulty());
+	AfterMusicChange();
+	for (auto i = 0; i < static_cast<int>(m_vpSteps.size()); ++i) {
+		if (m_vpSteps[i] == steps) {
+			m_iSelection = i;
+			break;
+		}
+	}
+	AfterStepsOrTrailChange();
+	if (GAMESTATE->m_pCurSteps != steps)
+		return false;
+	GAMESTATE->m_gameplayMode.Set(GameplayMode_Spectate);
+	if (!SelectCurrent(PLAYER_1, GameplayMode_Spectate)) {
+		GAMESTATE->m_gameplayMode.Set(GameplayMode_Normal);
+		return false;
+	}
+	return true;
+}
+
+bool
 ScreenSelectMusic::MenuBack(const InputEventPlus& /* input */)
 {
 	Cancel(SM_GoToPrevScreen);
@@ -2171,6 +2203,14 @@ class LunaScreenSelectMusic : public Luna<ScreenSelectMusic>
 		return 1;
 	}
 
+	// StartLiveSpectate(steps): see Scripts/BMSSpectate.lua
+	static int StartLiveSpectate(T* p, lua_State* L)
+	{
+		auto* steps = Luna<Steps>::check(L, 1);
+		lua_pushboolean(L, p->StartLiveSpectate(steps));
+		return 1;
+	}
+
 	static int ShowEvalScreenForScore(T* p, lua_State* L)
 	{
 		// get the highscore from lua and fake it to the most recent score
@@ -2377,6 +2417,7 @@ class LunaScreenSelectMusic : public Luna<ScreenSelectMusic>
 		ADD_METHOD(StartPlaylistAsCourse);
 		ADD_METHOD(StartBMSCourse);
 		ADD_METHOD(PlayReplay);
+		ADD_METHOD(StartLiveSpectate);
 		ADD_METHOD(ShowEvalScreenForScore);
 		ADD_METHOD(SetSampleMusicPosition);
 		ADD_METHOD(GetSampleMusicPosition);

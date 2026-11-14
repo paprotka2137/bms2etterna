@@ -77,6 +77,9 @@ class ScreenSelectMusic : public ScreenWithMenuElements
 	void PlayLoopMusic();
 
 	void ChangeSteps(PlayerNumber pn, int dir);
+	// live spectating (Scripts/BMSSpectate.lua): picks exactly these steps
+	// and goes on to ScreenGameplaySpectate. NSMAN:StartLiveSpectate first.
+	bool StartLiveSpectate(Steps* steps);
 	// Lua
 	void PushSelf(lua_State* L) override;
 

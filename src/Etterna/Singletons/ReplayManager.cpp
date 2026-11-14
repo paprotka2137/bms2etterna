@@ -148,15 +148,16 @@ ReplayManager::InitReplayPlaybackForSpectate(std::string playerID,
 {
 	UnsetActiveReplay();
 
-	// when the replay already exists, reset it
+	// when the replay already exists, start a new one: the next song has
+	// another chart, rate, seed and mods (only Unload()ing kept the old ones)
 	if (spectatorReplays.count(playerID) != 0) {
-		spectatorReplays.at(playerID)->Unload();
-	} else {
-		Replay* spectateReplay =
-		  new Replay(chartKey, musicRate, songOffset, globalOffset, rngSeed);
-		spectateReplay->SetModifiers(mods);
-		spectatorReplays[playerID] = spectateReplay;
+		delete spectatorReplays.at(playerID);
+		spectatorReplays.erase(playerID);
 	}
+	Replay* spectateReplay =
+	  new Replay(chartKey, musicRate, songOffset, globalOffset, rngSeed);
+	spectateReplay->SetModifiers(mods);
+	spectatorReplays[playerID] = spectateReplay;
 
 	return spectatorReplays.at(playerID);
 }

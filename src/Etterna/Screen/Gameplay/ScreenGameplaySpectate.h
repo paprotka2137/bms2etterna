@@ -2,6 +2,8 @@
 #define ScreenGameplaySpectate_H
 
 #include "ScreenGameplay.h"
+#include "Etterna/Models/Misc/PlayerOptions.h"
+#include "Etterna/Models/Songs/SongOptions.h"
 
 class ScreenGameplaySpectate : public ScreenGameplay
 {
@@ -20,6 +22,14 @@ class ScreenGameplaySpectate : public ScreenGameplay
 	void PushSelf(lua_State* L) override;
 
   protected:
+	// live spectating through the ranking site: the spectator's own options,
+	// rate and seed, put back when the screen goes away
+	bool m_bRestoreOptions{ false };
+	PlayerOptions m_OldPlayerOptions;
+	SongOptions m_OldSongOptions;
+	int m_iOldStageSeed{ 0 };
+	int m_iSpectateSeed{ 0 };
+
 	void SaveStats() override;
 	void StageFinished(bool bBackedOut) override;
 	void LoadPlayer() override;

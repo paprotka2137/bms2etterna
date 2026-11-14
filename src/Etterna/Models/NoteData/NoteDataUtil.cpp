@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <set>
 #include <unordered_map>
+#include <cctype>
 
 using std::pair;
 using std::set;
@@ -3028,6 +3029,120 @@ NoteDataUtil::ConvertAdditionsToRegular(NoteData& inout)
 	inout.RevalidateATIs(std::vector<int>(), false);
 }
 
+// lane order of the whole-lane arrangements: new lane t takes the notes of
+// chart lane iTakeFromTrack[t]. false when nothing moves as a whole lane
+// (off, S-RANDOM, H-RANDOM, a bad custom order). Random and R-RANDOM use the
+// seed, so a score's stage seed gives back the lanes it was played on.
+static auto
+BMSArrangeMapping(int arrange,
+				  const std::string& lanes,
+				  int seed,
+				  int n,
+				  int* iTakeFromTrack) -> bool
+{
+	if (n <= 1 || n > MAX_NOTE_TRACKS)
+		return false;
+	for (auto t = 0; t < MAX_NOTE_TRACKS; ++t)
+		iTakeFromTrack[t] = t;
+
+	RandomGen rnd(seed);
+	switch (arrange) {
+		case BMSArrange_Mirror:
+			for (auto t = 0; t < n; ++t)
+				iTakeFromTrack[t] = n - 1 - t;
+			return true;
+		case BMSArrange_Random: {
+			// never hand back the original order
+			auto same = true;
+			while (same) {
+				std::shuffle(&iTakeFromTrack[0], &iTakeFromTrack[n], rnd);
+				same = true;
+				for (auto t = 0; t < n; ++t)
+					if (iTakeFromTrack[t] != t)
+						same = false;
+			}
+			return true;
+		}
+		case BMSArrange_RRandom: {
+			// rotate the lanes by 1..n-1, flipped half of the time
+			const auto shift = 1 + static_cast<int>(rnd() % (n - 1));
+			const auto flip = rnd() % 2 == 1;
+			for (auto t = 0; t < n; ++t)
+				iTakeFromTrack[t] = ((flip ? n - 1 - t : t) + shift) % n;
+			return true;
+		}
+		case BMSArrange_Custom: {
+			// must use every lane exactly once, otherwise play it as is
+			if (static_cast<int>(lanes.size()) != n)
+				return false;
+			bool used[MAX_NOTE_TRACKS] = {};
+			for (auto t = 0; t < n; ++t) {
+				const auto lane = lanes[t] - '1';
+				if (lane < 0 || lane >= n || used[lane])
+					return false;
+				used[lane] = true;
+				iTakeFromTrack[t] = lane;
+			}
+			return true;
+		}
+		default:
+			return false;
+	}
+}
+
+auto
+NoteDataUtil::BMSLaneOrder(int arrange,
+						   const std::string& customLanes,
+						   int seed,
+						   int numTracks) -> std::string
+{
+	int iTakeFromTrack[MAX_NOTE_TRACKS];
+	if (numTracks > 9 ||
+		!BMSArrangeMapping(
+		  arrange, customLanes, seed, numTracks, iTakeFromTrack))
+		return "";
+	std::string out;
+	for (auto t = 0; t < numTracks; ++t)
+		out += static_cast<char>('1' + iTakeFromTrack[t]);
+	return out;
+}
+
+auto
+NoteDataUtil::BMSLaneOrderFromMods(const std::string& mods, int seed)
+  -> std::string
+{
+	std::string custom;
+	auto arrange = static_cast<int>(BMSArrange_Off);
+	size_t start = 0;
+	while (start <= mods.size()) {
+		auto end = mods.find(',', start);
+		if (end == std::string::npos)
+			end = mods.size();
+		auto tok = mods.substr(start, end - start);
+		start = end + 1;
+		const auto a = tok.find_first_not_of(" \t");
+		if (a == std::string::npos)
+			continue;
+		tok = tok.substr(a, tok.find_last_not_of(" \t") - a + 1);
+		std::transform(tok.begin(), tok.end(), tok.begin(), [](char c) {
+			return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+		});
+		if (tok == "bmsrandom")
+			arrange = BMSArrange_Random;
+		else if (tok == "bmsrrandom")
+			arrange = BMSArrange_RRandom;
+		else if (tok == "bmsmirror" || tok == "mirror")
+			arrange = BMSArrange_Mirror;
+		else if (tok == "bmssrandom" || tok == "bmshrandom")
+			return ""; // notes move one by one, there is no lane order
+		else if (tok.size() == 12 && tok.compare(0, 5, "lanes") == 0) {
+			arrange = BMSArrange_Custom;
+			custom = tok.substr(5);
+		}
+	}
+	return BMSLaneOrder(arrange, custom, seed, 7);
+}
+
 // LR2 style lane arrangement, only applied to 7k charts. The seeded modes use
 // the stage seed so replays and rescoring rebuild the same lanes.
 static void
@@ -3060,49 +3175,12 @@ ApplyBMSArrange(NoteData& nd,
 
 	// new lane t takes the notes of chart lane iTakeFromTrack[t]
 	int iTakeFromTrack[MAX_NOTE_TRACKS];
-	for (auto t = 0; t < MAX_NOTE_TRACKS; ++t)
-		iTakeFromTrack[t] = t;
-
-	RandomGen rnd(GAMESTATE->m_iStageSeed);
-	switch (po.m_BMSArrange) {
-		case BMSArrange_Random: {
-			// never hand back the original order
-			auto same = true;
-			while (same) {
-				std::shuffle(&iTakeFromTrack[0], &iTakeFromTrack[n], rnd);
-				same = true;
-				for (auto t = 0; t < n; ++t)
-					if (iTakeFromTrack[t] != t)
-						same = false;
-			}
-			break;
-		}
-		case BMSArrange_RRandom: {
-			// rotate the lanes by 1..n-1, flipped half of the time
-			const auto shift = 1 + static_cast<int>(rnd() % (n - 1));
-			const auto flip = rnd() % 2 == 1;
-			for (auto t = 0; t < n; ++t)
-				iTakeFromTrack[t] = ((flip ? n - 1 - t : t) + shift) % n;
-			break;
-		}
-		case BMSArrange_Custom: {
-			// must use every lane exactly once, otherwise play it as is
-			const auto& lanes = po.m_sBMSLanes;
-			if (static_cast<int>(lanes.size()) != n)
-				return;
-			bool used[MAX_NOTE_TRACKS] = {};
-			for (auto t = 0; t < n; ++t) {
-				const auto lane = lanes[t] - '1';
-				if (lane < 0 || lane >= n || used[lane])
-					return;
-				used[lane] = true;
-				iTakeFromTrack[t] = lane;
-			}
-			break;
-		}
-		default:
-			return;
-	}
+	if (!BMSArrangeMapping(po.m_BMSArrange,
+						   po.m_sBMSLanes,
+						   GAMESTATE->m_iStageSeed,
+						   n,
+						   iTakeFromTrack))
+		return;
 
 	NoteData tempNoteData;
 	tempNoteData.LoadTransformed(nd, n, iTakeFromTrack);

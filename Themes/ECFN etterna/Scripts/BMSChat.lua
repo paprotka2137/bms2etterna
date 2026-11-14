@@ -150,10 +150,15 @@ function C.reset()
 	C.err = nil
 	C.history = {}
 	C.room = nil
+	C.rivals = {} -- lowercase nick -> nick, sent by the site on the first poll
 end
 if not C.channels then
 	C.reset()
 end
+C.rivals = C.rivals or {}
+-- the sender of the site's rival messages ("your rivals passed you on ..."), sent on the
+-- first poll after logging in; no player can have brackets in their nick
+C.RIVALS = "[Rivals]"
 
 local function channel(key, name)
 	local ch = C.channels[key]
@@ -322,8 +327,14 @@ local function addMessage(f, me, panelOpen)
 		ch.last = math.max(ch.last, m.t)
 	end
 	local mine = string.lower(from) == me
-	if not mine and not C.first and not (panelOpen and C.current == key) then
+	-- rival messages come with the first poll, they still count as new
+	local notice = from == C.RIVALS
+	if not mine and (notice or not C.first) and not (panelOpen and C.current == key) then
 		ch.unread = ch.unread + 1
+	end
+	if notice then
+		m.rival = true
+		return m
 	end
 	if not mine and not C.first then
 		return m
@@ -358,24 +369,37 @@ function C.poll(status, panelOpen)
 		local me = string.lower(lines[1][4] or who)
 		local fresh = {}
 		local people = {}
+		local rivals = {}
+		local notices = {}
 		for i = 2, #lines do
 			local f = lines[i]
 			if f[1] == "M" then
 				local m = addMessage(f, me, C.panelOpen)
-				if m then
+				if m and m.rival then
+					notices[#notices + 1] = m
+				elseif m then
 					fresh[#fresh + 1] = m
 				end
+			elseif f[1] == "R" then
+				rivals[string.lower(f[2] or "")] = f[2] or ""
 			elseif f[1] == "P" then
 				people[#people + 1] = {name = f[2] or "?", rel = f[3] or "", online = f[4] == "1", status = f[5] or ""}
 			end
 		end
 		C.people = people
+		if C.first then
+			C.rivals = rivals
+		end
 		C.first = false
 		MESSAGEMAN:Broadcast("BMSChatUpdated")
 		-- toasts: only the last few if a lot came at once
 		for i = math.max(1, #fresh - 2), #fresh do
 			local m = fresh[i]
 			MESSAGEMAN:Broadcast("BMSChatMessage", {from = m.from, body = m.body, dm = m.dm, more = #fresh - 1})
+		end
+		-- the rival messages: one toast with the first line ("... passed you on N charts")
+		if #notices > 0 then
+			MESSAGEMAN:Broadcast("BMSChatMessage", {from = C.RIVALS, body = notices[1].body, dm = true, more = #notices - 1})
 		end
 	end, true)
 end
@@ -411,12 +435,47 @@ function C.friend(name, op)
 	end, true)
 end
 
+function C.isRival(name)
+	return C.rivals[string.lower(name or "")] ~= nil
+end
+
+-- op: add, remove or list (rivals with how many charts they are ahead / behind you)
+function C.rival(name, op)
+	DLMAN:BMSRequest("POST", "/api/game/chat/rival", {name = name or "", op = op}, function(code, body)
+		local lines = parse(body)
+		if code ~= 200 or not lines[1] or lines[1][1] ~= "OK" then
+			C.info(errorOf(code, lines))
+		elseif op == "list" then
+			if #lines < 2 then
+				C.info("no rivals yet, add one with /rival nick")
+			else
+				for i = 2, #lines do
+					local f = lines[i]
+					C.info(string.format("rival %s: ahead of you on %s charts, behind on %s", f[1] or "?", f[2] or "0", f[3] or "0"))
+				end
+			end
+		else
+			local nick = lines[1][3] or name
+			if lines[1][2] == "1" then
+				C.rivals[string.lower(nick)] = nick
+				C.info(nick .. " is your rival now, you'll hear here when they pass your best EX")
+			else
+				C.rivals[string.lower(nick)] = nil
+				C.info(nick .. " removed from rivals")
+			end
+		end
+		MESSAGEMAN:Broadcast("BMSChatUpdated")
+	end, true)
+end
+
 C.HELP = {
 	"Enter sends to the open channel. Tab / Shift+Tab switch channels, Esc closes.",
 	"/w nick [message]  private message      /g  back to the global channel",
 	"/add nick  add a friend (or accept a request)      /remove nick",
+	"/rival nick  follow a rival (you hear when they pass your best EX)      /unrival nick      /rivals  list them",
+	"/spec nick  watch their songs live, with their options      /unspec  stop watching",
 	"In a multiplayer room: /ready, /force, /free, /op nick, /owner nick, /kick nick go to the room.",
-	"Click a channel or a player on the right to open it. Mouse wheel / PgUp PgDn scroll.",
+	"Click a channel to open it, a player on the right to message or spectate them. Mouse wheel / PgUp PgDn scroll.",
 }
 
 local function trim(s)
@@ -460,6 +519,32 @@ function C.submit(text)
 			else
 				C.friend(rest, "remove")
 			end
+		elseif cmd == "rival" then
+			if rest == "" then
+				C.info("usage: /rival nick")
+			else
+				C.rival(rest, "add")
+			end
+		elseif cmd == "unrival" then
+			if rest == "" then
+				C.info("usage: /unrival nick")
+			else
+				C.rival(rest, "remove")
+			end
+		elseif cmd == "rivals" then
+			C.rival("", "list")
+		elseif cmd == "spec" or cmd == "spectate" or cmd == "watch" then
+			if rest == "" then
+				C.info("usage: /spec nick")
+			elseif BMSSpectate then
+				BMSSpectate.start(rest:match("^(%S+)"))
+			end
+		elseif cmd == "unspec" or cmd == "stopspec" then
+			if BMSSpectate and BMSSpectate.who then
+				BMSSpectate.stop()
+			else
+				C.info("you are not spectating anyone")
+			end
 		elseif cmd == "help" or cmd == "?" then
 			for _, l in ipairs(C.HELP) do
 				C.info(l)
@@ -477,6 +562,10 @@ function C.submit(text)
 	end
 	if C.current == C.ROOM then
 		sendRoom(text)
+		return
+	end
+	if C.current == string.lower(C.RIVALS) then
+		C.info("this channel only shows rival news, try /rivals or /help")
 		return
 	end
 	local ch = C.channels[C.current]

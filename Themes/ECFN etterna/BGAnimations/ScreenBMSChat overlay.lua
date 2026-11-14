@@ -43,6 +43,10 @@ local registered = false
 local panel, meas, frame, stepper
 local msgRows, chanRows, chanBgs, chanHits, pplRows, pplDots, pplBgs = {}, {}, {}, {}, {}, {}, {}
 local chanKeys, pplNames = {}, {}
+-- the small menu of a clicked player: Message / Spectate / Add rival
+local menu, menuFor, menuItems, menuBgs, menuTexts = nil, nil, {}, {}, {}
+local MENU_W = 96
+local MENU_ROWS = 3
 
 local function ulen(s)
 	return #(s:gsub("[\128-\191]", ""))
@@ -133,6 +137,10 @@ local function canOpenOn(name)
 end
 
 local function statusText()
+	local S = BMSSpectate
+	if S and S.who and S.phase == "watching" and isGameplay(screenName) then
+		return "watching " .. S.who
+	end
 	if isGameplay(screenName) then
 		local song = GAMESTATE:GetCurrentSong()
 		return song and ("playing " .. song:GetDisplayMainTitle()) or "playing"
@@ -317,10 +325,53 @@ local function render()
 	end
 end
 
+local function closeMenu()
+	menuFor = nil
+	if menu then
+		menu:visible(false)
+	end
+end
+
+-- the menu next to the clicked row of the players column
+local function openMenu(i, name)
+	menuFor = name
+	local S = BMSSpectate
+	menuItems = {
+		{"Message", function()
+			scroll = 0
+			C.open(name, name)
+		end},
+	}
+	if S and S.isFollowing(name) then
+		menuItems[2] = {"Stop spectating", function()
+			S.stop()
+		end}
+	elseif S then
+		menuItems[2] = {"Spectate", function()
+			S.start(name)
+		end}
+	end
+	if C.rival then
+		local rival = C.isRival(name)
+		menuItems[#menuItems + 1] = {rival and "Remove rival" or "Add rival", function()
+			C.rival(name, rival and "remove" or "add")
+		end}
+	end
+	for k = 1, MENU_ROWS do
+		local item = menuItems[k]
+		menuBgs[k]:visible(item ~= nil)
+		menuTexts[k]:settext(item and item[1] or "")
+	end
+	local y = HEAD + 3 + (i - 0.5) * ROW
+	y = math.min(y, H - MENU_ROWS * ROW - 4)
+	menu:xy(W - PW - MENU_W - 4, y - ROW / 2):visible(true)
+end
+
 local function setOpen(v)
 	if open == v then
 		return
 	end
+	closeMenu()
 	open = v
 	C.panelOpen = v
 	scroll = 0
@@ -335,6 +386,10 @@ local function setOpen(v)
 		C.pollSoon()
 	end
 	render()
+end
+
+C.closePanel = function()
+	setOpen(false)
 end
 
 local function switchChannel(dir)
@@ -379,6 +434,19 @@ local function input(event)
 				setOpen(false)
 				return false
 			end
+			if menuFor then
+				for k = 1, MENU_ROWS do
+					if menuItems[k] and isOver(menuBgs[k]) then
+						local act = menuItems[k][2]
+						closeMenu()
+						act()
+						render()
+						return true
+					end
+				end
+				closeMenu()
+				return true
+			end
 			for i = 1, NROW do
 				if chanKeys[i] and isOver(chanHits[i]) then
 					scroll = 0
@@ -386,8 +454,7 @@ local function input(event)
 					return true
 				end
 				if pplNames[i] and isOver(pplBgs[i]) then
-					scroll = 0
-					C.open(pplNames[i], pplNames[i])
+					openMenu(i, pplNames[i])
 					return true
 				end
 			end
@@ -413,6 +480,10 @@ local function input(event)
 	end
 
 	if b == "DeviceButton_escape" then
+		if menuFor then
+			closeMenu()
+			return true
+		end
 		setOpen(false)
 	elseif b == "DeviceButton_enter" or b == "DeviceButton_KP enter" then
 		if not C.loggedIn() and C.current ~= C.ROOM then
@@ -480,6 +551,22 @@ local function update(self)
 		end
 	end
 	C.syncRoom()
+	if BMSSpectate then
+		BMSSpectate.update(screenName)
+		local banner = self:GetChild("SpectateBanner")
+		local text = BMSSpectate.bannerText(screenName)
+		if banner:GetChild("Text"):GetText() ~= text then
+			banner:GetChild("Text"):settext(text)
+			banner:GetChild("Bg"):zoomto(banner:GetChild("Text"):GetZoomedWidth() + 16, 14)
+		end
+		banner:visible(text ~= "")
+		local live = self:GetChild("LiveBadge")
+		local n = BMSSpectate.watchers or 0
+		live:visible(n > 0 and isGameplay(screenName))
+		if n > 0 then
+			live:GetChild("Text"):settext(string.format("LIVE  %d watching", n))
+		end
+	end
 	if C.loggedIn() and not C.polling then
 		local every = open and 3 or (isGameplay(screenName) and 10 or 8)
 		if GetTimeSinceStart() - C.lastPoll >= every then
@@ -495,8 +582,17 @@ local t = Def.ActorFrame {
 		self:SetUpdateFunctionInterval(0.2)
 	end,
 	BMSLoginChangedMessageCommand = function(self)
+		if BMSSpectate then
+			BMSSpectate.stop(true)
+		end
 		C.reset()
 		render()
+	end,
+	-- ScreenGameplaySpectate is done (the song ended or was left)
+	LiveSpectateFinishedMessageCommand = function(self, params)
+		if BMSSpectate then
+			BMSSpectate.finished(params and params.BackedOut)
+		end
 	end,
 	-- multiplayer room lines (ETTProtocol::handleReceiveChat)
 	ChatMessageCommand = function(self, params)
@@ -655,7 +751,80 @@ for i = 1, NROW do
 	}
 end
 
+-- the player menu (on top of the rows)
+local m = Def.ActorFrame {
+	InitCommand = function(self)
+		menu = self
+		self:visible(false)
+	end,
+	Def.Quad {
+		InitCommand = function(self)
+			self:halign(0):valign(0):xy(-1, -1):zoomto(MENU_W + 2, MENU_ROWS * ROW + 2):diffuse(ACCENT)
+		end,
+	},
+}
+for k = 1, MENU_ROWS do
+	m[#m + 1] = Def.Quad {
+		InitCommand = function(self)
+			menuBgs[k] = self
+			self:halign(0):valign(0):xy(0, (k - 1) * ROW):zoomto(MENU_W, ROW):diffuse(color("#1c1c24"))
+		end,
+	}
+	m[#m + 1] = LoadFont("Common Normal") .. {
+		InitCommand = function(self)
+			menuTexts[k] = self
+			self:halign(0):valign(0.5):xy(6, (k - 0.5) * ROW):zoom(ZOOM):diffuse(WHITE):maxwidth((MENU_W - 10) / ZOOM)
+		end,
+	}
+end
+p[#p + 1] = m
+
 t[#t + 1] = p
+
+-- "Spectating nick ..." at the top while following someone (BMSSpectate.lua)
+t[#t + 1] = Def.ActorFrame {
+	Name = "SpectateBanner",
+	InitCommand = function(self)
+		self:xy(SCREEN_CENTER_X, 10):visible(false)
+	end,
+	Def.Quad {
+		Name = "Bg",
+		InitCommand = function(self)
+			self:zoomto(10, 14):diffuse(color("#101014")):diffusealpha(0.85)
+		end,
+	},
+	LoadFont("Common Normal") .. {
+		Name = "Text",
+		InitCommand = function(self)
+			self:zoom(ZOOM):diffuse(ACCENT):maxwidth((SCREEN_WIDTH - 40) / ZOOM)
+		end,
+	},
+}
+
+-- the player's corner sign while friends watch the song
+t[#t + 1] = Def.ActorFrame {
+	Name = "LiveBadge",
+	InitCommand = function(self)
+		self:xy(SCREEN_WIDTH - 6, 8):visible(false)
+	end,
+	Def.Quad {
+		InitCommand = function(self)
+			self:halign(1):zoomto(86, 12):diffuse(color("#101014")):diffusealpha(0.8)
+		end,
+	},
+	Def.Quad {
+		InitCommand = function(self)
+			self:xy(-80, 0):zoomto(5, 5):diffuse(color("#ff3b3b"))
+				:diffuseblink():effectcolor1(color("#ff3b3b")):effectcolor2(color("#ff3b3b55")):effectperiod(1.2)
+		end,
+	},
+	LoadFont("Common Normal") .. {
+		Name = "Text",
+		InitCommand = function(self)
+			self:halign(1):x(-4):zoom(ZOOM - 0.05):diffuse(WHITE)
+		end,
+	},
+}
 
 -- R.askLogin waits a moment between the nick and the password boxes
 t[#t + 1] = Def.Actor {

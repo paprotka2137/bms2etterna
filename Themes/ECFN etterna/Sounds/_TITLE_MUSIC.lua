@@ -2,7 +2,7 @@
 -- if an error is thrown that probably causes a crash most of the time
 
 if themeConfig and playTitleMusic ~= nil and playTitleMusic() then
-    return THEME:GetPathS("", "music/arrowhead")
+    return THEME:GetPathS("", "music/res extensa")
 else
     return THEME:GetPathS("", "_silent")
 end

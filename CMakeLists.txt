@@ -27,7 +27,7 @@ project(Etterna
 # the name and version players see: window, installer, packages. The
 # executable and its folders keep the Etterna name.
 set(APP_DISPLAY_NAME "res extensa")
-set(APP_DISPLAY_VERSION "0.0.8")
+set(APP_DISPLAY_VERSION "0.0.9")
 
 ## CMake and Compiler Setup
 set(CMAKE_CXX_STANDARD 20)                                      # Minimum C++ Version

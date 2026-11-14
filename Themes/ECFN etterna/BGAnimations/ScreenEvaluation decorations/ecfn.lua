@@ -1531,6 +1531,78 @@ do
 end
 
 ---------------------------------------------------------------------------
+-- RANDOM / R-RANDOM / MIRROR: hovering the lane option shows the lane order
+-- the play had, as the 7 keys with the chart lane each one played
+---------------------------------------------------------------------------
+
+do
+	local order = (not customLanes) and BMSRanking and BMSRanking.laneOrderOf and BMSRanking.laneOrderOf(score)
+	if order then
+		local kw, kh, gap, pad = 30, 40, 5, 12
+		local pw = 7 * kw + 6 * gap + pad * 2
+		local ph = kh + pad * 2 + 22
+		local px, py = 38, 343 - ph - 6
+		local pop = Def.ActorFrame {
+			Name = "LaneOrderPopup",
+			InitCommand = function(self)
+				self:xy(px, py):visible(false)
+			end,
+			ShowLanesCommand = function(self)
+				self:visible(true):stoptweening():diffusealpha(0):linear(0.08):diffusealpha(1)
+			end,
+			HideLanesCommand = function(self)
+				self:stoptweening():visible(false)
+			end,
+			Def.Quad {
+				InitCommand = function(self)
+					self:halign(0):valign(0):zoomto(pw, ph):diffuse(color("0.04,0.06,0.10,0.94"))
+				end,
+			},
+			Def.Quad {
+				InitCommand = function(self)
+					self:halign(0):valign(0):zoomto(pw, 2):diffuse(color("#66d9ff"))
+				end,
+			},
+		}
+		for k = 1, 7 do
+			local blue = k % 2 == 0
+			local x = pad + (k - 1) * (kw + gap)
+			local h = blue and kh - 8 or kh
+			pop[#pop + 1] = Def.Quad {
+				InitCommand = function(self)
+					self:halign(0):valign(0):xy(x, pad):zoomto(kw, h)
+					self:diffuse(blue and color("#2f6fe0") or color("#e9ecf3"))
+				end,
+			}
+			pop[#pop + 1] = LoadFont("Common Normal") .. {
+				InitCommand = function(self)
+					self:xy(x + kw / 2, pad + h - 11):zoom(0.62):settext(order:sub(k, k))
+					self:diffuse(blue and color("1,1,1,1") or color("0.07,0.08,0.11,1"))
+				end,
+			}
+		end
+		pop[#pop + 1] = LoadFont("Common Normal") .. {
+			InitCommand = function(self)
+				self:xy(pw / 2, pad + kh + 12):zoom(0.5):settext("LANE ORDER  " .. order)
+				self:diffuse(color("0.75,0.8,0.9,1"))
+			end,
+		}
+		t[#t + 1] = UIElements.QuadButton(1, 1) .. {
+			InitCommand = function(self)
+				self:halign(0):valign(0):xy(36, 340):zoomto(134, 18):diffusealpha(0)
+			end,
+			MouseOverCommand = function(self)
+				self:GetParent():GetChild("LaneOrderPopup"):playcommand("ShowLanes")
+			end,
+			MouseOutCommand = function(self)
+				self:GetParent():GetChild("LaneOrderPopup"):playcommand("HideLanes")
+			end,
+		}
+		t[#t + 1] = pop
+	end
+end
+
+---------------------------------------------------------------------------
 -- a song of a dan course: hand this song over for the COURSE RESULT screen
 ---------------------------------------------------------------------------
 

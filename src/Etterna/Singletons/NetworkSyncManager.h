@@ -216,6 +216,19 @@ class NetworkSyncManager
 	bool spectating = false;
 	std::string spectatingWho{};
 
+	// Live spectating through the ranking site (Scripts/BMSSpectate.lua),
+	// no multiplayer room needed. The player: while liveBroadcast is on, what
+	// the Player reports (presses, misses, dropped holds, mines) is kept in
+	// liveEvents as text lines until the theme takes and sends them. The
+	// spectator: FeedLiveEvents gives the lines back to the spectate replay
+	// that ScreenGameplaySpectate plays.
+	bool liveBroadcast = false;
+	bool liveSpectate = false; // spectating is the site's live mode
+	std::string liveEvents{};
+	void LiveEvent(const char* fmt, ...);
+	auto FeedLiveEvents(const std::string& who, const std::string& text)
+	  -> int;
+
 	// After a network error the connection is made again in the background
 	// (also during a song), logged in with the same account and put back in
 	// the same room, without leaving the current screen. Score and status
