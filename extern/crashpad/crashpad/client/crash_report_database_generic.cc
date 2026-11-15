@@ -19,6 +19,7 @@
 #include <sys/types.h>
 
 #include <mutex>
+#include <set>
 #include <tuple>
 #include <utility>
 
@@ -34,6 +35,35 @@
 namespace crashpad {
 
 namespace {
+
+// A DirectoryReader that never hands out the same name twice. On some
+// filesystems (seen on Linux with the game on an external drive under
+// /run/media) readdir() on the database folders could keep returning the same
+// entries forever, so the prune thread's CleanDatabase() spun at 100% CPU and
+// logged "open ...completed/<uuid>.lock: File exists" without end. A repeated
+// name ends the listing instead.
+class OnceDirectoryReader {
+ public:
+  bool Open(const base::FilePath& path) {
+    seen_.clear();
+    return reader_.Open(path);
+  }
+
+  DirectoryReader::Result NextFile(base::FilePath* filename) {
+    DirectoryReader::Result result = reader_.NextFile(filename);
+    if (result == DirectoryReader::Result::kSuccess &&
+        !seen_.insert(filename->value()).second) {
+      LOG(WARNING) << "directory listing repeated " << filename->value()
+                   << ", stopping";
+      return DirectoryReader::Result::kNoMoreFiles;
+    }
+    return result;
+  }
+
+ private:
+  DirectoryReader reader_;
+  std::set<base::FilePath::StringType> seen_;
+};
 
 base::FilePath ReplaceFinalExtension(
     const base::FilePath& path,
@@ -511,7 +541,7 @@ int CrashReportDatabaseGeneric::CleanDatabase(time_t lockfile_ttl) {
   int removed = 0;
   time_t now = time(nullptr);
 
-  DirectoryReader reader;
+  OnceDirectoryReader reader;
   const base::FilePath new_dir(base_dir_.Append(kNewDirectory));
   if (reader.Open(new_dir)) {
     base::FilePath filename;
@@ -675,7 +705,7 @@ OperationStatus CrashReportDatabaseGeneric::ReportsInState(
   DCHECK_NE(state, kNew);
 
   const base::FilePath dir_path(base_dir_.Append(kReportDirectories[state]));
-  DirectoryReader reader;
+  OnceDirectoryReader reader;
   if (!reader.Open(dir_path)) {
     return kDatabaseError;
   }
@@ -708,7 +738,7 @@ OperationStatus CrashReportDatabaseGeneric::ReportsInState(
 int CrashReportDatabaseGeneric::CleanReportsInState(ReportState state,
                                                     time_t lockfile_ttl) {
   const base::FilePath dir_path(base_dir_.Append(kReportDirectories[state]));
-  DirectoryReader reader;
+  OnceDirectoryReader reader;
   if (!reader.Open(dir_path)) {
     return 0;
   }
@@ -771,7 +801,7 @@ int CrashReportDatabaseGeneric::CleanReportsInState(ReportState state,
 
 void CrashReportDatabaseGeneric::CleanOrphanedAttachments() {
   base::FilePath root_attachments_dir(AttachmentsRootPath());
-  DirectoryReader reader;
+  OnceDirectoryReader reader;
   if (!reader.Open(root_attachments_dir)) {
     return;
   }

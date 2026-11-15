@@ -6,6 +6,8 @@
 #include "Etterna/Singletons/PrefsManager.h" // XXX: only used for m_bShowMouseCursor -aj
 
 #include <X11/extensions/dpms.h>
+#include <X11/Xatom.h>
+#include <X11/Xutil.h>
 
 #include <sys/types.h>
 #include <unistd.h>
@@ -149,6 +151,32 @@ X11Helper::MakeWindow(Window& win,
 		hint->res_class = (char*)Core::AppInfo::APP_TITLE;
 		XSetClassHint(Dpy, win, hint);
 		XFree(hint);
+	}
+
+	// Tell the window manager (and screen-share tools such as Discord) which
+	// process owns this window. Without _NET_WM_PID, sharing just the game
+	// window can't be matched to our audio stream, so viewers hear nothing.
+	{
+		const Atom pidAtom = XInternAtom(Dpy, "_NET_WM_PID", False);
+		const long pid = static_cast<long>(getpid());
+		XChangeProperty(Dpy,
+						win,
+						pidAtom,
+						XA_CARDINAL,
+						32,
+						PropModeReplace,
+						reinterpret_cast<const unsigned char*>(&pid),
+						1);
+
+		char host[256] = { 0 };
+		if (gethostname(host, sizeof(host) - 1) == 0) {
+			char* hostPtr = host;
+			XTextProperty hostProp;
+			if (XStringListToTextProperty(&hostPtr, 1, &hostProp)) {
+				XSetWMClientMachine(Dpy, win, &hostProp);
+				XFree(hostProp.value);
+			}
+		}
 	}
 
 	return true;

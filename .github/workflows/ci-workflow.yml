@@ -134,7 +134,7 @@ jobs:
       fail-fast: false
       matrix:
         cfg:
-          - { os: macos-14,     name: "Sonoma", dist: true }
+          - { os: macos-15,     name: "Sequoia", dist: true }
 
     steps:
 
@@ -358,7 +358,7 @@ jobs:
           #- { os: macos-13,     name: "Ventura", dist: true} # rendered useless by GHA
           #- { os: macos-12,     name: "Monterey", dist: true} # rendered useless by GHA
           #- { os: macos-11,     name: "Big Sur",  dist: true} # rendered useless by GHA
-          - { os: macos-14,     name: "Sonoma", dist: true}
+          - { os: macos-15,     name: "Sequoia", dist: true}
 
     steps:
 
