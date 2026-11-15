@@ -206,6 +206,14 @@ class SongManager
 	/////
 	// External static util
 	static bool InstallSmzip(const std::string& zipFile);
+	// in-game updater: unpacks a files update (a zip with paths from the
+	// game folder, like "Themes/ECFN etterna/...") over the game. Only the
+	// game's data folders are written. false when the zip can't be read.
+	static bool InstallBMSUpdateZip(const std::string& zipFile,
+									int& written,
+									int& failed);
+	// a .git folder next to the game: a source checkout, not updated
+	static bool BMSUpdateIsCheckout();
 
   protected:
 	void LoadStepManiaSongDir(std::string sDir, LoadingWindow* ld);

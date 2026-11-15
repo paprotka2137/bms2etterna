@@ -577,15 +577,25 @@ class DownloadManager
 	  std::function<void(long, const std::string&)> done,
 	  bool duringGameplay = false);
 	// sends a 7k play at 1.0x right after the song when logged in there
-	// gaugeGraph: the gauge over the song, comma separated 0-100 values
+	// gaugeGraph: the gauge over the song, comma separated 0-100 values;
+	// graphGauge: which gauge that is (EASY, GROOVE, HARD, EXHARD, DEATH),
+	// empty when it is the play's own gauge (O2Jam, dan course)
 	void BMSUploadScore(const HighScore& hs,
 						const class Steps* steps,
 						const class Song* song,
-						const std::string& gaugeGraph = "");
+						const std::string& gaugeGraph = "",
+						const std::string& graphGauge = "");
 	[[nodiscard]] bool BMSLoggedIn() const;
 	// the site login, the multiplayer server accepts it instead of a password
 	[[nodiscard]] std::string BMSLoginName() const;
 	[[nodiscard]] std::string BMSLoginToken() const;
+
+	// in-game updater, talks to the GitHub releases of this build only.
+	// savePath "": the body comes back in done(); otherwise it is written
+	// to savePath (checked https) and done() gets the status and ""
+	void BMSUpdateRequest(const std::string& url,
+						  const std::string& savePath,
+						  std::function<void(long, const std::string&)> done);
 
 	// Score upload functions
 	void UploadScore(HighScore* hs,

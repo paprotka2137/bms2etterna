@@ -1217,7 +1217,8 @@ do
 		t[#t + 1] = Text(1474, y + 17, 15, 0, 235, label, mine and color("#9fe8ff") or color("1,1,1,0.9"))
 		if not o2jam then
 			t[#t + 1] = Num("num_white 11x1.png", 1717, y + 7, 18, 20, 4, exScore(s))
-			t[#t + 1] = Diff("num_plus 12x1.png", "num_minus 12x1.png", 1804, y + 7, 18, 20, 5, curEx - exScore(s))
+			t[#t + 1] = Diff("num_plus 12x1.png", "num_minus 12x1.png", 1804, y + 7, 18, 20, 5, exScore(s) - exScore(localScores[1]))
+			-- how far this score is behind the best local score (#1 shows +0000)
 		end
 	end
 end
@@ -1412,16 +1413,20 @@ if BMSRanking and BMSRanking.loggedIn() then
 				setNum(self, not o2jam and p.row.ex or nil)
 			end,
 		}
-		-- how far this play is from them, + and - sheets like the local list
+		-- how far this score is behind #1 (#1 itself shows +0000)
+		local function gapToTop(r)
+			local top = board.rows[1]
+			return r.ex - (top and top.ex or r.ex)
+		end
 		row[#row + 1] = LiveNum("num_plus 12x1.png", 1804, y + 7, 18, 20, 5, true) .. {
 			RowCommand = function(self, p)
-				local d = curEx - p.row.ex
+				local d = gapToTop(p.row)
 				setNum(self, (d >= 0 and not o2jam) and d or nil)
 			end,
 		}
 		row[#row + 1] = LiveNum("num_minus 12x1.png", 1804, y + 7, 18, 20, 5, true) .. {
 			RowCommand = function(self, p)
-				local d = curEx - p.row.ex
+				local d = gapToTop(p.row)
 				setNum(self, (d < 0 and not o2jam) and d or nil)
 			end,
 		}

@@ -812,21 +812,35 @@ StageStats::FinalizeScores()
 	// BMS 7k ranking site: send the play (replay included) when logged in
 	if (m_bLivePlay) {
 		// the gauge over the song for the site's graph: 200 samples, 0-100.
-		// It is the gauge the site files the play under (the gauge that
-		// survived an auto shift clear, else the chosen one), from that
-		// gauge's own record. m_fLifeRecord follows whichever gauge is shown,
-		// so with auto shift a dead EX HARD turned into the HARD / GROOVE /
-		// EASY gauge after it, and it starts at the engine's default life.
+		// It is the last gauge in use: the gauge that survived an auto shift
+		// clear, or the one auto shift ended on when the play failed (so a
+		// failed EX HARD with GAS shows the lower gauge it fell back to),
+		// else the chosen one, from that gauge's own record. m_fLifeRecord
+		// follows whichever gauge is shown, so with auto shift a dead EX HARD
+		// turned into the HARD / GROOVE / EASY gauge after it, and it starts
+		// at the engine's default life.
 		std::string graph;
+		std::string graphGauge;
 		const std::map<float, float>* rec = nullptr;
 		auto gauge = static_cast<int>(
 		  GAMESTATE->m_pPlayerState->m_PlayerOptions.GetStage().m_BMSGauge);
 		if (m_player.m_iBMSClearGauge >= 0 &&
 			m_player.m_iBMSClearGauge < NUM_BMSGauge)
 			gauge = m_player.m_iBMSClearGauge;
+		else if (m_player.m_iBMSShownGauge >= 0 &&
+				 m_player.m_iBMSShownGauge < NUM_BMSGauge)
+			gauge = m_player.m_iBMSShownGauge;
+		// the site's names; a dan course and O2Jam keep the play's own gauge
+		static const char* siteGauges[] = {
+			"EASY", "GROOVE", "HARD", "EXHARD", "DEATH"
+		};
+		if (gauge >= 0 && gauge < NUM_BMSGauge && !SONGMAN->InBMSCourse())
+			graphGauge = siteGauges[gauge];
 		// the O2Jam hard gauge is kept as BMSGauge_Hard
-		if (OJNLoader::IsO2JamSteps(pSteps))
+		if (OJNLoader::IsO2JamSteps(pSteps)) {
 			gauge = BMSGauge_Hard;
+			graphGauge.clear();
+		}
 		const auto it = m_player.m_BMSGaugeRecord.find(gauge);
 		if (it != m_player.m_BMSGaugeRecord.end() && !it->second.empty())
 			rec = &it->second;
@@ -852,7 +866,10 @@ StageStats::FinalizeScores()
 				graph += std::to_string(std::lround(v * 100.F));
 			}
 		}
-		DLMAN->BMSUploadScore(hs, pSteps, GAMESTATE->m_pCurSong, graph);
+		if (rec == nullptr)
+			graphGauge.clear();
+		DLMAN->BMSUploadScore(
+		  hs, pSteps, GAMESTATE->m_pCurSong, graph, graphGauge);
 	}
 
 	profile->SetAnyAchievedGoals(GAMESTATE->m_pCurSteps->GetChartKey(),

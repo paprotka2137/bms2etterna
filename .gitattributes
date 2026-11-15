@@ -1,2 +1,5 @@
 # Enable core.autocrlf for all files in the repository.
 * text=auto
+# the Windows updater script needs CRLF, the shell one LF
+*.bat text eol=crlf
+*.sh text eol=lf

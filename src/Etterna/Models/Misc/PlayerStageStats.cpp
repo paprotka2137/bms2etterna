@@ -51,6 +51,7 @@ PlayerStageStats::InternalInit()
 	m_iStepsPlayed = 0;
 	m_bFailed = false;
 	m_iBMSClearGauge = -1;
+	m_iBMSShownGauge = -1;
 	m_iEmptyPoors = 0;
 	m_BMSGaugeRecord.clear();
 	m_iPossibleDancePoints = 0;
@@ -123,6 +124,7 @@ PlayerStageStats::AddStats(const PlayerStageStats& other)
 	m_iStepsPlayed += other.m_iStepsPlayed;
 	m_bFailed |= static_cast<int>(other.m_bFailed);
 	m_iBMSClearGauge = other.m_iBMSClearGauge;
+	m_iBMSShownGauge = other.m_iBMSShownGauge;
 	m_iEmptyPoors += other.m_iEmptyPoors;
 	m_iPossibleDancePoints += other.m_iPossibleDancePoints;
 	m_iActualDancePoints += other.m_iActualDancePoints;

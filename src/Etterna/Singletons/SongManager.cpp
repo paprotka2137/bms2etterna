@@ -211,6 +211,73 @@ SongManager::InstallSmzip(const std::string& sZipFile)
 	return true;
 }
 
+bool
+SongManager::BMSUpdateIsCheckout()
+{
+	auto root = FILEMAN->ResolvePath("/");
+	while (!root.empty() && (root.back() == '/' || root.back() == '\\'))
+		root.pop_back();
+	std::error_code ec;
+	return ghc::filesystem::exists(root + "/.git", ec);
+}
+
+bool
+SongManager::InstallBMSUpdateZip(const std::string& sZipFile,
+								 int& written,
+								 int& failed)
+{
+	written = 0;
+	failed = 0;
+	if (BMSUpdateIsCheckout()) {
+		Locator::getLogger()->warn("Update: source checkout, not unpacking {}", sZipFile);
+		return false;
+	}
+	miniz_cpp::zip_file fi;
+	try {
+		fi.load(FILEMAN->ResolvePath(sZipFile));
+	} catch (std::exception& e) {
+		Locator::getLogger()->error("Update: can't read {}: {}", sZipFile, e.what());
+		return false;
+	}
+	auto root = FILEMAN->ResolvePath("/");
+	while (!root.empty() && (root.back() == '/' || root.back() == '\\'))
+		root.pop_back();
+	// only the game's data folders, never the program or Save
+	static const char* allowed[] = { "Themes/", "NoteSkins/", "Data/",
+									 "Assets/", "Scripts/" };
+	for (auto& info : fi.infolist()) {
+		const auto& name = info.filename;
+		if (name.empty() || name.back() == '/')
+			continue;
+		if (name.find("..") != std::string::npos || name[0] == '/' ||
+			name.find('\\') != std::string::npos ||
+			name.find(':') != std::string::npos)
+			continue;
+		auto ok = false;
+		for (auto* a : allowed)
+			ok = ok || name.rfind(a, 0) == 0;
+		if (!ok)
+			continue;
+		try {
+			fi.extract(info, root);
+			const auto path = root + "/" + name;
+			std::ifstream check(path, std::ios::binary | std::ios::ate);
+			if (check.good() &&
+				static_cast<size_t>(check.tellg()) == info.file_size)
+				written++;
+			else {
+				failed++;
+				Locator::getLogger()->error("Update: couldn't write {}", path);
+			}
+		} catch (std::exception& ex) {
+			failed++;
+			Locator::getLogger()->error("Update: failed to extract {}: {}", name, ex.what());
+		}
+	}
+	Locator::getLogger()->info("Update: {} files written, {} failed from {}", written, failed, sZipFile);
+	return true;
+}
+
 static LocalizedString RELOADING("SongManager", "Reloading...");
 static LocalizedString UNLOADING_SONGS("SongManager", "Unloading songs...");
 static LocalizedString SANITY_CHECKING_GROUPS("SongManager",

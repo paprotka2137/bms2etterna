@@ -881,6 +881,8 @@ LifeMeterBar::SetBMSCurrentGauge(BMSGauge gauge)
 	m_fBMSMin = BMS_GAUGES[gauge].min;
 	m_fBMSBorder = BMS_GAUGES[gauge].border;
 	m_fLifePercentage = m_fBMSValue[gauge] / 100.f;
+	if (m_pPlayerStageStats != nullptr)
+		m_pPlayerStageStats->m_iBMSShownGauge = gauge;
 }
 
 // With auto shift the shown gauge is the strongest tracked one that is

@@ -139,6 +139,89 @@ t[#t + 1] = UIElements.TextToolTip(1, 1, "Common Large") .. {
 	end
 }
 
+-- 7k: ":RANDOM IN FOLDER" next to ":SELECT A MUSIC", picks a random song from
+-- the folder that is open (or under the cursor) on the wheel, with the wheel's
+-- filters. Shift+click goes back to the previous pick, like the other one.
+if ecfn then
+	-- a picture in the same font as the skin's header, made for it
+	local dir = THEME:GetCurrentThemeDirectory()
+	if dir:sub(1, 1) ~= "/" then
+		dir = "/" .. dir
+	end
+	t[#t + 1] = UIElements.SpriteButton(1, 1, dir .. "BGAnimations/ScreenSelectMusic decorations/ecfn/random_folder.png") .. {
+		Name = "randoFolder",
+		InitCommand = function(self)
+			local s = ecfnScale()
+			self:halign(0):valign(0):xy(ecfnX(278), 0):zoom(s)
+			self.randex = 0
+			self.randlist = {}
+			self.group = nil
+		end,
+		MouseOverCommand = function(self)
+			self:diffusealpha(0.7)
+		end,
+		MouseOutCommand = function(self)
+			self:diffusealpha(1)
+		end,
+		MouseDownCommand = function(self, params)
+			if params.event ~= "DeviceButton_left mouse button" then
+				return
+			end
+			local w = SCREENMAN:GetTopScreen():GetMusicWheel()
+			local group = w:GetSelectedSection()
+			local cur = GAMESTATE:GetCurrentSong()
+			if (group == nil or group == "") and cur then
+				group = cur:GetGroupName()
+			end
+			if group == nil or group == "" then
+				return
+			end
+			-- a new folder starts a new history
+			if group ~= self.group then
+				self.group = group
+				self.randex = 0
+				self.randlist = {}
+			end
+
+			local function newrandsong()
+				local songs = w:GetSongsInGroup(group)
+				if #songs == 0 then
+					-- other sorts name their sections differently, fall back to the pack
+					songs = {}
+					for _, sg in ipairs(w:GetSongs()) do
+						if sg:GetGroupName() == group then
+							songs[#songs + 1] = sg
+						end
+					end
+				end
+				if #songs == 0 then
+					return nil
+				end
+				local pick = songs[math.random(#songs)]
+				if #songs > 1 and pick == cur then
+					pick = songs[math.random(#songs)]
+				end
+				return pick
+			end
+
+			if INPUTFILTER:IsShiftPressed() and self.randex > 1 then
+				self.randex = self.randex - 1
+				if w:SelectSong(self.randlist[self.randex]) then
+					return
+				end
+			end
+
+			local song = newrandsong()
+			if song == nil then
+				return
+			end
+			self.randex = #self.randlist + 1
+			self.randlist[self.randex] = song
+			w:SelectSong(song)
+		end,
+	}
+end
+
 -- clear calc debug view (F5), over everything but the cursor
 if ecfn then
 	t[#t + 1] = LoadActor("calcdebug")

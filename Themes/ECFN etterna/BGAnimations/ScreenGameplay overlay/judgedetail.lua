@@ -13,14 +13,15 @@ local PX, PY, PW, PH = 3, 676, 514, 369
 -- panel size relative to the result screen
 local zoom = SCREEN_HEIGHT / 1080 * 0.7
 
--- rows: PGREAT GREAT GOOD BAD POOR, empty POOR
+-- rows: PGREAT GREAT GOOD BAD, POOR (empty POOR, a press with no note),
+-- FAIL (a note that went by)
 local rowOf = {
 	TapNoteScore_W1 = 1,
 	TapNoteScore_W2 = 2,
 	TapNoteScore_W3 = 3,
 	TapNoteScore_W4 = 4,
 	TapNoteScore_W5 = 4,
-	TapNoteScore_Miss = 5,
+	TapNoteScore_Miss = 6,
 }
 local counts, fast, slow
 local maxCombo
@@ -112,7 +113,7 @@ end
 if isO2JamPlay() then
 	local labels = {
 		{"COOL", "TapNoteScore_W1"}, {"-", nil}, {"GOOD", "TapNoteScore_W3"},
-		{"BAD", "TapNoteScore_W4"}, {"MISS", "TapNoteScore_Miss"}, {"-", nil},
+		{"BAD", "TapNoteScore_W4"}, {"-", nil}, {"MISS", "TapNoteScore_Miss"},
 	}
 	for k, l in ipairs(labels) do
 		local y = 744 + 34 * (k - 1)
@@ -139,7 +140,7 @@ panel[#panel + 1] = LiveNum("num_small 11x1.png", 199, 954, 14, 13, 4, function(
 	return maxCombo
 end)
 panel[#panel + 1] = LiveNum("num_small 11x1.png", 199, 977, 14, 13, 4, function()
-	return counts[4] + counts[5]
+	return counts[4] + counts[6]
 end)
 panel[#panel + 1] = LiveNum("num_small 11x1.png", 390, 954, 14, 13, 4, function()
 	return total(fast)
@@ -176,7 +177,7 @@ return Def.ActorFrame {
 		end
 		counts[k] = counts[k] + 1
 		-- misses went by, beatoraja counts them as late
-		if k == 5 or (msg.Offset and msg.Offset > 0) then
+		if k == 6 or (msg.Offset and msg.Offset > 0) then
 			slow[k] = slow[k] + 1
 		elseif msg.Offset and msg.Offset < 0 then
 			fast[k] = fast[k] + 1
@@ -195,8 +196,8 @@ return Def.ActorFrame {
 	end,
 	-- empty POORs are presses before the note
 	EmptyPoorMessageCommand = function(self)
-		counts[6] = counts[6] + 1
-		fast[6] = fast[6] + 1
+		counts[5] = counts[5] + 1
+		fast[5] = fast[5] + 1
 		refresh()
 	end,
 	ComboChangedMessageCommand = function(self)

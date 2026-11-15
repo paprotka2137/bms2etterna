@@ -85,6 +85,9 @@ class PlayerStageStats
 	// not played on a BMS gauge; with gauge auto shift it can be below the
 	// chosen gauge
 	int m_iBMSClearGauge{ -1 };
+	// BMS gauge (a BMSGauge) shown last, -1 when not played on a BMS gauge;
+	// with gauge auto shift it is the gauge the play ended on, cleared or not
+	int m_iBMSShownGauge{ -1 };
 	// LR2 empty POORs: presses up to a second before a note in that lane
 	int m_iEmptyPoors{ 0 };
 

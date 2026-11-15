@@ -513,6 +513,14 @@ gaugeStyle["EX HARD CLASS"] = gaugeStyle.EXHARD
 local function openGauge()
 	return (detail and not detail.err and detail.gauge) or (opened and opened.gauge) or ""
 end
+-- the gauge the graph shows: the last one in use (with gauge auto shift a
+-- failed play ends on a lower gauge than the one it is filed under)
+local function openGraphGauge()
+	if detail and not detail.err and detail.graph and type(detail.graph_gauge) == "string" and detail.graph_gauge ~= "" then
+		return detail.graph_gauge
+	end
+	return openGauge()
+end
 local function openLamp()
 	if detail and not detail.err and tonumber(detail.lamp) then
 		return tonumber(detail.lamp)
@@ -647,7 +655,7 @@ end
 -- the gauge over the song
 p[#p + 1] = text(8, panelY + 110, 0.28, 0) .. {
 	PanelCommand = function(self)
-		self:settext("GAUGE " .. openGauge()):diffuse(gray)
+		self:settext("GAUGE " .. openGraphGauge()):diffuse(gray)
 	end,
 }
 p[#p + 1] = text(frameWidth - 8, panelY + 110, 0.28, 1) .. {
@@ -668,7 +676,7 @@ p[#p + 1] = Def.ActorMultiVertex {
 			verts[#verts + 1] = {{x2, y2, 0}, c}
 			verts[#verts + 1] = {{x1, y2, 0}, c}
 		end
-		local st = gaugeStyle[string.upper(openGauge())] or gaugeStyle.GROOVE
+		local st = gaugeStyle[string.upper(openGraphGauge())] or gaugeStyle.GROOVE
 		local border = st.border or 0
 		local by = graphH * (1 - border)
 		quad(0, 0, graphW, graphH, color("#00000099"))

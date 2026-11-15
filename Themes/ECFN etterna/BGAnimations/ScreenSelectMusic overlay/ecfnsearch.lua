@@ -57,9 +57,11 @@ local t = Def.ActorFrame {
 		self:xy((SCREEN_WIDTH - 1920 * s) / 2, 0):zoom(s)
 	end,
 	Def.Sprite {
-		Texture = dir .. "upper.png",
+		-- ":SELECT A MUSIC" redrawn in the same font as ":RANDOM IN FOLDER"
+		-- (default.lua), the skin's upper.png had it baked in
+		Texture = dir .. "select_music.png",
 		InitCommand = function(self)
-			self:halign(0):valign(0):xy(25, 0):zoomto(1811, 85)
+			self:halign(0):valign(0):xy(34, 0)
 		end,
 	},
 

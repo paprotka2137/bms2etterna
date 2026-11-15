@@ -175,48 +175,8 @@ t[#t + 1] = LoadFont("ECFN Normal") .. {
 	end,
 }
 
---game update button
-local gameneedsupdating = false
-local buttons = {x = 20, y = 20, width = 142, height = 42, fontScale = 0.35, color = getMainColor("frames")}
-t[#t + 1] = Def.ActorFrame {
-	InitCommand = function(self)
-		self:xy(buttons.x,buttons.y)
-	end,
-	UIElements.QuadButton(1, 1) .. {
-		InitCommand = function(self)
-			self:zoomto(buttons.width, buttons.height):halign(0):valign(0):diffuse(buttons.color):diffusealpha(0)
-			self:playcommand("LastVersionUpdated")
-		end,
-		LastVersionUpdatedMessageCommand = function(self)
-			local latest = tonumber((DLMAN:GetLastVersion():gsub("[.]", "", 1)))
-			local current = tonumber((GAMESTATE:GetEtternaVersion():gsub("[.]", "", 1)))
-			if latest and latest > current then
-				gameneedsupdating = true
-			end
-			self:playcommand("On")
-		end,
-		OnCommand = function(self)
-			if gameneedsupdating then
-				self:diffusealpha(0.3)
-			end
-		end,
-		MouseDownCommand = function(self, params)
-			if params.event == "DeviceButton_left mouse button" and gameneedsupdating then
-				DLMAN:ShowProjectReleases()
-			end
-		end
-	},
-	LoadFont("Common Large") .. {
-		OnCommand = function(self)
-			self:xy(1.7, 1):align(0,0):zoom(buttons.fontScale):diffuse(getMainColor("positive"))
-			if gameneedsupdating then
-				self:settext(THEME:GetString("ScreenTitleMenu", "UpdateAvailable"))
-			else
-				self:settext("")
-			end
-		end
-	}
-}
+-- the Etterna "update available" button is gone: it pointed at upstream
+-- Etterna. New res extensa releases come up in _bmsUpdate.lua (overlay).
 
 local function mysplit(inputstr, sep)
 	if sep == nil then

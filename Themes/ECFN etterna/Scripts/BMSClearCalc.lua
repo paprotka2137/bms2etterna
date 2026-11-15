@@ -17,14 +17,14 @@
 -- P: 1 short density memory (s), 2 long density memory (s), 3 long share,
 -- 4 hand weight, 5 jack weight, 6 miss curve steepness k, 7 empty POOR share
 -- of a miss, 8 shortest jack gap (s), 9 chord weight, 10 chord exponent a
-local P = {0.869284, 2.477, 0.327945, 1.08909, 4.67436, 10.1646, 0.366215, 0.06, 0.268818, 0.800109}
+local P = {0.869284, 2.477, 0.327945, 0.8, 5.6, 10.1646, 0.366215, 0.06, 0.268818, 0.800109}
 
 -- The expected gauge has no luck in it. A real HARD gauge also dies to a bad
 -- run, so HARD has to stay HARD_Z standard deviations above dying. EASY and
 -- GROOVE: a real gauge swings, so the skill is a mix (SUM_W) of the skill to
 -- end at TARGET (the end of the chart matters) and of the skill to gain 60%
 -- over the whole chart with no cap or floor (every part counts the same).
-local HARD_Z, TARGET, SUM_W = 0.5, 56.4783, 0.5
+local HARD_Z, TARGET, SUM_W = 0.5, 56.4783, 0.8
 
 -- rows closer than SWEEP_GAP (rolls, staircases, sweeps) count SWEEP_W in
 -- the densities; in chords of JACK_CHORD notes or more the jack part is
@@ -73,14 +73,67 @@ local JACK_CURVE, MINI_W, MINI_RATIO = 2, 0.7, 2
 local ROLL_JACK = 0.3
 -- HARD: a note's miss chance is at most HARD_MISS_MAX, a burst is got through
 -- by hitting part of it
-local HARD_MISS_MAX = 0.3
+local HARD_MISS_MAX = 0.2
+-- HARD: chordjack notes count HARD_CJ of their difficulty
+local HARD_CJ = 0.95
 -- luck / mashing: a note harder than LUCK_SPIKE x the chart's median note is
 -- got through with luck or by mashing; it counts LUCK_KEEP of the excess
 local LUCK_SPIKE, LUCK_KEEP = 1.8, 0.4
+-- a full alternation (the row two back again, sharing no key with the row
+-- before, less than 0.2 s on: X.X.X.X / .X.X.X.) can be mashed: MASH_W
+local MASH_W = 0.6
+-- a fast burst inside a chordstream (a row less than DELAY_GAP after the row
+-- before while the recent average chord is BURST_AVG or more) is hard to hit
+local BURST_W, BURST_AVG = 1.3, 2.0
 
 -- HARD's skill is moved by this (ln) before it becomes a level, so that HARD
 -- sits about 2.5 ★ over EASY on the insane table
-local HARD_SHIFT = -0.0646
+local HARD_SHIFT = -0.0629
+-- HARD's skill becomes the skill whose EASY level is where HARD should be:
+-- through these points, fitted so a chart's HARD sits about 1.5 ★ over the
+-- EASY of the charts with the same HARD skill (tools/clearcalc/lab/hardmap.py)
+local HARD_MAP = {lo = 1.0000, hi = 1.0000, knots = {
+	{3.55111, 3.46119},
+	{3.64507, 3.55708},
+	{3.70509, 3.64712},
+	{3.75596, 3.71880},
+	{3.79782, 3.73973},
+	{3.83317, 3.75740},
+	{3.86358, 3.77261},
+	{3.89091, 3.78663},
+	{3.91763, 3.80689},
+	{3.94013, 3.81966},
+	{3.96533, 3.85190},
+	{3.99284, 3.88546},
+	{4.02048, 3.90667},
+	{4.04693, 3.92852},
+	{4.07310, 3.95165},
+	{4.09640, 3.97453},
+	{4.12025, 3.99673},
+	{4.14235, 4.02341},
+	{4.16634, 4.04200},
+	{4.19102, 4.06764},
+	{4.21641, 4.09596},
+	{4.23821, 4.12866},
+	{4.25689, 4.15589},
+	{4.27761, 4.16895},
+	{4.29878, 4.17954},
+	{4.31904, 4.20714},
+	{4.33869, 4.22966},
+	{4.36057, 4.25347},
+	{4.38195, 4.27242},
+	{4.40334, 4.28311},
+	{4.42805, 4.31670},
+	{4.44977, 4.34248},
+	{4.47479, 4.38001},
+	{4.49973, 4.41176},
+	{4.52536, 4.43119},
+	{4.55478, 4.47532},
+	{4.59431, 4.51652},
+	{4.64344, 4.57453},
+	{4.71948, 4.63202},
+	{4.85512, 4.83549},
+}}
 
 -- Every scale is set 0.5 lower than the folder medians, by request (the
 -- folder fit read about 1 point high in play).
@@ -89,86 +142,95 @@ local HARD_SHIFT = -0.0646
 -- table comparison sheet, st and oj from the Stella / Overjoy comparison,
 -- Overjoy = ★ + 20). sl, st, oj: that table's own levels.
 local SCALES = {
-	insane = {prefix = "sp", lo = 9.8746, hi = 0.9671, knots = {
-		{3.6806, 2.911},
-		{3.7712, 3.292},
-		{3.8295, 4.658},
-		{3.8771, 6.117},
-		{3.9209, 8.426},
-		{3.9638, 9.745},
-		{4.0085, 11.805},
-		{4.0507, 14.064},
-		{4.0944, 16.163},
-		{4.1369, 18.468},
-		{4.1612, 19.255},
-		{4.1814, 19.936},
-		{4.2040, 20.102},
-		{4.2204, 20.539},
-		{4.2317, 20.685},
-		{4.2437, 20.967},
-		{4.2562, 21.218},
-		{4.2660, 21.344},
-		{4.2771, 21.647},
-		{4.2836, 21.835},
-		{4.2949, 22.098},
-		{4.3047, 22.358},
-		{4.3140, 22.437},
-		{4.3271, 22.655},
-		{4.3404, 22.907},
-		{4.3515, 23.083},
-		{4.3651, 23.133},
-		{4.3780, 23.397},
-		{4.3888, 23.685},
-		{4.4016, 23.779},
-		{4.4154, 23.835},
-		{4.4362, 24.113},
-		{4.4482, 24.283},
-		{4.4579, 24.500},
-		{4.4620, 24.637},
-		{4.4823, 24.767},
-		{4.4998, 24.998},
-		{4.5322, 25.273},
-		{4.5842, 25.810},
-		{4.6833, 26.992},
+	insane = {prefix = "sp", lo = 13.7686, hi = 3.0000, knots = {
+		{3.5997, 2.911},
+		{3.6907, 3.292},
+		{3.7492, 4.658},
+		{3.7993, 6.117},
+		{3.8474, 8.426},
+		{3.8876, 9.745},
+		{3.9367, 11.805},
+		{3.9803, 14.064},
+		{4.0244, 16.163},
+		{4.0697, 18.468},
+		{4.0845, 18.980},
+		{4.0926, 19.312},
+		{4.1134, 20.086},
+		{4.1347, 20.275},
+		{4.1445, 20.500},
+		{4.1549, 20.766},
+		{4.1679, 20.928},
+		{4.1701, 21.000},
+		{4.1803, 21.694},
+		{4.1810, 21.800},
+		{4.1926, 21.987},
+		{4.2049, 22.095},
+		{4.2162, 22.355},
+		{4.2246, 22.516},
+		{4.2361, 22.741},
+		{4.2466, 22.964},
+		{4.2526, 23.000},
+		{4.2571, 23.055},
+		{4.2704, 23.381},
+		{4.2854, 23.757},
+		{4.2969, 24.000},
+		{4.2975, 24.013},
+		{4.3109, 24.062},
+		{4.3207, 24.324},
+		{4.3353, 24.609},
+		{4.3503, 24.702},
+		{4.3673, 24.757},
+		{4.3831, 25.000},
+		{4.3865, 25.026},
+		{4.4019, 25.159},
+		{4.4128, 25.328},
+		{4.4168, 25.435},
+		{4.4385, 25.537},
+		{4.4599, 25.717},
+		{4.4879, 25.932},
+		{4.4948, 26.000},
+		{4.5451, 26.276},
+		{4.6447, 27.000},
+		{4.6449, 27.002},
 	}},
-	satellite = {prefix = "sl", lo = 16.4945, hi = 17.7414, knots = {
-		{3.5216, -0.500},
-		{3.6469, 0.500},
-		{3.7339, 1.500},
-		{3.8016, 2.500},
-		{3.8591, 3.500},
-		{3.8987, 4.500},
-		{3.9470, 5.500},
-		{3.9844, 6.500},
-		{4.0220, 7.500},
-		{4.0485, 8.500},
-		{4.0739, 9.500},
-		{4.1150, 10.500},
-		{4.1473, 11.500},
+	satellite = {prefix = "sl", lo = 9.4406, hi = 26.8113, knots = {
+		{3.4339, -0.500},
+		{3.5647, 0.500},
+		{3.6537, 1.500},
+		{3.7219, 2.500},
+		{3.7816, 3.500},
+		{3.8225, 4.500},
+		{3.8739, 5.500},
+		{3.9100, 6.500},
+		{3.9480, 7.500},
+		{3.9779, 8.500},
+		{4.0040, 9.500},
+		{4.0474, 10.500},
+		{4.0801, 11.500},
 	}},
-	stella = {prefix = "st", lo = 16.6576, hi = 125.6057, knots = {
-		{4.1935, -0.500},
-		{4.2231, 0.500},
-		{4.2686, 1.500},
-		{4.3092, 2.500},
-		{4.3464, 3.500},
-		{4.3945, 4.500},
-		{4.4327, 5.500},
-		{4.4713, 6.500},
-		{4.4960, 7.500},
-		{4.5241, 8.500},
-		{4.5890, 9.500},
-		{4.6720, 10.500},
-		{4.7008, 11.500},
+	stella = {prefix = "st", lo = 25.0162, hi = 22.5364, knots = {
+		{4.1248, -0.500},
+		{4.1587, 0.500},
+		{4.2074, 1.500},
+		{4.2514, 2.500},
+		{4.2910, 3.500},
+		{4.3425, 4.500},
+		{4.3829, 5.500},
+		{4.4257, 6.500},
+		{4.4546, 7.500},
+		{4.4802, 8.500},
+		{4.5479, 9.500},
+		{4.6339, 10.500},
+		{4.6638, 11.500},
 	}},
-	overjoy = {prefix = "oj", lo = 29.5872, hi = 5.1029, knots = {
-		{4.2240, 0.500},
-		{4.2590, 1.500},
-		{4.3022, 2.500},
-		{4.3806, 3.500},
-		{4.4794, 4.500},
-		{4.5618, 5.500},
-		{4.7045, 6.500},
+	overjoy = {prefix = "oj", lo = 24.2167, hi = 9.1983, knots = {
+		{4.1597, 0.500},
+		{4.1969, 1.500},
+		{4.2433, 2.500},
+		{4.3248, 3.500},
+		{4.4356, 4.500},
+		{4.5222, 5.500},
+		{4.6682, 6.500},
 	}},
 }
 local SCALE_ORDER = {"insane", "satellite", "stella", "overjoy"}
@@ -202,10 +264,10 @@ local function noteDifficulty(t, col, parts)
 	local lastCol = {}
 	local lastGap = {}
 	for c = 0, 6 do lastCol[c], lastGap[c] = -1e9, 1e9 end
-	local prevMask = -1
+	local prevMask, prevMask2 = -1, -2
 	local prevCols, prevT = {}, -1e9
 	local prevDt, cavg, cjf, prevChord = 1e9, 0, 0, 0
-	local d = {}
+	local d, cjNote = {}, {}
 	local i = 1
 	while i <= n do
 		local j = i
@@ -225,13 +287,15 @@ local function noteDifficulty(t, col, parts)
 		local mask = 0
 		for k = i, j - 1 do mask = mask + 2 ^ col[k] end
 		local same = chord >= 2 and mask == prevMask
-		prevMask = mask
+		local mask2 = prevMask2
+		prevMask2, prevMask = prevMask, mask
 		local ov = 0
 		for k = i, j - 1 do if prevCols[col[k]] then ov = ov + 1 end end
 		local cj = chord >= 3 and ov >= 2 and t[i] - prevT < 0.2
 		prevCols, prevT = {}, t[i]
 		for k = i, j - 1 do prevCols[col[k]] = true end
 		local sweep = dt < SWEEP_GAP and SWEEP_W or 1
+		local burst = dt < DELAY_GAP and cavg >= BURST_AVG
 		local ec = exp(-dt / CS_MEM)
 		cavg = cavg * ec + chord * (1 - ec)
 		cjf = cjf * ec + (cj and 1 or 0) * (1 - ec)
@@ -241,6 +305,7 @@ local function noteDifficulty(t, col, parts)
 				sweep = DELAY_W + (GRACE_W - DELAY_W) * min(1, cjf / GRACE_CJ)
 			end
 		end
+		if burst then sweep = BURST_W end
 		prevDt, prevChord = dt, chord
 		local cjm = 1
 		if cj then
@@ -252,7 +317,8 @@ local function noteDifficulty(t, col, parts)
 		if chord >= 3 and not cj and not same and dt < 0.2 and cavg > CS_AVG then
 			csw = max(CS_MIN, 1 - CS_SLOPE * (cavg - CS_AVG))
 		end
-		local rf = sweep * (same and SAME_DENS or 1) * (cj and CJ_DENS * cjm or 1) * csw
+		local mash = mask2 >= 0 and mask == mask2 and ov == 0 and dt < 0.2
+		local rf = sweep * (same and SAME_DENS or 1) * (cj and CJ_DENS * cjm or 1) * csw * (mash and MASH_W or 1)
 		local rw = chord ^ a * rf
 		ds, dl = ds + rw, dl + rw
 		if c0 > 0 then h0 = h0 + rf * c0 ^ a end
@@ -269,6 +335,7 @@ local function noteDifficulty(t, col, parts)
 			lastGap[c], lastCol[c] = gap, t[k]
 			local hand, jk, ch = hw * h / ts, jw * jack * jc, cw * (chord - 1)
 			d[k] = base + hand + jk + ch
+			cjNote[k] = cj
 			if parts then
 				parts[k] = {base, hand, jk, ch}
 			end
@@ -284,8 +351,13 @@ local function noteDifficulty(t, col, parts)
 			if d[k] > cap then d[k] = cap + LUCK_KEEP * (d[k] - cap) end
 		end
 	end
-	for k = 1, n do d[k] = log(d[k]) end
-	return d
+	-- HARD: a chordjack note counts HARD_CJ (a chordjack is easier to keep a HARD gauge through)
+	local dh = {}
+	for k = 1, n do
+		dh[k] = log(d[k] * (cjNote[k] and HARD_CJ or 1))
+		d[k] = log(d[k])
+	end
+	return d, dh
 end
 
 -- runs the expected gauge g (1 EASY, 2 GROOVE, 3 HARD) at skill lnS; with
@@ -337,7 +409,8 @@ end
 
 -- level of a gauge's needed skill (g 1 EASY, 2 GROOVE, 3 HARD) on a scale
 local function toLevel(lnS, g, sc)
-	return through(lnS + (g == 3 and HARD_SHIFT or 0), sc or SCALES.insane)
+	if g == 3 then lnS = through(lnS, HARD_MAP) end
+	return through(lnS, sc or SCALES.insane)
 end
 
 local function toStar(lnS, g) return toLevel(lnS, g, SCALES.insane) end
@@ -389,11 +462,11 @@ end
 function bmsClearSkills(t, col, total)
 	local n = #t
 	if n < 2 then return nil end
-	local ld = noteDifficulty(t, col)
+	local ld, lh = noteDifficulty(t, col)
 	total = defaultTotal(total, n)
 	local out = {}
 	for g = 1, 3 do
-		out[g] = neededSkill(ld, g, gaugeChanges(g, total, n))
+		out[g] = neededSkill(g == 3 and lh or ld, g, gaugeChanges(g, total, n))
 	end
 	return out
 end
@@ -479,7 +552,8 @@ function getBMSClearDifficulty(steps, rate)
 	local sc = shownScale(steps)
 	local e, pe = shownLevel(sk[1], 1, sc)
 	local gr, pg = shownLevel(sk[2], 2, sc)
-	local h, ph = shownLevel(sk[3], 3, sc)
+	-- HARD never shows under EASY
+	local h, ph = shownLevel(max(through(sk[3], HARD_MAP), sk[1]), 1, sc)
 	return e, gr, h, pe, ph, pg
 end
 
@@ -694,16 +768,17 @@ function getBMSClearDebug(steps, rate)
 	if not t or #t < 2 then return nil end
 	local n = #t
 	local parts = {}
-	local ld = noteDifficulty(t, col, parts)
+	local ld, lh = noteDifficulty(t, col, parts)
 	local total = defaultTotal(steps:GetBMSTotal(), n)
 	local sc = shownScale(steps)
 	local dbg = {t = t, col = col, ld = ld, parts = parts, total = total, notes = n, gauges = {}, prefix = sc.prefix}
 	for g = 1, 3 do
 		local gain, poor = gaugeChanges(g, total, n)
 		-- a hair above the needed skill, where the gauge just clears
-		local s = neededSkill(ld, g, gain, poor) + 1e-6
+		local gd = g == 3 and lh or ld
+		local s = neededSkill(gd, g, gain, poor) + 1e-6
 		local trace = {gauge = {}, miss = {}}
-		clears(ld, g, s, gain, poor, trace)
+		clears(gd, g, s, gain, poor, trace)
 		local lv, pre = shownLevel(s, g, sc)
 		dbg.gauges[g] = {skill = s, star = lv, prefix = pre, gain = gain, poor = poor, gauge = trace.gauge, miss = trace.miss}
 	end

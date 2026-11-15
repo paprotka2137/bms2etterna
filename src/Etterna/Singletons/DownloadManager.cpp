@@ -6592,7 +6592,8 @@ void
 DownloadManager::BMSUploadScore(const HighScore& hs,
 								const Steps* steps,
 								const Song* song,
-								const std::string& gaugeGraph)
+								const std::string& gaugeGraph,
+								const std::string& graphGauge)
 {
 	if (!BMSLoggedIn() || steps == nullptr || song == nullptr)
 		return;
@@ -6626,6 +6627,7 @@ DownloadManager::BMSUploadScore(const HighScore& hs,
 		{ "datetime", hs.GetDateTime().GetString() },
 		{ "replay_raw", replay },
 		{ "gauge_graph", gaugeGraph },
+		{ "graph_gauge", graphGauge },
 		// O2Jam charts are ranked by O2Jam rules (DMJam score)
 		{ "mode", OJNLoader::IsO2JamSteps(steps) ? "o2jam" : "bms" },
 	};
@@ -6654,6 +6656,196 @@ DownloadManager::BMSUploadScore(const HighScore& hs,
 
 #include "Etterna/Models/Lua/LuaBinding.h"
 #include "LuaManager.h"
+// ---------------------------------------------------------------------------
+// in-game updater: the theme checks the GitHub releases on startup, can
+// download a package or a files update and start the updater script
+// (Themes/<theme>/Updater) that swaps the files once the game is closed
+// ---------------------------------------------------------------------------
+#include "Etterna/Globals/GameLoop.h"
+#include <atomic>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
+static std::atomic<long long> bmsUpdateNow{ 0 };
+static std::atomic<long long> bmsUpdateTotal{ 0 };
+
+static bool
+BMSUpdateURLAllowed(const std::string& url)
+{
+	return url.rfind("https://api.github.com/repos/", 0) == 0 ||
+		   url.rfind("https://github.com/", 0) == 0;
+}
+
+static int
+BMSUpdateXferInfo(void*, curl_off_t dltotal, curl_off_t dlnow, curl_off_t, curl_off_t)
+{
+	bmsUpdateNow = static_cast<long long>(dlnow);
+	bmsUpdateTotal = static_cast<long long>(dltotal);
+	return 0;
+}
+
+void
+DownloadManager::BMSUpdateRequest(
+  const std::string& url,
+  const std::string& savePath,
+  std::function<void(long, const std::string&)> done)
+{
+	if (!BMSUpdateURLAllowed(url)) {
+		Locator::getLogger()->warn("Update: refused {}", url);
+		done(0, "");
+		return;
+	}
+	CURL* curlHandle = initBasicCURLHandle();
+	curl_easy_setopt_log_err(curlHandle, CURLOPT_HTTPGET, 1L);
+	curl_easy_setopt_log_err(curlHandle, CURLOPT_REDIR_PROTOCOLS_STR, "https");
+	if (!savePath.empty()) {
+		// files that end up running as the game: make sure GitHub sent them
+		curl_easy_setopt_log_err(curlHandle, CURLOPT_SSL_VERIFYPEER, 1L);
+		curl_easy_setopt_log_err(curlHandle, CURLOPT_SSL_VERIFYHOST, 2L);
+#ifdef _WIN32
+		curl_easy_setopt_log_err(
+		  curlHandle, CURLOPT_SSL_OPTIONS, static_cast<long>(CURLSSLOPT_NATIVE_CA));
+#else
+		// the bundled OpenSSL doesn't know where this system keeps them
+		static const char* bundles[] = {
+			"/etc/ssl/certs/ca-certificates.crt",
+			"/etc/pki/tls/certs/ca-bundle.crt",
+			"/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",
+			"/etc/ssl/ca-bundle.pem",
+			"/etc/ssl/cert.pem",
+		};
+		for (auto* b : bundles) {
+			if (access(b, R_OK) == 0) {
+				curl_easy_setopt_log_err(curlHandle, CURLOPT_CAINFO, b);
+				break;
+			}
+		}
+#endif
+		bmsUpdateNow = 0;
+		bmsUpdateTotal = 0;
+		curl_easy_setopt_log_err(curlHandle, CURLOPT_NOPROGRESS, 0L);
+		curl_easy_setopt_log_err(
+		  curlHandle, CURLOPT_XFERINFOFUNCTION, BMSUpdateXferInfo);
+	}
+	SetCURLURL(curlHandle, url);
+	auto* req = new HTTPRequest(
+	  curlHandle,
+	  [savePath, done](HTTPRequest& r) {
+		  if (savePath.empty() || r.response_code != 200) {
+			  done(r.response_code, savePath.empty() ? r.result : "");
+			  return;
+		  }
+		  RageFile f;
+		  if (!f.Open(savePath, RageFile::WRITE) ||
+			  f.Write(r.result) != static_cast<int>(r.result.size())) {
+			  Locator::getLogger()->error("Update: can't write {}", savePath);
+			  done(-1, "");
+			  return;
+		  }
+		  f.Close();
+		  done(200, "");
+	  },
+	  nullptr,
+	  [done](HTTPRequest& r) { done(0, ""); });
+	SetCURLResultsString(curlHandle, &(req->result));
+	SetCURLHeadersString(curlHandle, &(req->headers));
+	AddHttpRequestHandle(req->handle);
+	HTTPRequests.push_back(req);
+}
+
+// starts the updater script on its own and quits the game. The script waits
+// for the game to close, puts the package in (or nothing for "-") and
+// starts the game again.
+static bool
+BMSUpdateLaunch(const std::string& script, const std::string& package)
+{
+	auto root = FILEMAN->ResolvePath("/");
+	while (!root.empty() && (root.back() == '/' || root.back() == '\\'))
+		root.pop_back();
+	auto scriptPath = FILEMAN->ResolvePath(script);
+	auto pkg = package.empty() ? std::string("-") : FILEMAN->ResolvePath(package);
+#ifdef _WIN32
+	for (auto* s : { &root, &scriptPath, &pkg })
+		std::replace(s->begin(), s->end(), '/', '\\');
+	const auto cmd = fmt::format("cmd.exe /d /c \"\"{}\" {} \"{}\" \"{}\"\"",
+								 scriptPath,
+								 GetCurrentProcessId(),
+								 pkg,
+								 root);
+	auto wcmd = StringToWString(cmd);
+	STARTUPINFOW si{};
+	si.cb = sizeof(si);
+	PROCESS_INFORMATION pi{};
+	if (!CreateProcessW(nullptr,
+						wcmd.data(),
+						nullptr,
+						nullptr,
+						FALSE,
+						CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP,
+						nullptr,
+						nullptr,
+						&si,
+						&pi)) {
+		Locator::getLogger()->error("Update: can't start {}", cmd);
+		return false;
+	}
+	CloseHandle(pi.hThread);
+	CloseHandle(pi.hProcess);
+#else
+	// everything the child needs is ready before fork: only exec after it
+	const auto pid = std::to_string(getpid());
+	const pid_t child = fork();
+	if (child < 0) {
+		Locator::getLogger()->error("Update: can't start {}", scriptPath);
+		return false;
+	}
+	if (child == 0) {
+		setsid();
+		for (int fd = 3; fd < 1024; ++fd)
+			close(fd);
+		execl("/bin/sh",
+			  "sh",
+			  scriptPath.c_str(),
+			  pid.c_str(),
+			  pkg.c_str(),
+			  root.c_str(),
+			  static_cast<char*>(nullptr));
+		_exit(127);
+	}
+#endif
+	Locator::getLogger()->info("Update: started {} with {}, quitting", scriptPath, pkg);
+	GameLoop::setUserQuit();
+	return true;
+}
+
+// a Lua function as a BMS callback(status, body)
+static std::function<void(long, const std::string&)>
+BMSLuaCallback(lua_State* L, int idx, const char* what)
+{
+	LuaReference ref;
+	if (lua_isfunction(L, idx)) {
+		lua_pushvalue(L, idx);
+		ref.SetFromStack(L);
+	}
+	const std::string err = std::string("Error running ") + what + " callback: ";
+	return [ref, err](long code, const std::string& body) {
+		if (ref.IsNil() || !ref.IsSet())
+			return;
+		auto* L = LUA->Get();
+		ref.PushSelf(L);
+		if (!lua_isnil(L, -1)) {
+			std::string Error = err;
+			lua_pushnumber(L, static_cast<double>(code));
+			lua_pushlstring(L, body.data(), body.size());
+			LuaHelpers::RunScriptOnStack(L, Error, 2, 0, true);
+		} else {
+			lua_pop(L, 1);
+		}
+		LUA->Release(L);
+	};
+}
+
 /** @brief Allow Lua to have access to the ProfileManager. */
 class LunaDownloadManager : public Luna<DownloadManager>
 {
@@ -6811,6 +7003,86 @@ class LunaDownloadManager : public Luna<DownloadManager>
 		  },
 		  duringGameplay);
 		return 0;
+	}
+	// in-game updater, see BMSUpdateRequest / BMSUpdateLaunch
+	// DLMAN:BMSUpdateGet(url, function(status, body) end)
+	static int BMSUpdateGet(T* p, lua_State* L)
+	{
+		p->BMSUpdateRequest(SArg(1), "", BMSLuaCallback(L, 2, "BMSUpdateGet"));
+		return 0;
+	}
+	// DLMAN:BMSUpdateDownload(url, "/Cache/Update/x", function(status) end)
+	static int BMSUpdateDownload(T* p, lua_State* L)
+	{
+		const std::string path = SArg(2);
+		if (path.empty()) {
+			lua_pushboolean(L, false);
+			return 1;
+		}
+		p->BMSUpdateRequest(
+		  SArg(1), path, BMSLuaCallback(L, 3, "BMSUpdateDownload"));
+		lua_pushboolean(L, true);
+		return 1;
+	}
+	// bytes so far, bytes in all (0 while unknown)
+	static int BMSUpdateProgress(T* p, lua_State* L)
+	{
+		lua_pushnumber(L, static_cast<double>(bmsUpdateNow.load()));
+		lua_pushnumber(L, static_cast<double>(bmsUpdateTotal.load()));
+		return 2;
+	}
+	// files written, files failed; nil when the zip can't be read
+	static int BMSUpdateInstallFiles(T* p, lua_State* L)
+	{
+		int written = 0;
+		int failed = 0;
+		if (!SongManager::InstallBMSUpdateZip(SArg(1), written, failed)) {
+			lua_pushnil(L);
+			return 1;
+		}
+		lua_pushnumber(L, written);
+		lua_pushnumber(L, failed);
+		return 2;
+	}
+	// DLMAN:BMSUpdateLaunch(script, package or "" to only restart): quits
+	static int BMSUpdateLaunch(T* p, lua_State* L)
+	{
+		const std::string script = SArg(1);
+		const std::string package = lua_isstring(L, 2) ? SArg(2) : "";
+		lua_pushboolean(L, ::BMSUpdateLaunch(script, package));
+		return 1;
+	}
+	// the release page in the browser (GitHub only)
+	static int BMSUpdateOpenPage(T* p, lua_State* L)
+	{
+		const std::string url = SArg(1);
+		lua_pushboolean(L,
+						BMSUpdateURLAllowed(url) &&
+						  Core::Platform::openWebsite(url));
+		return 1;
+	}
+	// true in a source checkout (a .git folder next to the game): the
+	// updater leaves those alone, they update with git
+	static int BMSUpdateIsCheckout(T* p, lua_State* L)
+	{
+		lua_pushboolean(L, SongManager::BMSUpdateIsCheckout());
+		return 1;
+	}
+	// which release package fits this build
+	static int BMSUpdatePlatform(T* p, lua_State* L)
+	{
+#if defined(_WIN32)
+		lua_pushstring(L, "windows");
+#elif defined(__APPLE__)
+#if defined(__aarch64__) || defined(__arm64__)
+		lua_pushstring(L, "mac-arm64");
+#else
+		lua_pushstring(L, "mac-x64");
+#endif
+#else
+		lua_pushstring(L, "linux");
+#endif
+		return 1;
 	}
 	static int BMSIsLoggedIn(T* p, lua_State* L)
 	{
@@ -7327,6 +7599,14 @@ class LunaDownloadManager : public Luna<DownloadManager>
 		ADD_METHOD(BMSGetName);
 		ADD_METHOD(BMSGetURL);
 		ADD_METHOD(BMSSetLogin);
+		ADD_METHOD(BMSUpdateGet);
+		ADD_METHOD(BMSUpdateDownload);
+		ADD_METHOD(BMSUpdateProgress);
+		ADD_METHOD(BMSUpdateInstallFiles);
+		ADD_METHOD(BMSUpdateLaunch);
+		ADD_METHOD(BMSUpdatePlatform);
+		ADD_METHOD(BMSUpdateOpenPage);
+		ADD_METHOD(BMSUpdateIsCheckout);
 	}
 };
 LUA_REGISTER_CLASS(DownloadManager)

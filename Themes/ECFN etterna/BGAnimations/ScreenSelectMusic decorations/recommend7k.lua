@@ -5,8 +5,12 @@
 -- EASY and CLEAR lamps and also charts never played or only failed. CLEAR
 -- lists charts to clear (EASY or CLEAR) that are not cleared yet. The chips
 -- pick the tables the rating counts, like on the site. Every chart of the
--- tables counts (leaderboard/site/public/tablecharts.json), also ones not
--- on this computer (gray, a click does nothing). Logged in to the ranking
+-- tables counts, also ones not on this computer (gray, a click does
+-- nothing). The chart list and the ratings are the site's tablecharts.json
+-- and calcrating.json: read from leaderboard/site/public when the site's
+-- folder is on this computer, else from the copy in Save/BMSCache, and
+-- downloaded from the ranking site once per game start (kept in
+-- Save/BMSCache for the next start), so a plain install works too. Logged in to the ranking
 -- site, the lamps of every computer's plays count too. Clicking a row moves
 -- the wheel to its song.
 local W = ECFNWindow
@@ -28,23 +32,58 @@ local nowRating
 -- the site's calcrating.json (shared with the Profile window), else the
 -- game's clear calc
 ---------------------------------------------------------------------------
-local GR_FILE = "/leaderboard/site/public/calcrating.json"
-local function loadGR()
-	if BMSGoodRatingFile then
-		return BMSGoodRatingFile
-	end
-	local out = {}
+local SITE_DIR = "/leaderboard/site/public/"
+local CACHE_DIR = "/Save/BMSCache/"
+
+local function readFile(path)
+	local str
 	local f = RageFileUtil.CreateRageFile()
-	if f:Open(GR_FILE, 1) then
-		local str = f:Read() or ""
+	if f:Open(path, 1) then
+		str = f:Read()
 		f:Close()
-		for k, e, h in str:gmatch('"([^"]+)":%[(-?[%d%.]+),(-?[%d%.]+)%]') do
-			out[k] = {tonumber(e), tonumber(h)}
-		end
 	end
 	f:destroy()
-	BMSGoodRatingFile = out
+	if str and str ~= "" then
+		return str
+	end
+	return nil
+end
+
+local function writeFile(path, str)
+	local f = RageFileUtil.CreateRageFile()
+	if f:Open(path, 2) then
+		f:Write(str)
+		f:Close()
+	end
+	f:destroy()
+end
+
+-- the site's folder first (the newest numbers on the computer that runs the
+-- site), else the downloaded copy
+local function readData(name)
+	return readFile(SITE_DIR .. name) or readFile(CACHE_DIR .. name)
+end
+
+local function parseGR(str)
+	local out = {}
+	for k, e, h in (str or ""):gmatch('"([^"]+)":%[(-?[%d%.]+),(-?[%d%.]+)%]') do
+		out[k] = {tonumber(e), tonumber(h)}
+	end
 	return out
+end
+
+-- BMSGoodRatingFile is shared with the Profile window, which reads only the
+-- site's folder: an empty one is filled from the copy or the download
+local grTried = false
+local function loadGR()
+	if BMSGoodRatingFile and next(BMSGoodRatingFile) then
+		return BMSGoodRatingFile
+	end
+	if not grTried then
+		grTried = true
+		BMSGoodRatingFile = parseGR(readData("calcrating.json"))
+	end
+	return BMSGoodRatingFile or {}
 end
 
 local grCalc = {}
@@ -74,19 +113,12 @@ end
 -- every chart of the tables: {ck, song (name), lv = {{t, l}, ...}}, read
 -- once per game start from the site's tablecharts.json
 ---------------------------------------------------------------------------
-local TC_FILE = "/leaderboard/site/public/tablecharts.json"
 local function unescape(s)
 	return (s:gsub('\\(["\\/])', "%1"))
 end
-local function loadTableCharts()
-	if BMSTableCharts then
-		return BMSTableCharts
-	end
+local function parseTC(str)
 	local byKey, order = {}, {}
-	local f = RageFileUtil.CreateRageFile()
-	if f:Open(TC_FILE, 1) then
-		local str = f:Read() or ""
-		f:Close()
+	if str then
 		-- where each table's part starts: {"insane":{"1":[["key","song"],...],...},"satellite":{...}}
 		local starts = {}
 		for _, t in ipairs(TABLES) do
@@ -114,9 +146,18 @@ local function loadTableCharts()
 			end
 		end
 	end
-	f:destroy()
-	BMSTableCharts = order
 	return order
+end
+local tcTried = false
+local function loadTableCharts()
+	if BMSTableCharts and #BMSTableCharts > 0 then
+		return BMSTableCharts
+	end
+	if not tcTried then
+		tcTried = true
+		BMSTableCharts = parseTC(readData("tablecharts.json"))
+	end
+	return BMSTableCharts or {}
 end
 
 local function inTables(c)
@@ -298,6 +339,47 @@ local function loadSite()
 	end)
 end
 
+-- the site's chart list and ratings, once per game start: kept in
+-- Save/BMSCache and used right away (the site's own folder still wins)
+local function fetchData()
+	if BMSRecommendFetched then
+		return
+	end
+	BMSRecommendFetched = true
+	local function get(name, apply)
+		DLMAN:BMSRequest("GET", "/" .. name, {}, function(status, body)
+			if status ~= 200 or not body or body:sub(1, 1) ~= "{" then
+				return
+			end
+			writeFile(CACHE_DIR .. name, body)
+			if readFile(SITE_DIR .. name) then
+				return
+			end
+			if apply(body) then
+				build()
+				MESSAGEMAN:Broadcast("BMSRecommendRefresh")
+			end
+		end)
+	end
+	get("tablecharts.json", function(body)
+		local tc = parseTC(body)
+		if #tc == 0 then
+			return false
+		end
+		BMSTableCharts = tc
+		return true
+	end)
+	get("calcrating.json", function(body)
+		local gr = parseGR(body)
+		if not next(gr) then
+			return false
+		end
+		BMSGoodRatingFile = gr
+		grCalc = {}
+		return true
+	end)
+end
+
 local function current()
 	return lists[BMSRecommendMode] or {}
 end
@@ -315,6 +397,7 @@ local t = W.frame(tab, "BMSRecommend", function()
 	gatherLocal()
 	build()
 	loadSite()
+	fetchData()
 	page = 0
 end)
 t.BMSRecommendRefreshMessageCommand = function(self)
@@ -440,7 +523,7 @@ t[#t + 1] = W.text(W.width / 2, pageY, 0.3, 0.5) .. {
 	ShowCommand = function(self)
 		local n = #current()
 		if #loadTableCharts() == 0 then
-			self:settext("No table chart list (leaderboard/site/public/tablecharts.json)"):diffuse(W.gray)
+			self:settext(BMSRecommendFetched and "Getting the table chart list from the ranking site..." or "No table chart list"):diffuse(W.gray)
 		elseif n == 0 then
 			self:settext("Nothing in these tables would raise the rating"):diffuse(W.gray)
 		else

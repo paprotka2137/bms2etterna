@@ -582,3 +582,61 @@ jobs:
         if: ${{ github.event_name == 'release' && github.event.action == 'published' }}
         with:
           files: main/build/*.exe
+
+  # what the in-game updater reads (Themes/ECFN etterna/BGAnimations/_bmsUpdate.lua):
+  #  update.json                    {"version", "build", "files"}
+  #  res-extensa-files-<tag>.zip    the data folders, unpacked over the game
+  # "build" is APP_DISPLAY_VERSION: players whose game program has that
+  # version get only the files zip, everyone else the full package.
+  update-files:
+    name: In-game update files
+    if: ${{ github.event_name == 'release' && github.event.action == 'published' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check the versions
+        id: ver
+        run: |
+          tag="${GITHUB_REF##*/}"
+          version="${tag#v}"
+          build=$(sed -n 's/.*set(APP_DISPLAY_VERSION "\(.*\)").*/\1/p' CMakeLists.txt)
+          theme=$(sed -n 's/.*Version = "\(.*\)".*/\1/p' "Themes/ECFN etterna/Scripts/00 ThemeInfo.lua")
+          echo "tag $tag, program $build, theme $theme"
+          if [ "$theme" != "$version" ]; then
+            echo "::error::themeInfo.Version ($theme) has to be the release version ($version)"
+            exit 1
+          fi
+          # program code changed since the last release without a new
+          # APP_DISPLAY_VERSION: a files update would leave players with an
+          # old program, so stop here (players then get the full package)
+          prev=$(git describe --tags --abbrev=0 "$tag^" 2>/dev/null || true)
+          if [ -n "$prev" ]; then
+            prevbuild=$(git show "$prev:CMakeLists.txt" | sed -n 's/.*set(APP_DISPLAY_VERSION "\(.*\)").*/\1/p')
+            if [ "$prevbuild" = "$build" ] && ! git diff --quiet "$prev" "$tag" -- src extern CMake CMakeLists.txt; then
+              echo "::error::src/ changed since $prev but APP_DISPLAY_VERSION is still $build: bump it in CMakeLists.txt"
+              exit 1
+            fi
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
+      - name: Pack the files update
+        run: |
+          files="res-extensa-files-${{ steps.ver.outputs.version }}.zip"
+          zip -qr -X "$files" "Themes/ECFN etterna" NoteSkins Data Assets Scripts \
+            -x "*.przed-*" "*.bak*" "*/.git*"
+          printf '{"version": "%s", "build": "%s", "files": "%s"}\n' \
+            "${{ steps.ver.outputs.version }}" "${{ steps.ver.outputs.build }}" "$files" > update.json
+          cat update.json
+          ls -l "$files"
+
+      - name: Upload files to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            update.json
+            res-extensa-files-*.zip
