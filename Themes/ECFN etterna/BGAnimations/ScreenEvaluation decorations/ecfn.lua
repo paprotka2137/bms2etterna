@@ -58,7 +58,12 @@ end
 local o2jam = isO2JamScore(score)
 
 local counts = judgeCounts(score)
-local emptyPoors = isCurrentPlay and pss:GetEmptyPoorCount() or score:GetEmptyPoorCount()
+-- the score keeps its empty POORs; a score opened again from the list has a
+-- player stage stats rebuilt from the replay, which has none of them
+local emptyPoors = score:GetEmptyPoorCount()
+if isCurrentPlay then
+	emptyPoors = math.max(emptyPoors, pss:GetEmptyPoorCount())
+end
 local notes = counts[1] + counts[2] + counts[3] + counts[4] + counts[5]
 do
 	local possible = pss:GetRadarPossible():GetValue("RadarCategory_Notes")
@@ -752,6 +757,7 @@ t[#t + 1] = Img("gauge_frame.png", 37, 67, 527, 267, {
 local arrangeFrames = {BMSMirror = 1, BMSRandom = 2, BMSRRandom = 3, BMSSRandom = 4, BMSHRandom = 6}
 local arrange = 0
 local customLanes
+local colorRandom = false
 do
 	local mods = score:GetModifiers() or ""
 	for k, v in pairs(arrangeFrames) do
@@ -762,9 +768,13 @@ do
 		end
 	end
 	customLanes = mods:match("Lanes(%d%d%d%d%d%d%d)")
+	colorRandom = mods:lower():find("bmscrandom", 1, true) ~= nil
 end
 if customLanes then
 	t[#t + 1] = Text(38, 349, 12, 0, 140, "LANES " .. customLanes)
+elseif colorRandom then
+	-- random with the numbers off (colors only) has no picture in the ECFN sheet
+	t[#t + 1] = Text(38, 349, 12, 0, 140, "RANDOM (COLORS)")
 else
 	t[#t + 1] = Frame("random_op 1x10.png", arrange, 38, 343, 130, 12, true, 100)
 end
@@ -1536,8 +1546,10 @@ do
 end
 
 ---------------------------------------------------------------------------
--- RANDOM / R-RANDOM / MIRROR: hovering the lane option shows the lane order
--- the play had, as the 7 keys with the chart lane each one played
+-- RANDOM / COLOR RANDOM / R-RANDOM / MIRROR: hovering the lane option shows
+-- the lane order the play had, as the 7 keys with the chart lane each one
+-- played. A key is white or blue by the chart lane on it (1 3 5 7 white,
+-- 2 4 6 blue), its height by where it sits.
 ---------------------------------------------------------------------------
 
 do
@@ -1570,9 +1582,9 @@ do
 			},
 		}
 		for k = 1, 7 do
-			local blue = k % 2 == 0
+			local blue = tonumber(order:sub(k, k)) % 2 == 0
 			local x = pad + (k - 1) * (kw + gap)
-			local h = blue and kh - 8 or kh
+			local h = k % 2 == 0 and kh - 8 or kh
 			pop[#pop + 1] = Def.Quad {
 				InitCommand = function(self)
 					self:halign(0):valign(0):xy(x, pad):zoomto(kw, h)

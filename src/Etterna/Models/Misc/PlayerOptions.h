@@ -86,6 +86,9 @@ enum BMSArrange
 	BMSArrange_SRandom,
 	BMSArrange_HRandom,
 	BMSArrange_Custom,
+	// shuffles the white lanes (1 3 5 7) among white keys and the blue ones
+	// (2 4 6) among blue keys
+	BMSArrange_CRandom,
 	NUM_BMSArrange,
 	BMSArrange_Invalid
 };

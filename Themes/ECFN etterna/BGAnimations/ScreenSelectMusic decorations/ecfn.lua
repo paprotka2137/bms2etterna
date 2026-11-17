@@ -1276,4 +1276,21 @@ end
 -- later decoration files, so they draw on top)
 t[#t + 1] = tabWindows
 
+-- Enter in the lane picker: start the song with the picked lanes once the
+-- picker has closed
+t[#t + 1] = Def.Actor {
+	BMSLanesStartMessageCommand = function(self)
+		self:stoptweening():sleep(0.1):queuecommand("BMSLanesGo")
+	end,
+	BMSLanesGoCommand = function(self)
+		local top = SCREENMAN:GetTopScreen()
+		if top and top:GetName() == "ScreenSelectMusic" and top.SelectCurrent then
+			top:SelectCurrent()
+		elseif top and top:GetName() == "ScreenBMSLanes" then
+			-- still closing
+			self:sleep(0.05):queuecommand("BMSLanesGo")
+		end
+	end,
+}
+
 return t

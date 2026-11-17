@@ -76,6 +76,9 @@ local ROLL_JACK = 0.3
 local HARD_MISS_MAX = 0.2
 -- HARD: chordjack notes count HARD_CJ of their difficulty
 local HARD_CJ = 0.95
+-- a chart under SHORT_LEN s of notes is short enough to mash through: its
+-- notes count (length / SHORT_LEN)^SHORT_EXP of their difficulty
+local SHORT_LEN, SHORT_EXP = 60, 0.25
 -- luck / mashing: a note harder than LUCK_SPIKE x the chart's median note is
 -- got through with luck or by mashing; it counts LUCK_KEEP of the excess
 local LUCK_SPIKE, LUCK_KEEP = 1.8, 0.4
@@ -328,6 +331,12 @@ local function noteDifficulty(t, col, parts)
 			if d[k] > cap then d[k] = cap + LUCK_KEEP * (d[k] - cap) end
 		end
 	end
+	-- a short chart (under SHORT_LEN s of notes) can be mashed through, it is
+	-- no stamina test: every note counts (length / SHORT_LEN)^SHORT_EXP
+	if t[n] - t[1] < SHORT_LEN then
+		local f = (max(t[n] - t[1], 1) / SHORT_LEN) ^ SHORT_EXP
+		for k = 1, n do d[k] = d[k] * f end
+	end
 	-- HARD: a chordjack note counts HARD_CJ (a chordjack is easier to keep a HARD gauge through)
 	local dh = {}
 	for k = 1, n do
@@ -529,8 +538,13 @@ function getBMSClearDifficulty(steps, rate)
 	local sc = shownScale(steps)
 	local e, pe = shownLevel(sk[1], 1, sc)
 	local gr, pg = shownLevel(sk[2], 2, sc)
-	-- HARD never shows under EASY
-	local h, ph = shownLevel(max(through(sk[3], HARD_MAP), sk[1]), 1, sc)
+	-- EASY never shows above HARD: a HARD clear gives the EASY lamp too (a tiny
+	-- TOTAL makes the EASY gauge the harder one in the model; HARD, which TOTAL
+	-- does not touch, keeps its own level)
+	local hs = through(sk[3], HARD_MAP)
+	local h, ph = shownLevel(hs, 1, sc)
+	if sk[1] > hs then e, pe = h, ph end
+	if sk[2] > hs then gr, pg = h, ph end
 	return e, gr, h, pe, ph, pg
 end
 

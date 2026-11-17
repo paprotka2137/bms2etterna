@@ -14,6 +14,8 @@ if not hideMSD() then
 	t[#t + 1] = LoadActor("titlesplash")
 end
 t[#t + 1] = LoadActor("leaderboard.lua")
+-- 7k: the lane order this song plays on
+t[#t + 1] = LoadActor("lanes")
 if inReplay then
 	t[#t + 1] = LoadActor("replayscrolling")
 end

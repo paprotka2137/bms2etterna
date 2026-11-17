@@ -546,6 +546,21 @@ ScreenSelectMusic::Input(const InputEventPlus& input)
 				return true;
 		} else if (bHoldingCtrl && c == 'M' && m_MusicWheel.IsSettled() &&
 				   input.type == IET_FIRST_PRESS) {
+			// 7k: Ctrl+M is the BMS lane option's Mirror (the theme toggles
+			// it, like Ctrl+R), there is no separate permamirror. A chart
+			// still permamirrored from before loses the flag here.
+			const auto* style = GAMESTATE->GetCurrentStyle(PLAYER_1);
+			const bool bms7k =
+			  style != nullptr
+				? style->m_iColsPerPlayer == 7
+				: GAMESTATE->GetCurrentGame() != nullptr &&
+					std::string(GAMESTATE->GetCurrentGame()->m_szName) == "kb7";
+			if (bms7k) {
+				if (GAMESTATE->m_pCurSteps != nullptr &&
+					GAMESTATE->m_pCurSteps->IsPermaMirror())
+					ToggleCurrentPermamirror();
+				return false;
+			}
 			if (ToggleCurrentPermamirror())
 				return true;
 		} else if (bHoldingCtrl && c == 'G' && m_MusicWheel.IsSettled() &&
@@ -2262,6 +2277,8 @@ class LunaScreenSelectMusic : public Luna<ScreenSelectMusic>
 		// score->UnloadReplayData();
 		pss.m_iSongsPassed = 1;
 		pss.m_iSongsPlayed = 1;
+		// 7k: empty POORs are not in the replay, the score keeps them
+		pss.m_iEmptyPoors = score->GetEmptyPoors();
 		GAMESTATE->SetProcessedTimingData(
 		  GAMESTATE->m_pCurSteps->GetTimingData());
 		NoteDataUtil::CalculateRadarValues(nd, rv);

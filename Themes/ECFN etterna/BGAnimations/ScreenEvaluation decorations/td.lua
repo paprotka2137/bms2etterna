@@ -819,10 +819,10 @@ local function scoreBoard(pn, position)
 					self:queuecommand("Set")
 				end,
 				SetCommand = function(self)
-					-- 7k: LR2 empty POORs of this play, they are not saved with the score
-					if hideMSD() and judgmentName == "TapNoteScore_Miss" and pss:GetEmptyPoorCount() > 0
-							and score:GetScoreid() == pss:GetHighScore():GetScoreid() then
-						self:settextf("%d +%d", self:GetParent().jcount, pss:GetEmptyPoorCount())
+					-- 7k: LR2 empty POORs, kept with the score
+					local ep = score and score.GetEmptyPoorCount and score:GetEmptyPoorCount() or 0
+					if hideMSD() and judgmentName == "TapNoteScore_Miss" and ep > 0 then
+						self:settextf("%d +%d", self:GetParent().jcount, ep)
 						return
 					end
 					self:settext(self:GetParent().jcount)

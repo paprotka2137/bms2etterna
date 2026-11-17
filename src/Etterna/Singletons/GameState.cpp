@@ -14,6 +14,7 @@
 #include "Etterna/Models/Lua/LuaReference.h"
 #include "MessageManager.h"
 #include "Etterna/Models/NoteData/NoteData.h"
+#include "Etterna/Models/NoteData/NoteDataUtil.h"
 #include "NetworkSyncManager.h"
 #include "NoteSkinManager.h"
 #include "Etterna/Models/Misc/PlayerState.h"
@@ -1863,6 +1864,19 @@ class LunaGameState : public Luna<GameState>
 		LuaHelpers::Push(L, p->m_iGameSeed);
 		return 1;
 	}
+	// 7k lane order the current song plays on ("3527164": lane 1 has the
+	// chart's lane 3), "" when the lanes are not moved as whole lanes (off,
+	// S-RANDOM, H-RANDOM)
+	static int GetBMSLaneOrder(T* p, lua_State* L)
+	{
+		const auto& po =
+		  p->m_pPlayerState->m_PlayerOptions.GetStage();
+		LuaHelpers::Push(
+		  L,
+		  NoteDataUtil::BMSLaneOrder(
+			po.m_BMSArrange, po.m_sBMSLanes, p->m_iStageSeed, 7));
+		return 1;
+	}
 	static int JoinInput(T* p, lua_State* L)
 	{
 		LuaHelpers::Push(L, p->m_iStageSeed);
@@ -2090,6 +2104,7 @@ class LunaGameState : public Luna<GameState>
 		ADD_METHOD(GetNumStagesForCurrentSongAndStepsOrCourse);
 		ADD_METHOD(GetNumStagesLeft);
 		ADD_METHOD(GetGameSeed);
+		ADD_METHOD(GetBMSLaneOrder);
 		ADD_METHOD(Reset);
 		ADD_METHOD(JoinPlayer);
 		ADD_METHOD(UnjoinPlayer);

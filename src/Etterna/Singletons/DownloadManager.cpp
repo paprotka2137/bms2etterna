@@ -6525,6 +6525,7 @@ DownloadablePack::GetThumbnailTexture()
 #include "Etterna/Models/HighScore/ReplayConstantsAndTypes.h"
 #include "MessageManager.h"
 #include "PrefsManager.h"
+#include "Etterna/Actor/Gameplay/LifeMeterBar.h"
 
 static Preference<std::string> bmsRankingURL(
   "BMSRankingURL",
@@ -6641,6 +6642,12 @@ DownloadManager::BMSUploadScore(const HighScore& hs,
 		  num(static_cast<int>(rv[RadarCategory_Notes] +
 							   rv[RadarCategory_Holds])));
 		params.emplace_back("level", num(steps->GetMeter()));
+	} else {
+		// the #TOTAL the gauge used, the site checks it against the chart's
+		std::string source;
+		params.emplace_back(
+		  "total",
+		  ssprintf("%g", LifeMeterBar::GetBMSTotal(song, steps, source)));
 	}
 	const auto key = hs.GetChartKey();
 	BMSRankingRequest(

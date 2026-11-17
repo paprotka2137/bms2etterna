@@ -825,9 +825,16 @@ CreateDisplay()
 			else if (CompareNoCase(sRenderer, "null") == 0) {
 				return new RageDisplay_Null;
 			} else {
-				RageException::Throw(
-				  ERROR_UNKNOWN_VIDEO_RENDERER.GetValue().c_str(),
-				  sRenderer.c_str());
+				// Renderer not compiled into this build (e.g. "vulkan" with
+				// WITH_VULKAN=OFF) or a typo: skip it and try the next one
+				// instead of aborting startup.
+				Locator::getLogger()->warn(
+				  "Unknown video renderer value: {} (not in this build), skipping",
+				  sRenderer);
+				error += ssprintf(ERROR_UNKNOWN_VIDEO_RENDERER.GetValue().c_str(),
+								  sRenderer.c_str()) +
+						 "\n\n\n";
+				continue;
 			}
 
 			if (pRet == nullptr)

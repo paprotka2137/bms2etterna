@@ -135,6 +135,8 @@ function R.laneOf(mods)
 			return "H-RANDOM"
 		elseif t == "rrandom" or t == "r-random" or t == "bmsrrandom" then
 			return "R-RANDOM"
+		elseif t == "crandom" or t == "c-random" or t == "bmscrandom" then
+			return "C-RANDOM"
 		elseif t == "mirror" or t == "bmsmirror" then
 			return "MIRROR"
 		end
@@ -156,7 +158,7 @@ function R.laneOrderOf(score)
 		return nil
 	end
 	local lane = R.laneOf(score:GetModifiers())
-	if lane ~= "RANDOM" and lane ~= "R-RANDOM" and lane ~= "MIRROR" then
+	if lane ~= "RANDOM" and lane ~= "C-RANDOM" and lane ~= "R-RANDOM" and lane ~= "MIRROR" then
 		return nil
 	end
 	local order = score:GetBMSLaneOrder()
@@ -165,7 +167,7 @@ end
 
 -- short form for the narrow column
 function R.shortLane(lane)
-	local short = {["RANDOM"] = "RAN", ["S-RANDOM"] = "S-RAN", ["H-RANDOM"] = "H-RAN", ["R-RANDOM"] = "R-RAN", ["MIRROR"] = "MIR", [""] = "-"}
+	local short = {["RANDOM"] = "RAN", ["S-RANDOM"] = "S-RAN", ["H-RANDOM"] = "H-RAN", ["R-RANDOM"] = "R-RAN", ["C-RANDOM"] = "C-RAN", ["MIRROR"] = "MIR", [""] = "-"}
 	return short[lane] or lane
 end
 

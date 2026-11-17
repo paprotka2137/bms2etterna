@@ -46,6 +46,9 @@ local curMeanSum = 0
 local curMeanCount = 0
 local judgect
 local pbtarget
+-- 7k target tracker: target and PB as score rates (0-1), set further down
+local bmsTarget = (playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).TargetGoal or 93) / 100
+local bmsPBRate
 local positive = getMainColor("positive")
 local highlight = getMainColor("highlight")
 local negative = getMainColor("negative")
@@ -293,7 +296,20 @@ local t =
 		else
 			dvCur = nil
 		end
-		if msg.WifePBGoal ~= nil and targetTrackerMode ~= 0 then
+		if hideMSD() then
+			-- 7k: the engine's differential is in wife points against a wife
+			-- target, but 7k shows the EX rate, so pace the target (or the
+			-- PB's EX rate) on the same EX score shown on screen
+			pbtarget = targetTrackerMode ~= 0 and bmsPBRate or nil
+			local goal = pbtarget or bmsTarget
+			if o2jamPlay then
+				-- O2Jam score is not linear in notes: percent points behind / ahead
+				tDiff = wifey - goal * 100
+			else
+				-- EX points behind / ahead of the goal's pace (2 per judged note)
+				tDiff = bmsEx - goal * bmsJudged * 2
+			end
+		elseif msg.WifePBGoal ~= nil and targetTrackerMode ~= 0 then
 			pbtarget = msg.WifePBGoal
 			tDiff = msg.WifePBDifferential
 		end
@@ -340,6 +356,22 @@ end
 ]]
 -- Mostly clientside now. We set our desired target goal and listen to the results rather than calculating ourselves.
 local target = playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).TargetGoal
+
+-- 7k PB target: the best EX rate (O2Jam: score) at the current rate on this chart
+if hideMSD() and targetTrackerMode ~= 0 then
+	local rate = getCurRateValue()
+	for k, scores in pairs(getRateTable() or {}) do
+		local r = tonumber((k:gsub("x", "")))
+		if r and math.abs(r - rate) < 0.001 then
+			for _, sc in ipairs(scores) do
+				local v = getBMSScoreRate(sc)
+				if v > 0 and (bmsPBRate == nil or v > bmsPBRate) then
+					bmsPBRate = v
+				end
+			end
+		end
+	end
+end
 GAMESTATE:GetPlayerState():SetTargetGoal(target / 100)
 GAMESTATE:GetPlayerState():SetGoalTrackerUsesReplay(targetTrackerMode == 2)
 

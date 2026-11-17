@@ -13,12 +13,14 @@ end
 local bmsOptionValues = {
 	JudgeRank = {"Easy", "Normal", "Hard", "VeryHard"},
 	Gauge = {"Easy", "Normal", "Hard", "ExHard", "Death"},
-	Arrange = {"Off", "Mirror", "Random", "RRandom", "SRandom", "HRandom", "Custom"},
+	-- CRandom (Random with the numbers off: white lanes among white keys, blue
+	-- among blue) is a setting of Random in the lane picker, not a stop of its own
+	Arrange = {"Off", "Mirror", "Random", "RRandom", "SRandom", "HRandom", "Custom", "CRandom"},
 }
 local bmsOptionNames = {
 	JudgeRank = {"JudgeRankEasy", "JudgeRankNormal", "JudgeRankHard", "JudgeRankVeryHard"},
 	Gauge = {"GaugeEasy", "GaugeGroove", "GaugeHard", "GaugeExHard", "GaugeDeath"},
-	Arrange = {"ArrangeOff", "ArrangeMirror", "ArrangeRandom", "ArrangeRRandom", "ArrangeSRandom", "ArrangeHRandom", "ArrangeCustom"},
+	Arrange = {"ArrangeOff", "ArrangeMirror", "ArrangeRandom", "ArrangeRRandom", "ArrangeSRandom", "ArrangeHRandom", "ArrangeCustom", "ArrangeCRandom"},
 }
 local bmsOptionEnums = {
 	JudgeRank = {setting = "JudgeRankSetting", enum = "BMSJudgeRank_"},
@@ -27,8 +29,33 @@ local bmsOptionEnums = {
 }
 local modsLevels = {"ModsLevel_Preferred", "ModsLevel_Stage", "ModsLevel_Song", "ModsLevel_Current"}
 
+-- 7k has one mirror, the lane option's: a built-in Mirror turn (set from the
+-- options menu or an older profile) becomes the lane option's Mirror, unless a
+-- random lane option is already picked, then it is just dropped
+function foldBMSMirrorTurn()
+	if not hideMSD() then
+		return
+	end
+	local ps = GAMESTATE:GetPlayerState()
+	if ps == nil then
+		return
+	end
+	for _, lvl in ipairs(modsLevels) do
+		local po = ps:GetPlayerOptions(lvl)
+		if po:Mirror() then
+			po:Mirror(false)
+			if po:ArrangeSetting() == "BMSArrange_Off" then
+				po:ArrangeSetting("BMSArrange_Mirror")
+			end
+		end
+	end
+end
+
 -- index of the current "JudgeRank" or "Gauge" setting
 function getBMSOption(kind)
+	if kind == "Arrange" then
+		foldBMSMirrorTurn()
+	end
 	local e = bmsOptionEnums[kind]
 	local po = GAMESTATE:GetPlayerState():GetPlayerOptions("ModsLevel_Preferred")
 	local cur = po[e.setting](po)
@@ -90,11 +117,17 @@ function changeBMSOption(kind, delta)
 		return
 	end
 	local n = #bmsOptionValues[kind]
-	local i = getBMSOption(kind) + delta
+	local i = getBMSOption(kind)
 	if kind == "Arrange" then
-		i = (i - 1) % n + 1
+		-- Random with the numbers off moves on like Random, keeping no stop
+		-- of its own (it is the last value)
+		n = n - 1
+		if i > n then
+			i = 3
+		end
+		i = (i + delta - 1) % n + 1
 	else
-		i = math.min(math.max(i, 1), n)
+		i = math.min(math.max(i + delta, 1), n)
 	end
 	setBMSOption(kind, i)
 end
@@ -102,7 +135,16 @@ end
 -- Ctrl+R in song select: Random on, or back to the chart's own lanes
 function toggleBMSRandom()
 	local random = 3
-	setBMSOption("Arrange", getBMSOption("Arrange") == random and 1 or random)
+	local cur = bmsOptionValues.Arrange[getBMSOption("Arrange")]
+	setBMSOption("Arrange", (cur == "Random" or cur == "CRandom") and 1 or random)
+	SCREENMAN:SystemMessage(THEME:GetString("GeneralInfo", "ProfileArrange") .. ": " .. getBMSOptionName("Arrange"))
+end
+
+-- Ctrl+M in song select: Mirror on (from any other lane option), or back to
+-- the chart's own lanes. Same option as the lane picker's Mirror.
+function toggleBMSMirror()
+	local mirror = 2
+	setBMSOption("Arrange", getBMSOption("Arrange") == mirror and 1 or mirror)
 	SCREENMAN:SystemMessage(THEME:GetString("GeneralInfo", "ProfileArrange") .. ": " .. getBMSOptionName("Arrange"))
 end
 
@@ -123,8 +165,59 @@ local function isValidLaneOrder(lanes)
 	return true
 end
 
--- asks for a custom lane order and switches to it
+-- index of a lane option by its name ("Custom", "CRandom"...)
+local function arrangeIndex(name)
+	for i, v in ipairs(bmsOptionValues.Arrange) do
+		if v == name then
+			return i
+		end
+	end
+	return 1
+end
+
+-- the lane options the lane picker shows, in the order of the song select
+-- cycle: {value, display name}
+function getBMSArrangeChoices()
+	local out = {}
+	for i, v in ipairs(bmsOptionValues.Arrange) do
+		if v ~= "CRandom" then
+			out[#out + 1] = {value = v, name = getBMSOptionName("Arrange", i)}
+		end
+	end
+	return out
+end
+
+function getBMSArrangeValue()
+	return bmsOptionValues.Arrange[getBMSOption("Arrange")]
+end
+
+-- picks a lane option by name; with lanes, plays that custom order
+function setBMSArrangeByName(name, lanes)
+	if lanes then
+		if not isValidLaneOrder(lanes) then
+			return false
+		end
+		local ps = GAMESTATE:GetPlayerState()
+		for _, lvl in ipairs(modsLevels) do
+			ps:GetPlayerOptions(lvl):BMSLanes(lanes)
+		end
+	end
+	setBMSOption("Arrange", arrangeIndex(name))
+	return true
+end
+
+-- the lane picker: 7 keys like the site's popup, the lane options, a custom
+-- order typed or rolled (by numbers, or by key color only)
 function editBMSLanes()
+	if THEME:HasMetric("ScreenBMSLanes", "Class") then
+		SCREENMAN:AddNewScreenToTop("ScreenBMSLanes")
+		return
+	end
+	editBMSLanesText()
+end
+
+-- the old text prompt, for a theme without the picker screen
+function editBMSLanesText()
 	SCREENMAN:AddNewScreenToTop("ScreenTextEntry")
 	SCREENMAN:GetTopScreen():Load({
 		Question = THEME:GetString("GeneralInfo", "BMSLanesQuestion"),
@@ -140,7 +233,7 @@ function editBMSLanes()
 			for _, lvl in ipairs(modsLevels) do
 				ps:GetPlayerOptions(lvl):BMSLanes(answer)
 			end
-			setBMSOption("Arrange", #bmsOptionValues.Arrange)
+			setBMSOption("Arrange", arrangeIndex("Custom"))
 		end,
 	})
 end
@@ -156,7 +249,7 @@ function setBMSLanes(order)
 	for _, lvl in ipairs(modsLevels) do
 		ps:GetPlayerOptions(lvl):BMSLanes(order)
 	end
-	setBMSOption("Arrange", #bmsOptionValues.Arrange)
+	setBMSOption("Arrange", arrangeIndex("Custom"))
 	return true
 end
 

@@ -619,6 +619,35 @@ ApplyBMSChartRank(const Steps* pSteps)
 	PO_GROUP_ASSIGN(opts, ModsLevel_Stage, m_BMSJudgeRank, judgeRank);
 }
 
+// 7k has one mirror: the BMS lane option. A built-in Mirror turn set from
+// elsewhere (the options menu) becomes the lane option's Mirror for this
+// stage, so the notes are not mirrored twice and the score saves BMSMirror.
+// A random lane option wins over it. Replays keep their own options.
+static void
+FoldBMSMirrorTurn()
+{
+	const auto* style = GAMESTATE->GetCurrentStyle(PLAYER_1);
+	if (style == nullptr || style->m_iColsPerPlayer != 7 ||
+		GamePreferences::m_AutoPlay == PC_REPLAY ||
+		GAMESTATE->m_pPlayerState->m_PlayerController == PC_REPLAY ||
+		GAMESTATE->m_pPlayerState->m_PlayerController == PC_SPECTATE ||
+		GamePreferences::m_AutoPlay == PC_SPECTATE)
+		return;
+
+	auto& opts = GAMESTATE->m_pPlayerState->m_PlayerOptions;
+	if (!opts.GetStage().m_bTurns[PlayerOptions::TURN_MIRROR])
+		return;
+	const bool arrangeOff = opts.GetStage().m_BMSArrange == BMSArrange_Off;
+	PO_GROUP_ASSIGN_N(opts,
+					  ModsLevel_Stage,
+					  m_bTurns,
+					  PlayerOptions::TURN_MIRROR,
+					  false);
+	if (arrangeOff)
+		PO_GROUP_ASSIGN(
+		  opts, ModsLevel_Stage, m_BMSArrange, BMSArrange_Mirror);
+}
+
 void
 ScreenGameplay::LoadNextSong()
 {
@@ -643,8 +672,10 @@ ScreenGameplay::LoadNextSong()
 
 	STATSMAN->m_CurStageStats.m_vpPlayedSongs.push_back(GAMESTATE->m_pCurSong);
 
-	// apply permamirror
-	if (GamePreferences::m_AutoPlay != PC_REPLAY &&
+	// apply permamirror (not on 7k, mirror there is the BMS lane option)
+	const auto* curStyle = GAMESTATE->GetCurrentStyle(PLAYER_1);
+	const bool bms7k = curStyle != nullptr && curStyle->m_iColsPerPlayer == 7;
+	if (!bms7k && GamePreferences::m_AutoPlay != PC_REPLAY &&
 		GAMESTATE->m_pPlayerState->m_PlayerController != PC_REPLAY &&
 		GAMESTATE->m_pPlayerState->m_PlayerController != PC_SPECTATE &&
 		GamePreferences::m_AutoPlay != PC_SPECTATE) {
@@ -659,6 +690,8 @@ ScreenGameplay::LoadNextSong()
 							  true);
 		}
 	}
+
+	FoldBMSMirrorTurn();
 
 	SetupSong(iPlaySongIndex);
 

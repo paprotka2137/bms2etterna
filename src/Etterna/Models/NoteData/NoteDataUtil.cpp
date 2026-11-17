@@ -3063,6 +3063,48 @@ BMSArrangeMapping(int arrange,
 			}
 			return true;
 		}
+		case BMSArrange_CRandom: {
+			// lanes keep their color: the white lanes (1 3 5 7) are shuffled
+			// among the keys that are white in the pattern and the blue ones
+			// (2 4 6) among the blue keys. The pattern is the custom order
+			// (only its white/blue matters), the chart's own (WBWBWBW) when
+			// there is none. Never the pattern's own order.
+			int pattern[MAX_NOTE_TRACKS];
+			bool used[MAX_NOTE_TRACKS] = {};
+			auto ok = static_cast<int>(lanes.size()) == n;
+			for (auto t = 0; ok && t < n; ++t) {
+				const auto lane = lanes[t] - '1';
+				if (lane < 0 || lane >= n || used[lane])
+					ok = false;
+				else {
+					used[lane] = true;
+					pattern[t] = lane;
+				}
+			}
+			if (!ok)
+				for (auto t = 0; t < n; ++t)
+					pattern[t] = t;
+			int white[MAX_NOTE_TRACKS], blue[MAX_NOTE_TRACKS];
+			auto nw = 0, nb = 0;
+			for (auto t = 0; t < n; ++t)
+				(pattern[t] % 2 == 0 ? white[nw++] : blue[nb++]) = pattern[t];
+			if (nw < 2 && nb < 2)
+				return false;
+			auto same = true;
+			while (same) {
+				std::shuffle(&white[0], &white[nw], rnd);
+				std::shuffle(&blue[0], &blue[nb], rnd);
+				same = true;
+				auto wi = 0, bi = 0;
+				for (auto t = 0; t < n; ++t) {
+					iTakeFromTrack[t] =
+					  pattern[t] % 2 == 0 ? white[wi++] : blue[bi++];
+					if (iTakeFromTrack[t] != pattern[t])
+						same = false;
+				}
+			}
+			return true;
+		}
 		case BMSArrange_RRandom: {
 			// rotate the lanes by 1..n-1, flipped half of the time
 			const auto shift = 1 + static_cast<int>(rnd() % (n - 1));
@@ -3131,6 +3173,13 @@ NoteDataUtil::BMSLaneOrderFromMods(const std::string& mods, int seed)
 			arrange = BMSArrange_Random;
 		else if (tok == "bmsrrandom")
 			arrange = BMSArrange_RRandom;
+		else if (tok == "bmscrandom")
+			arrange = BMSArrange_CRandom;
+		else if (tok.size() == 13 && tok.compare(0, 6, "colors") == 0) {
+			// the white/blue pattern of a color random
+			arrange = BMSArrange_CRandom;
+			custom = tok.substr(6);
+		}
 		else if (tok == "bmsmirror" || tok == "mirror")
 			arrange = BMSArrange_Mirror;
 		else if (tok == "bmssrandom" || tok == "bmshrandom")

@@ -53,7 +53,7 @@ XToLocalizedString(BMSJudgeRank);
 LuaXType(BMSJudgeRank);
 
 static const char* BMSArrangeNames[] = {
-	"Off", "Mirror", "Random", "RRandom", "SRandom", "HRandom", "Custom",
+	"Off", "Mirror", "Random", "RRandom", "SRandom", "HRandom", "Custom", "CRandom",
 };
 XToString(BMSArrange);
 XToLocalizedString(BMSArrange);
@@ -430,6 +430,11 @@ PlayerOptions::GetMods(std::vector<std::string>& AddTo, bool bForceNoteSkin) con
 		case BMSArrange_RRandom:
 			AddTo.push_back("BMSRRandom");
 			break;
+		case BMSArrange_CRandom:
+			AddTo.push_back("BMSCRandom");
+			// the white/blue pattern the lanes keep
+			AddTo.push_back("Colors" + m_sBMSLanes);
+			break;
 		case BMSArrange_SRandom:
 			AddTo.push_back("BMSSRandom");
 			break;
@@ -682,6 +687,7 @@ PlayerOptions::FromOneModString(const std::string& sOneMod,
 			m_BMSJudgeRank = BMSJudgeRank_Easy;
 	} else if ((sBit == "bmsoff" || sBit == "bmsmirror" ||
 				sBit == "bmsrandom" || sBit == "bmsrrandom" ||
+				sBit == "bmscrandom" ||
 				sBit == "bmssrandom" || sBit == "bmshrandom") &&
 			   (forReplay || !DLMAN->InGameplay())) {
 		if (!on || sBit == "bmsoff")
@@ -692,12 +698,21 @@ PlayerOptions::FromOneModString(const std::string& sOneMod,
 			m_BMSArrange = BMSArrange_Random;
 		else if (sBit == "bmsrrandom")
 			m_BMSArrange = BMSArrange_RRandom;
+		else if (sBit == "bmscrandom")
+			m_BMSArrange = BMSArrange_CRandom;
 		else if (sBit == "bmssrandom")
 			m_BMSArrange = BMSArrange_SRandom;
 		else
 			m_BMSArrange = BMSArrange_HRandom;
 	} else if (sBit == "gas" && (forReplay || !DLMAN->InGameplay())) {
 		m_bBMSAutoShift = on;
+	} else if (sBit.size() == 13 && sBit.compare(0, 6, "colors") == 0 &&
+			   (forReplay || !DLMAN->InGameplay())) {
+		// pattern of a color random
+		if (on) {
+			m_sBMSLanes = sBit.substr(6);
+			m_BMSArrange = BMSArrange_CRandom;
+		}
 	} else if (sBit.size() > 5 && sBit.compare(0, 5, "lanes") == 0 &&
 			   (forReplay || !DLMAN->InGameplay())) {
 		if (!on) {
@@ -1374,6 +1389,7 @@ PlayerOptions::UsesSeededBMSArrange() const
 {
 	return m_BMSArrange == BMSArrange_Random ||
 		   m_BMSArrange == BMSArrange_RRandom ||
+		   m_BMSArrange == BMSArrange_CRandom ||
 		   m_BMSArrange == BMSArrange_SRandom ||
 		   m_BMSArrange == BMSArrange_HRandom;
 }

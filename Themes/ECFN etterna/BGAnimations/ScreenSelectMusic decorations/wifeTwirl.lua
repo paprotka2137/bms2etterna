@@ -185,6 +185,10 @@ local t = Def.ActorFrame {
 			local modslevel = topscreen == "ScreenEditOptions" and "ModsLevel_Stage" or "ModsLevel_Preferred"
 			local playeroptions = GAMESTATE:GetPlayerState():GetPlayerOptions(modslevel)
 			playeroptions:Mirror(false)
+			-- 7k: the one mirror is the lane option's
+			if hideMSD() and playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).OneShotMirror and getBMSOption("Arrange") == 2 then
+				changeBMSOption("Arrange", -1)
+			end
 		end
 		-- if not on General and we started the noteField and we changed tabs then changed songs
 		-- this means the music should be set again as long as the preview is still "on" but off screen
@@ -1212,6 +1216,11 @@ local function ihatestickinginputcallbackseverywhere(event)
 		local ShiftPressed = INPUTFILTER:IsBeingPressed("left shift") or INPUTFILTER:IsBeingPressed("right shift")
 		if CtrlPressed and not ShiftPressed and event.DeviceInput.button == "DeviceButton_r" and hideMSD() then
 			toggleBMSRandom()
+		end
+		-- Ctrl+M toggles the lane option's Mirror on 7k (the game skips its
+		-- permamirror there)
+		if CtrlPressed and not ShiftPressed and event.DeviceInput.button == "DeviceButton_m" and hideMSD() then
+			toggleBMSMirror()
 		end
 		if event.GameButton == "EffectUp" then
 			lastratepresses[1] = GetTimeSinceStart()
