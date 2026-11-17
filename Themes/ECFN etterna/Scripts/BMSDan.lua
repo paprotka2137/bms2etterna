@@ -480,6 +480,26 @@ function D.finish(res)
 	if BMSRanking and BMSRanking.loggedIn and BMSRanking.loggedIn() then
 		local c = D.byId(res.id) or {}
 		local j = res.judges or {}
+		-- the course gauge over the run for the site's graph: per song 50
+		-- values 0-100 joined with ",", songs joined with ";" (a song without
+		-- a record is empty)
+		local graph = ""
+		if D.course and D.course.id == res.id then
+			local parts = {}
+			for i = 1, res.songsPlayed or 0 do
+				local s = D.course.songs[i]
+				local life = s and s.life or {}
+				local vals = {}
+				if #life > 0 then
+					for k = 1, 50 do
+						local v = tonumber(life[math.floor((k - 0.5) / 50 * #life) + 1]) or 0
+						vals[k] = tostring(math.max(0, math.min(100, math.floor(v * 100 + 0.5))))
+					end
+				end
+				parts[i] = table.concat(vals, ",")
+			end
+			graph = table.concat(parts, ";")
+		end
 		DLMAN:BMSRequest("POST", "/api/game/dan", {
 			course_id = res.id,
 			course_name = res.name,
@@ -495,6 +515,7 @@ function D.finish(res)
 			max_combo = tostring(res.maxCombo or 0),
 			notes = tostring(res.notes or 0),
 			score_keys = table.concat(res.scoreKeys or {}, ","),
+			gauge_graph = graph,
 		}, function(status, body)
 			MESSAGEMAN:Broadcast("BMSDanUploaded", {ok = status == 200, body = body})
 			D.loadSite(true)

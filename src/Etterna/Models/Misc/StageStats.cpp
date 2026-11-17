@@ -767,6 +767,22 @@ StageStats::FinalizeScores()
 		return;
 	}
 
+	// a song of a BMS dan course is not a play of its own: only the course
+	// result counts (the theme sends it from the COURSE RESULT screen). Like
+	// practice mode the song's result screen still gets this score, but it is
+	// not added to the profile, not uploaded and no replay is written.
+	// mostrecentscorekey is still set: ScreenGameplay keeps it in
+	// SONGMAN->bmsCourse.scoreKeys and the theme matches the result screen's
+	// score key against those.
+	if (SONGMAN->InBMSCourse()) {
+		Locator::getLogger()->info("BMS dan course song - saved nothing");
+		SCOREMAN->camefromreplay = true;
+		SCOREMAN->tempscoreforonlinereplayviewing = &hs;
+		mostrecentscorekey = hs.GetScoreKey();
+		profile->m_lastSong.FromSong(GAMESTATE->m_pCurSong);
+		return;
+	}
+
 	// dont allow saving or uploading if the user changes sync mid score
 	// because you can use offsets to do weird things and break data
 	// continuity
