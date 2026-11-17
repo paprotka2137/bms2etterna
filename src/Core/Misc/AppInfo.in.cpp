@@ -4,6 +4,7 @@
 namespace Core::AppInfo {
     const char *APP_TITLE = "@APP_DISPLAY_NAME@";
     const char *APP_VERSION = "@APP_DISPLAY_VERSION@";
+    const char *ETTERNA_VERSION = "@PROJECT_VERSION@";
     const char *GIT_HASH = "@PROJECT_GIT_HASH@";
     const char *CRASHPAD_HANDLER_EXE = "@CRASHPAD_HANDLER_EXE@";
     const char *BUG_REPORT_URL = "https://github.com/etternagame/etterna/issues";

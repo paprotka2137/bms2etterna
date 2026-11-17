@@ -983,9 +983,10 @@ sm_main(int argc, char* argv[])
 	    Locator::getLogger()->warn("Crash Handler could not be initialized. Crash reports will not be created.");
 
     // Log App and System Information
-    Locator::getLogger()->info("{} v{} - Build {}",
+    Locator::getLogger()->info("{} v{} (Etterna {}) - Build {}",
                                Core::AppInfo::APP_TITLE,
                                Core::AppInfo::APP_VERSION,
+                               Core::AppInfo::ETTERNA_VERSION,
                                Core::AppInfo::GIT_HASH);
     Locator::getLogger()->info("System: {}", Core::Platform::getSystem());
     Locator::getLogger()->info("CPU: {}", Core::Platform::getSystemCPU());
