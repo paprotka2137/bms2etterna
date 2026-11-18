@@ -104,7 +104,3 @@ folder per variant in Themes/ECFN/play/judge (and judge/legacy), cut into
 the files above. As in ECFN, PGREAT is the color cycling "GREAT", GREAT is
 the orange blinking one, and EMPTYPOOR is "FAIL". ECFN has no O2Jam
 judgments, so COOL and MISS use PGREAT and POOR.
-
-The ECFN readme forbids redistributing its images and using them on other
-platforms, so keep these folders to yourself: don't put them in packs you
-share.
