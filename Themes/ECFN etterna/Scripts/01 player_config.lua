@@ -101,6 +101,7 @@ local defaultConfig = {
 	CBHighlight = false,
 	OneShotMirror = false,
 	JudgmentText = true,
+	JudgmentSkin = "", -- 7k: folder in JudgmentSkins/, "" for the LR2 style text
 	ComboText = true,
 	ReceptorSize = 100,
 	ErrorBarCount = 30,

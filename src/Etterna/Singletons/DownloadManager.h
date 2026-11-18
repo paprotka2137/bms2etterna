@@ -580,11 +580,22 @@ class DownloadManager
 	// gaugeGraph: the gauge over the song, comma separated 0-100 values;
 	// graphGauge: which gauge that is (EASY, GROOVE, HARD, EXHARD, DEATH),
 	// empty when it is the play's own gauge (O2Jam, dan course)
-	void BMSUploadScore(const HighScore& hs,
-						const class Steps* steps,
-						const class Song* song,
-						const std::string& gaugeGraph = "",
-						const std::string& graphGauge = "");
+	// extra: more form fields (utc_offset for an older play);
+	// done: called with the site's answer instead of broadcasting
+	// BMSScoreUploaded (the ranking window's "upload local scores")
+	void BMSUploadScore(
+	  const HighScore& hs,
+	  const class Steps* steps,
+	  const class Song* song,
+	  const std::string& gaugeGraph = "",
+	  const std::string& graphGauge = "",
+	  const std::vector<std::pair<std::string, std::string>>& extra = {},
+	  std::function<void(long, const std::string&)> done = nullptr);
+	// sends a play saved on this computer (by score key) like after the
+	// song; false when it can't be sent (not logged in, chart not loaded,
+	// not kb7, not 1.0x), done is then never called
+	bool BMSUploadLocalScore(const std::string& scoreKey,
+							 std::function<void(long, const std::string&)> done);
 	[[nodiscard]] bool BMSLoggedIn() const;
 	// the site login, the multiplayer server accepts it instead of a password
 	[[nodiscard]] std::string BMSLoginName() const;

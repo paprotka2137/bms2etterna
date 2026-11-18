@@ -852,6 +852,129 @@ t[#t + 1] = Def.Actor {
 	end,
 }
 
+-- upload this profile's plays to the site: the selected chart, or every 7k
+-- chart in the wheel folder it is in (the folder needs a second click)
+local uploadY = bottomY + 15
+local folderArm -- {name, cks, plays, at} after the first UPLOAD FOLDER click
+
+local function wheelFolder()
+	local top = SCREENMAN:GetTopScreen()
+	local ok, wheel = pcall(function()
+		return top:GetMusicWheel()
+	end)
+	local song = GAMESTATE:GetCurrentSong()
+	local name = ok and wheel and wheel:GetSelectedSection() or ""
+	local songs = {}
+	if name ~= "" and ok and wheel then
+		songs = wheel:GetSongsInGroup(name)
+	end
+	if #songs == 0 and song then
+		name = song:GetGroupName()
+		songs = SONGMAN:GetSongsInGroup(name)
+	end
+	if name == "" then
+		return nil
+	end
+	return name, songs
+end
+
+local function uploadEnabled()
+	return R.canUploadLocal() and not R.uploading()
+end
+
+local function uploadButton(x, label, act)
+	return UIElements.TextToolTip(1, 1, "Common Normal") .. {
+		InitCommand = function(self)
+			self:xy(frameX + x, uploadY):halign(0):zoom(0.32):settext(label)
+		end,
+		ShowCommand = function(self)
+			self:visible(R.available() and R.loggedIn())
+			self:diffuse(uploadEnabled() and white or color("#555a66"))
+		end,
+		BMSLocalUploadMessageCommand = function(self)
+			self:playcommand("Show")
+		end,
+		MouseOverCommand = function(self)
+			if uploadEnabled() then
+				self:diffuse(blue)
+			end
+		end,
+		MouseOutCommand = function(self)
+			self:diffuse(uploadEnabled() and white or color("#555a66"))
+		end,
+		MouseDownCommand = function(self, params)
+			if params.event == "DeviceButton_left mouse button" and onTab and self:GetVisible() and uploadEnabled() then
+				act(self)
+				self:GetParent():playcommand("Show")
+			end
+		end,
+	}
+end
+
+local function startUpload(cks, label)
+	folderArm = nil
+	local ok, msg = R.uploadLocal(cks, label)
+	if not ok then
+		ms.ok("Ranking: " .. msg)
+	end
+end
+
+t[#t + 1] = uploadButton(8, "UPLOAD CHART", function()
+	if not ck then
+		ms.ok("Ranking: no chart selected")
+		return
+	end
+	local song = GAMESTATE:GetCurrentSong()
+	local steps = GAMESTATE:GetCurrentSteps()
+	local label = song and song:GetDisplayMainTitle() or "This chart"
+	if steps then
+		label = label .. " [" .. getDifficulty(steps:GetDifficulty()) .. "]"
+	end
+	startUpload({ck}, label)
+end)
+t[#t + 1] = uploadButton(88, "UPLOAD FOLDER", function()
+	local name, songs = wheelFolder()
+	if not name then
+		ms.ok("Ranking: no folder selected")
+		return
+	end
+	-- a second click within a few seconds on the same folder sends it
+	local now = GetTimeSinceStart()
+	if folderArm and folderArm.name == name and now - folderArm.at < 5 then
+		startUpload(folderArm.cks, name)
+		return
+	end
+	local cks = R.chartKeysOfSongs(songs)
+	folderArm = {name = name, cks = cks, plays = #R.localPlays(cks), at = now}
+end)
+
+-- what the upload is doing, or how the last one went
+t[#t + 1] = text(8, uploadY + 13, 0.3, 0, function(self)
+	self:maxwidth((frameWidth - 16) / 0.3)
+end) .. {
+	ShowCommand = function(self)
+		self:visible(R.available() and R.loggedIn())
+		if folderArm and GetTimeSinceStart() - folderArm.at < 5 and not R.uploading() then
+			self:settext(string.format("Click UPLOAD FOLDER again to send your %d local play%s in %s",
+				folderArm.plays, folderArm.plays == 1 and "" or "s", folderArm.name)):diffuse(color("#ffd36b"))
+			-- the hint goes away when the second click doesn't come
+			self:stoptweening():sleep(5.1):queuecommand("Show")
+			return
+		end
+		folderArm = nil
+		local u = R.upload
+		local bad = u and not u.running and (u.err or u.rejected > 0 or u.failed > 0)
+		self:settext(R.uploadText()):diffuse(bad and color("#ff9a7a") or gray)
+	end,
+	BMSLocalUploadMessageCommand = function(self, params)
+		self:playcommand("Show")
+		-- the boards of the charts that got plays were dropped: show the new one
+		if params.phase == "done" and onTab then
+			self:GetParent():playcommand("Load")
+		end
+	end,
+}
+
 -- refresh by hand
 t[#t + 1] = UIElements.TextToolTip(1, 1, "Common Normal") .. {
 	InitCommand = function(self)

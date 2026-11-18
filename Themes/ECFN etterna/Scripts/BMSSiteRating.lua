@@ -10,7 +10,7 @@ BMSSiteRating = BMSSiteRating or {}
 local S = BMSSiteRating
 local RATING_TOP = 20
 -- unranked: 7k charts in no table, rated by the game's clear calc (/api/unranked-calc)
-local TABLES = {insane = true, satellite = true, stella = true, overjoy = true, delay = true, delayjoy = true, dystopia = true, unranked = true}
+local TABLES = {insane = true, satellite = true, stella = true, overjoy = true, delay = true, delayjoy = true, dystopia = true, ude = true, gachimijoy = true, unranked = true}
 
 -- chart key -> {easy, hard}, read with a pattern (the file is big)
 local function parseCalc(body)

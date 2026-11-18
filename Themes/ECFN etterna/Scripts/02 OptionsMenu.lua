@@ -17,6 +17,8 @@ function getPlayerOptionsList(itemSet)
 	-- (Scripts/BMSPacemaker.lua) instead of Tracker Goal / Tracker Mode
 	if hideMSD() then
 		Items["Theme"] = Items["Theme"]:gsub("TT,TG,TTM,", "TT,PMG,PMT,PMP,")
+		-- judgment pictures from JudgmentSkins/, picked like a noteskin
+		Items["Main"] = Items["Main"]:gsub("NoteSk,", "NoteSk,JS,")
 	end
 	return Items[itemSet] .. ",NextScr"
 end

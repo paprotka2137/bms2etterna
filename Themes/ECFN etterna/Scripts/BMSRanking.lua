@@ -554,3 +554,231 @@ function R.djLevel(r)
 	local levels = {"F", "F", "E", "D", "C", "B", "A", "AA", "AAA"}
 	return levels[math.max(1, math.min(9, math.floor(n) + 1))]
 end
+
+-- ---------------------------------------------------------------- upload local scores
+-- The Ranking window's UPLOAD CHART / UPLOAD FOLDER: this profile's 1.0x
+-- kb7 plays of some charts go to the site the same way as right after a
+-- song (DLMAN:BMSUploadLocalScore, the play's replay included). First the
+-- site says which plays it doesn't have (/api/game/missing): plays already
+-- there are skipped and plays deleted from the site are not sent again.
+-- Then one play at a time. Actors follow R.upload through the
+-- BMSLocalUpload message; it keeps going when the screen changes.
+-- R.upload = {label, total, done, sent, have, deleted, rejected, failed,
+-- running, checked (false: the site has no /api/game/missing yet, so
+-- "sent" also counts plays it already had), reason, err}
+local UPLOAD_CHECK_CHUNK = 400
+
+function R.canUploadLocal()
+	return R.loggedIn() and DLMAN.BMSUploadLocalScore ~= nil
+end
+
+function R.uploading()
+	return R.upload ~= nil and R.upload.running
+end
+
+-- this profile's 1.0x plays of these kb7 charts: {{key, ck}}
+function R.localPlays(cks)
+	local out, seen = {}, {}
+	for _, ck in ipairs(cks or {}) do
+		local steps = SONGMAN:GetStepsByChartKey(ck)
+		local rates = steps and steps:GetStepsType() == "StepsType_Kb7_Single" and SCOREMAN:GetScoresByKey(ck)
+		for _, hsl in pairs(rates or {}) do
+			for _, sc in ipairs(hsl:GetScores()) do
+				local key = sc:GetScoreKey()
+				if not seen[key] and math.abs(sc:GetMusicRate() - 1) <= 0.001 then
+					seen[key] = true
+					out[#out + 1] = {key = key, ck = ck}
+				end
+			end
+		end
+	end
+	return out
+end
+
+-- the chart keys of every kb7 chart of these songs
+function R.chartKeysOfSongs(songs)
+	local cks = {}
+	for _, song in ipairs(songs or {}) do
+		for _, st in ipairs(song:GetAllSteps()) do
+			if st:GetStepsType() == "StepsType_Kb7_Single" then
+				cks[#cks + 1] = st:GetChartKey()
+			end
+		end
+	end
+	return cks
+end
+
+local function uploadNotify(u)
+	MESSAGEMAN:Broadcast("BMSLocalUpload", {phase = u.phase})
+end
+
+-- one line for the Ranking window
+function R.uploadText()
+	local u = R.upload
+	if not u then
+		return ""
+	end
+	if u.phase == "check" then
+		return string.format("%s: checking %d play%s with the site...", u.label, u.total, u.total == 1 and "" or "s")
+	end
+	if u.phase == "send" then
+		return string.format("%s: uploading %d/%d...", u.label, u.done, u.total)
+	end
+	if u.total == 0 then
+		return u.label .. ": no 1.0x 7k plays on this computer"
+	end
+	local parts = {string.format("%d uploaded", u.sent)}
+	if u.checked then
+		parts[#parts + 1] = string.format("%d already on the site", u.have)
+	end
+	if u.deleted > 0 then
+		parts[#parts + 1] = string.format("%d deleted there, skipped", u.deleted)
+	end
+	if u.rejected > 0 then
+		parts[#parts + 1] = string.format("%d refused (%s)", u.rejected, u.reason or "?")
+	end
+	if u.failed > 0 then
+		parts[#parts + 1] = string.format("%d not sent", u.failed)
+	end
+	local s = u.label .. ": " .. table.concat(parts, ", ")
+	if u.err then
+		s = s .. " - " .. u.err
+	end
+	if not u.checked then
+		s = s .. " (this site version can't say which it already had)"
+	end
+	return s
+end
+
+-- sends the plays of these charts; label names them in the progress line.
+-- Returns false and a message when it can't start.
+function R.uploadLocal(cks, label)
+	if R.uploading() then
+		return false, "an upload is already running"
+	end
+	if not R.loggedIn() then
+		return false, "log in to the ranking first"
+	end
+	if not DLMAN.BMSUploadLocalScore then
+		return false, "this build of the game can't upload old plays"
+	end
+	local plays = R.localPlays(cks)
+	local u = {
+		label = label, total = #plays, done = 0, sent = 0, have = 0, deleted = 0,
+		rejected = 0, failed = 0, running = true, checked = true, phase = "check",
+		todo = {}, touched = {},
+	}
+	R.upload = u
+
+	local function finish()
+		u.running = false
+		u.phase = "done"
+		u.failed = u.failed + #u.todo
+		u.todo = {}
+		for ck in pairs(u.touched) do
+			R.forget(ck)
+		end
+		uploadNotify(u)
+		ms.ok("Ranking: " .. R.uploadText())
+	end
+
+	local function sendNext()
+		local p = table.remove(u.todo, 1)
+		if not p then
+			return finish()
+		end
+		local started = DLMAN:BMSUploadLocalScore(p.key, function(status, body)
+			local lines = parse(body)
+			if status == 200 and lines[1] and lines[1][1] == "OK" then
+				u.sent = u.sent + 1
+				u.touched[p.ck] = true
+				R.sendUnrankedCalc(p.ck, body)
+			elseif status == 0 then
+				-- no connection: the rest would fail the same way
+				u.failed = u.failed + 1
+				u.done = u.done + 1
+				u.err = errorOf(status, lines)
+				return finish()
+			else
+				local reason = errorOf(status, lines)
+				if reason:find("deleted this play", 1, true) then
+					u.deleted = u.deleted + 1
+				else
+					u.rejected = u.rejected + 1
+					u.reason = reason
+				end
+			end
+			u.done = u.done + 1
+			uploadNotify(u)
+			sendNext()
+		end)
+		if not started then
+			-- logged out meanwhile, or its chart is gone
+			u.failed = u.failed + 1
+			u.done = u.done + 1
+			return sendNext()
+		end
+	end
+
+	local function startSending()
+		u.phase = "send"
+		uploadNotify(u)
+		sendNext()
+	end
+
+	-- which plays the site doesn't have, UPLOAD_CHECK_CHUNK at a time
+	local function check(from)
+		if from > #plays then
+			return startSending()
+		end
+		local upto = math.min(#plays, from + UPLOAD_CHECK_CHUNK - 1)
+		local keys = {}
+		for i = from, upto do
+			keys[#keys + 1] = plays[i].key
+		end
+		DLMAN:BMSRequest("POST", "/api/game/missing", {keys = table.concat(keys, ",")}, function(status, body)
+			local lines = parse(body)
+			if status == 200 and lines[1] and lines[1][1] == "OK" then
+				local state = {}
+				for i = 2, #lines do
+					state[lines[i][1]] = lines[i][2]
+				end
+				for i = from, upto do
+					local st = state[plays[i].key]
+					if st == "new" then
+						u.todo[#u.todo + 1] = plays[i]
+					else
+						if st == "deleted" then
+							u.deleted = u.deleted + 1
+						else
+							u.have = u.have + 1
+						end
+						u.done = u.done + 1
+					end
+				end
+				return check(upto + 1)
+			end
+			if status == 404 then
+				-- the site isn't updated yet: send everything, it still keeps
+				-- one copy of a play and refuses the deleted ones
+				u.checked = false
+				for i = from, #plays do
+					u.todo[#u.todo + 1] = plays[i]
+				end
+				return startSending()
+			end
+			u.err = errorOf(status, lines)
+			u.failed = #plays - u.done
+			u.todo = {}
+			finish()
+		end)
+	end
+
+	uploadNotify(u)
+	if #plays == 0 then
+		finish()
+	else
+		check(1)
+	end
+	return true
+end

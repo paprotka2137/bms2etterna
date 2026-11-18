@@ -35,6 +35,7 @@
 #endif
 
 #include <cmath>
+#include <ctime>
 #include <regex>
 #include <tuple>
 #include <unordered_set>
@@ -6590,11 +6591,14 @@ DownloadManager::BMSRankingRequest(
 }
 
 void
-DownloadManager::BMSUploadScore(const HighScore& hs,
-								const Steps* steps,
-								const Song* song,
-								const std::string& gaugeGraph,
-								const std::string& graphGauge)
+DownloadManager::BMSUploadScore(
+  const HighScore& hs,
+  const Steps* steps,
+  const Song* song,
+  const std::string& gaugeGraph,
+  const std::string& graphGauge,
+  const std::vector<std::pair<std::string, std::string>>& extra,
+  std::function<void(long, const std::string&)> done)
 {
 	if (!BMSLoggedIn() || steps == nullptr || song == nullptr)
 		return;
@@ -6649,16 +6653,80 @@ DownloadManager::BMSUploadScore(const HighScore& hs,
 		  "total",
 		  ssprintf("%g", LifeMeterBar::GetBMSTotal(song, steps, source)));
 	}
+	params.insert(params.end(), extra.begin(), extra.end());
 	const auto key = hs.GetChartKey();
 	BMSRankingRequest(
-	  "POST", "/api/game/score", params, [key](long code, const std::string& body) {
+	  "POST", "/api/game/score", params, [key, done](long code, const std::string& body) {
 		  Locator::getLogger()->info("BMS ranking upload: {} {}", code, body);
+		  if (done) {
+			  done(code, body);
+			  return;
+		  }
 		  Message msg("BMSScoreUploaded");
 		  msg.SetParam("ok", code == 200);
 		  msg.SetParam("chartkey", key);
 		  msg.SetParam("response", body);
 		  MESSAGEMAN->Broadcast(msg);
 	  });
+}
+
+// minutes east of UTC on this computer at a local date and time (with
+// summer time), so the site files an older play at the right UTC time;
+// the site guesses it from "now" for a play sent right after the song
+static bool
+BMSUtcOffset(const DateTime& dt, int& minutes)
+{
+	std::tm l{};
+	l.tm_year = dt.tm_year;
+	l.tm_mon = dt.tm_mon;
+	l.tm_mday = dt.tm_mday;
+	l.tm_hour = dt.tm_hour;
+	l.tm_min = dt.tm_min;
+	l.tm_sec = dt.tm_sec;
+	l.tm_isdst = -1;
+	const std::time_t t = std::mktime(&l); // also fills l.tm_yday
+	if (t == static_cast<std::time_t>(-1))
+		return false;
+	std::tm g{};
+#ifdef _WIN32
+	if (gmtime_s(&g, &t) != 0)
+		return false;
+#else
+	if (gmtime_r(&t, &g) == nullptr)
+		return false;
+#endif
+	auto days = l.tm_yday - g.tm_yday;
+	if (l.tm_year != g.tm_year)
+		days = l.tm_year > g.tm_year ? 1 : -1;
+	minutes = days * 1440 + (l.tm_hour - g.tm_hour) * 60 + (l.tm_min - g.tm_min);
+	return std::abs(minutes) <= 14 * 60;
+}
+
+bool
+DownloadManager::BMSUploadLocalScore(
+  const std::string& scoreKey,
+  std::function<void(long, const std::string&)> done)
+{
+	if (!BMSLoggedIn())
+		return false;
+	const auto& byKey = SCOREMAN->GetScoresByKey();
+	const auto it = byKey.find(scoreKey);
+	if (it == byKey.end() || it->second == nullptr)
+		return false;
+	const auto* hs = it->second;
+	const auto ck = hs->GetChartKey();
+	const auto* steps = SONGMAN->GetStepsByChartkey(ck);
+	const auto* song = SONGMAN->GetSongByChartkey(ck);
+	if (steps == nullptr || song == nullptr ||
+		steps->m_StepsType != StepsType_kb7_single ||
+		std::fabs(hs->GetMusicRate() - 1.F) > 0.001F)
+		return false;
+	std::vector<std::pair<std::string, std::string>> extra;
+	int offset = 0;
+	if (BMSUtcOffset(hs->GetDateTime(), offset))
+		extra.emplace_back("utc_offset", std::to_string(offset));
+	BMSUploadScore(*hs, steps, song, "", "", extra, std::move(done));
+	return true;
 }
 
 #include "Etterna/Models/Lua/LuaBinding.h"
@@ -6979,6 +7047,16 @@ class LunaDownloadManager : public Luna<DownloadManager>
 	static int IsLoggedIn(T* p, lua_State* L)
 	{
 		lua_pushboolean(L, p->LoggedIn());
+		return 1;
+	}
+	// DLMAN:BMSUploadLocalScore(scoreKey, function(status, body) end):
+	// sends a play from this computer like after the song; false (and no
+	// callback) when that play can't be sent
+	static int BMSUploadLocalScore(T* p, lua_State* L)
+	{
+		const std::string key = SArg(1);
+		auto done = BMSLuaCallback(L, 2, "BMSUploadLocalScore");
+		lua_pushboolean(L, p->BMSUploadLocalScore(key, done) ? 1 : 0);
 		return 1;
 	}
 	// DLMAN:BMSRequest("GET"|"POST", "/api/game/...", {k = v}, function(status, body) end, duringGameplay)
@@ -7617,6 +7695,7 @@ class LunaDownloadManager : public Luna<DownloadManager>
 		ADD_METHOD(ShowUserPage);
 		ADD_METHOD(ShowScorePage);
 		ADD_METHOD(BMSRequest);
+		ADD_METHOD(BMSUploadLocalScore);
 		ADD_METHOD(BMSIsLoggedIn);
 		ADD_METHOD(BMSGetName);
 		ADD_METHOD(BMSGetURL);
