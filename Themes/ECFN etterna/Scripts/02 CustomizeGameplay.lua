@@ -72,6 +72,10 @@ local function loadValuesTable()
 	MovableValues.MusicRateZoom = playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).GameplaySizes[keymode].MusicRateZoom
 	MovableValues.LaneOrderX = playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).GameplayXYCoordinates[keymode].LaneOrderX
 	MovableValues.LaneOrderY = playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).GameplayXYCoordinates[keymode].LaneOrderY
+	MovableValues.PacemakerX = playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).GameplayXYCoordinates[keymode].PacemakerX
+	MovableValues.PacemakerY = playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).GameplayXYCoordinates[keymode].PacemakerY
+	MovableValues.LaneOrderZoom = playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).GameplaySizes[keymode].LaneOrderZoom
+	MovableValues.PacemakerZoom = playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).GameplaySizes[keymode].PacemakerZoom
 end
 
 function unsetMovableKeymode()
@@ -928,6 +932,62 @@ Movable = {
 			property = "X",
 			inc = 3
 		}
+	},
+	-- 7k: lane order size (key ;)
+	["DeviceButton_;"] = {
+		name = "LaneOrder",
+		textHeader = "Lane Order Size:",
+		element = {},
+		properties = {"Zoom"},
+		elementTree = "GameplaySizes",
+		DeviceButton_up = {
+			property = "Zoom",
+			inc = 0.02
+		},
+		DeviceButton_down = {
+			property = "Zoom",
+			inc = -0.02
+		}
+	},
+	-- 7k: the ECFN score graph (pacemaker): position (key /, the engine
+	-- names it "/", not "slash") and size (key ')
+	["DeviceButton_'"] = {
+		name = "Pacemaker",
+		textHeader = "Score Graph Size:",
+		element = {},
+		properties = {"Zoom"},
+		elementTree = "GameplaySizes",
+		DeviceButton_up = {
+			property = "Zoom",
+			inc = 0.02
+		},
+		DeviceButton_down = {
+			property = "Zoom",
+			inc = -0.02
+		}
+	},
+	["DeviceButton_/"] = {
+		name = "Pacemaker",
+		textHeader = "Score Graph Position:",
+		element = {},
+		properties = {"X", "Y"},
+		elementTree = "GameplayXYCoordinates",
+		DeviceButton_up = {
+			property = "Y",
+			inc = -3
+		},
+		DeviceButton_down = {
+			property = "Y",
+			inc = 3
+		},
+		DeviceButton_left = {
+			property = "X",
+			inc = -3
+		},
+		DeviceButton_right = {
+			property = "X",
+			inc = 3
+		}
 	}
 }
 
@@ -941,12 +1001,113 @@ local function updatetext(button)
 	Movable.message:visible(Movable.pressed)
 end
 
+-- Easier customizing (res extensa): Tab / Shift+Tab picks the next element
+-- without remembering its key, the mouse wheel over an element (or on the
+-- picked one) resizes it (Shift+wheel: the left/right size, e.g. width), and
+-- dragging keeps the grab point under the mouse. It goes through the same
+-- keys as before, so saved positions and sizes stay as they are.
+
+-- the position key of every element shown now, in key order
+local function movableElementKeys()
+	local keys = {}
+	for k, v in pairs(Movable) do
+		if type(v) == "table" and v.name and v.properties and (v.properties[1] == "X" or v.properties[1] == "AddX") and v.condition then
+			keys[#keys + 1] = k
+		end
+	end
+	table.sort(keys, function(a, b)
+		return Movable[a].name < Movable[b].name
+	end)
+	return keys
+end
+
+-- the size key of an element (Zoom first, then Width / Height)
+local function sizeKeyOf(name)
+	local best
+	for k, v in pairs(Movable) do
+		if type(v) == "table" and v.name == name and v.properties and v.condition then
+			for _, p in ipairs(v.properties) do
+				if p == "Zoom" then
+					return k
+				elseif (p == "Width" or p == "Height") and best == nil then
+					best = k
+				end
+			end
+		end
+	end
+	return best
+end
+
+local function shiftHeld()
+	return INPUTFILTER:IsBeingPressed("left shift") or INPUTFILTER:IsBeingPressed("right shift")
+end
+
+local function selectMovable(key)
+	Movable.current = key
+	Movable.pressed = true
+	updatetext(key)
+end
+
+-- Tab: next element, Shift+Tab: previous one
+local function cycleMovable()
+	local keys = movableElementKeys()
+	if #keys == 0 then
+		return
+	end
+	local curName = Movable[Movable.current] and Movable[Movable.current].name
+	local idx = 0
+	for i, k in ipairs(keys) do
+		if Movable[k].name == curName then
+			idx = i
+		end
+	end
+	idx = idx + (shiftHeld() and -1 or 1)
+	if idx < 1 then
+		idx = #keys
+	elseif idx > #keys then
+		idx = 1
+	end
+	selectMovable(keys[idx])
+end
+
+-- wheel: grow / shrink the element under the mouse, or the picked one
+local function wheelResize(up)
+	local name = Movable.hovered
+	if name == nil and Movable.pressed and Movable[Movable.current] then
+		name = Movable[Movable.current].name
+	end
+	if name == nil then
+		return
+	end
+	local key = sizeKeyOf(name)
+	if key == nil then
+		return
+	end
+	selectMovable(key)
+	local dir
+	if shiftHeld() then
+		dir = up and "DeviceButton_right" or "DeviceButton_left"
+	else
+		dir = up and "DeviceButton_up" or "DeviceButton_down"
+	end
+	if Movable[key][dir] then
+		MovableInput({DeviceInput = {button = dir}, type = "InputEventType_FirstPress"})
+	end
+end
+
 function MovableInput(event)
 	if SCREENMAN:GetTopScreen():GetName() == "ScreenGameplaySyncMachine" then return end
 	if getAutoplay() ~= 0 then
 		-- this will eat any other mouse input than a right click (toggle)
 		-- so we don't have to worry about anything weird happening with the ersatz inputs -mina
 		if event.DeviceInput.is_mouse then	
+			if event.type ~= "InputEventType_Release" then
+				if event.DeviceInput.button == "DeviceButton_mousewheel up" then
+					wheelResize(true)
+				elseif event.DeviceInput.button == "DeviceButton_mousewheel down" then
+					wheelResize(false)
+				end
+			end
 			if event.DeviceInput.button == "DeviceButton_right mouse button" then
 				Movable.current = "None"
 				Movable.pressed = false
@@ -956,6 +1117,12 @@ function MovableInput(event)
 		end
 
 		local button = event.DeviceInput.button	
+		if button == "DeviceButton_tab" and not event.hellothisismouse then
+			if event.type == "InputEventType_FirstPress" then
+				cycleMovable()
+			end
+			return false
+		end
 		event.hellothisismouse = event.hellothisismouse and true or false -- so that's why bools kept getting set to nil -mina
 		local notReleased = not (event.type == "InputEventType_Release")
 		-- changed to toggle rather than hold down -mina
@@ -1148,8 +1315,19 @@ local function bordermousereact(self)
 end
 
 local function movewhendragged(self)
+	if not INPUTFILTER:IsBeingPressed("Mouse 0", "Mouse") then
+		Movable.dragKey = nil
+	end
 	-- this is a somewhat dangerous hierarchical assumption but it should help us get organied in the short term -mina
 	local b = elementtobutton(self:GetParent():GetParent():GetName())
+	-- the element under the mouse, for the wheel
+	if isOver(self) and b then
+		Movable.hovered = Movable[b].name
+		Movable.hoverBorder = self
+	elseif Movable.hoverBorder == self then
+		Movable.hovered = nil
+		Movable.hoverBorder = nil
+	end
 	if isOver(self) or (Movable.pressed and Movable.current == b) then
 		if Movable.pressed and Movable.current == b then
 			self:GetParent():diffusealpha(0.75)	-- this is active
@@ -1161,7 +1339,19 @@ local function movewhendragged(self)
 		if INPUTFILTER:IsBeingPressed("Mouse 0", "Mouse") and (Movable.current == b or Movable.current == "None") then
 			local nx = Round(INPUTFILTER:GetMouseX())
 			local ny = Round(INPUTFILTER:GetMouseY())
-			if Movable[b].propertyOffsets ~= nil then
+			-- keep the point it was grabbed at under the mouse instead of
+			-- jumping the element's anchor to it
+			local name = Movable[b].name
+			local px = MovableValues[name .. "X"]
+			local py = MovableValues[name .. "Y"]
+			if Movable.dragKey ~= b and px and py then
+				Movable.dragKey = b
+				Movable.dragOffset = {nx - px, ny - py}
+			end
+			if Movable.dragKey == b and Movable.dragOffset then
+				nx = nx - Movable.dragOffset[1]
+				ny = ny - Movable.dragOffset[2]
+			elseif Movable[b].propertyOffsets ~= nil then
 				nx = nx - Movable[b].propertyOffsets[1]
 				ny = ny - Movable[b].propertyOffsets[2]
 			end

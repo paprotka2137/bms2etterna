@@ -640,7 +640,8 @@ t[#t + 1] = Def.ActorFrame {
 			self:queuecommand("Set")
 		end,
 		SetCommand = function(self)
-			self:settext(GAMESTATE:GetEtternaVersion())
+			-- res extensa's own version (APP_DISPLAY_VERSION), not the Etterna base
+			self:settext(ProductFamily() .. " " .. ProductVersion())
 		end,
 		MouseOverCommand = function(self)
 			highlightIfOver(self)
@@ -813,14 +814,19 @@ t[#t + 1] = Def.ActorFrame {
 -- in pale blue and the numbers on the right
 if ecfn then
 	local rows = {
-		{56, 150, AvatarY + 22, "RATING", function() return string.format("%5.2f", playerRating) end},
+		-- the rating the ranking site shows on the player's profile
+		{56, 150, AvatarY + 22, "RATING", function() return BMSSiteRating.text() end},
 		{56, 150, AvatarY + 37, "PLAYS", function() return tostring(playCount) end},
 		{162, 245, AvatarY + 22, "TIME", function() return SecondsToHHMMSS(playTime) end},
 		{162, 245, AvatarY + 37, "NOTES", function() return tostring(noteCount) end},
 	}
 	local block = Def.ActorFrame {
 		BeginCommand = function(self)
+			BMSSiteRating.refresh()
 			self:sleep(0.05):queuecommand("Set")
+		end,
+		BMSSiteRatingLoadedMessageCommand = function(self)
+			self:queuecommand("Set")
 		end,
 		PlayerRatingUpdatedMessageCommand = function(self)
 			self:queuecommand("Set")

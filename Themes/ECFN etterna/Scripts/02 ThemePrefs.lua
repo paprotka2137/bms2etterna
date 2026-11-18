@@ -269,6 +269,76 @@ function TargetTracker()
 	return t
 end
 
+-- 7k: the ECFN score graph (pacemaker) next to the notefield
+function PacemakerGraph()
+	local t = {
+		Name = "PacemakerGraph",
+		LayoutType = "ShowAllInRow",
+		SelectType = "SelectOne",
+		OneChoiceForAllPlayers = false,
+		ExportOnChange = false,
+		ExportOnCancel = true,
+		Choices = {THEME:GetString("OptionNames", "Off"), THEME:GetString("OptionNames", "On")},
+		LoadSelections = function(self, list, pn)
+			if playerConfig:get_data(pn_to_profile_slot(pn)).PacemakerGraph then
+				list[2] = true
+			else
+				list[1] = true
+			end
+		end,
+		SaveSelections = function(self, list, pn)
+			playerConfig:get_data(pn_to_profile_slot(pn)).PacemakerGraph = list[2]
+			playerConfig:set_dirty(pn_to_profile_slot(pn))
+			playerConfig:save(pn_to_profile_slot(pn))
+		end
+	}
+	setmetatable(t, t)
+	return t
+end
+
+-- 7k: what the score graph and the goal tracker pace against, as beatoraja's
+-- TARGET (Scripts/BMSPacemaker.lua)
+function PacemakerTarget()
+	local targets = getPacemakerTargets()
+	local choices = {}
+	for i, v in ipairs(targets) do
+		choices[i] = v[2]
+	end
+	local t = {
+		Name = "PacemakerTarget",
+		LayoutType = "ShowAllInRow",
+		SelectType = "SelectOne",
+		OneChoiceForAllPlayers = false,
+		ExportOnChange = false,
+		ExportOnCancel = true,
+		Choices = choices,
+		LoadSelections = function(self, list, pn)
+			local v = playerConfig:get_data(pn_to_profile_slot(pn)).PacemakerTarget
+			local found = false
+			for i, x in ipairs(targets) do
+				if x[1] == v then
+					list[i] = true
+					found = true
+				end
+			end
+			if not found then
+				list[#targets] = true
+			end
+		end,
+		SaveSelections = function(self, list, pn)
+			for i, x in ipairs(targets) do
+				if list[i] then
+					playerConfig:get_data(pn_to_profile_slot(pn)).PacemakerTarget = x[1]
+				end
+			end
+			playerConfig:set_dirty(pn_to_profile_slot(pn))
+			playerConfig:save(pn_to_profile_slot(pn))
+		end
+	}
+	setmetatable(t, t)
+	return t
+end
+
 local tChoices = {}
 for i = 1, 99 do
 	tChoices[i] = tostring(i) .. "%"
@@ -1314,5 +1384,12 @@ function ShowPlayerOptionsHint()
 		end
 	}
 	setmetatable(t, t)
+	return t
+end
+
+-- 7k: the Custom % of the pacemaker, stored as the Tracker Goal
+function PacemakerPercent()
+	local t = TargetGoal()
+	t.Name = "PacemakerPercent"
 	return t
 end

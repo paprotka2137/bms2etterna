@@ -39,7 +39,10 @@ local defaultGameplayCoordinates = {
 	MusicRateY = SCREEN_BOTTOM - 10,
 	-- 7k lane order display; -1 = next to the bottom right of the notefield
 	LaneOrderX = -1,
-	LaneOrderY = -1
+	LaneOrderY = -1,
+	-- 7k ECFN score graph (pacemaker); -1 = right of the notefield
+	PacemakerX = -1,
+	PacemakerY = -1
 }
 
 local defaultGameplaySizes = {
@@ -68,6 +71,8 @@ local defaultGameplaySizes = {
 	PracticeCDGraphWidth = 0.8,
 	PracticeCDGraphHeight = 1,
 	MusicRateZoom = 1.0,
+	LaneOrderZoom = 1.0, -- 7k lane order display
+	PacemakerZoom = 1.0, -- 7k ECFN score graph
 	BPMTextZoom = 1.0
 }
 
@@ -81,6 +86,8 @@ local defaultConfig = {
 	TargetTracker = true,
 	TargetGoal = 93,
 	TargetTrackerMode = 0, -- 0: set percent, 1: pb, 2: pb (replay)
+	PacemakerGraph = true, -- 7k: ECFN score graph next to the notefield
+	PacemakerTarget = "GOAL", -- 7k: A- .. AAA+, MAX, NEXT, MYBEST, GOAL (TargetGoal %)
 	JudgeCounter = true,
 	ErrorBar = 1,
 	leaderboardEnabled = false,

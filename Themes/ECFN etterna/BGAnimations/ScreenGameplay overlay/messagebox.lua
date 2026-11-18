@@ -88,8 +88,14 @@ return Def.ActorFrame {
 				"m: "..transStr("MeanPosition"),
 				",: "..transStr("MeanSize"),
 			}
+			table.insert(text, 1, transStr("EasyCustomize"))
 			if hideMSD and hideMSD() then
 				table.insert(text, ".: "..transStr("LaneOrderPosition"))
+				table.insert(text, ";: "..transStr("LaneOrderSize"))
+				if playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).PacemakerGraph then
+					table.insert(text, "/: "..transStr("PacemakerPosition"))
+					table.insert(text, "': "..transStr("PacemakerSize"))
+				end
 			end
 			if playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).LaneCover ~= 0 then
 				local selectStr = THEME:GetString("GameButton", "Select")

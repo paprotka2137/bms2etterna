@@ -855,6 +855,12 @@ t[#t + 1] = UIElements.SpriteButton(1, 1, nil) .. {
 	MortyFartsCommand = function(self)
 		self:finishtweening()
 		self.song = song
+		-- 7k: this panel stays off screen, loading the picture on every
+		-- wheel move only slowed scrolling down
+		if hideMSD() then
+			self:visible(false)
+			return
+		end
 		if song then
 			if song:HasCDTitle() then
 				self:visible(true)
@@ -963,6 +969,11 @@ t[#t + 1] = Def.Sprite {
 		self:scaletoclipped(capWideScale(get43size(384), 384), capWideScale(get43size(120), 120)):diffusealpha(1)
 	end,
 	MintyFreshCommand = function(self)
+		-- 7k: off screen, the ECFN stage picture (ecfn.lua) shows the song
+		if hideMSD() then
+			self:visible(false)
+			return
+		end
 		if INPUTFILTER:IsBeingPressed("tab") then
 			self:finishtweening():smooth(0.25):diffusealpha(0):sleep(0.2):queuecommand("ModifyBanner")
 		else

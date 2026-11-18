@@ -13,5 +13,10 @@ function getPlayerOptionsList(itemSet)
 		["Theme"] = "LC,CBHL,JT,CT,DP,DM,TT,TG,TTM,JC,EB,EBC,PI,FBP,FB,MB,LEADB,NPS",
 		["Effect"] = "Persp,App,GHO,SHO,Acc,Hide,Effect1,Effect2,Scroll,Turn,Insert,R1,R2,Holds,Mines,HoldReleases"
 	}
+	-- 7k: one pacemaker for the goal tracker and the ECFN score graph
+	-- (Scripts/BMSPacemaker.lua) instead of Tracker Goal / Tracker Mode
+	if hideMSD() then
+		Items["Theme"] = Items["Theme"]:gsub("TT,TG,TTM,", "TT,PMG,PMT,PMP,")
+	end
 	return Items[itemSet] .. ",NextScr"
 end

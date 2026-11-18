@@ -1364,6 +1364,9 @@ ThemeManager::GetString(const std::string& sMetricsGroup,
 	// EvaluateString( s );
 
 	s_replace(s, "\\n", "\n");
+	// "::" is an old newline alias for theme strings. It used to be applied
+	// in BitmapText::settext for every string, which mangled song titles.
+	s_replace(s, "::", "\n");
 
 	if (m_bPseudoLocalize) {
 		// pseudolocalize ignoring replace markers.  e.g.: "%{steps} steps:

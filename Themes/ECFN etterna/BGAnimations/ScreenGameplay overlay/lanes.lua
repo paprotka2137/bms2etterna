@@ -3,7 +3,8 @@
 -- site: a key is white or blue by the chart lane on it, 1 3 5 7 white,
 -- 2 4 6 blue, tall or short by where it sits). Only for moved lanes
 -- (Mirror, Random, R-Random, custom); S-Random and H-Random move notes one
--- by one, so they just show their name. Customize Gameplay moves it (key .).
+-- by one, so they just show their name. Customize Gameplay moves it (key .)
+-- and sizes it (key ;).
 
 if not hideMSD() or GAMESTATE:GetCurrentStyle():ColumnsPerPlayer() ~= 7 then
 	return Def.ActorFrame {}
@@ -59,8 +60,13 @@ local t = Def.ActorFrame {
 	Name = "LaneOrder",
 	InitCommand = function(self)
 		if allowedCustomization and Movable and Movable.DeviceButton_period then
-			Movable.DeviceButton_period.element = self
-			Movable.DeviceButton_period.condition = true
+			for _, key in ipairs({"DeviceButton_period", "DeviceButton_;"}) do
+				if Movable[key] then
+					Movable[key].element = self
+					Movable[key].condition = true
+					Movable[key].Border = self:GetChild("Border")
+				end
+			end
 		end
 	end,
 	OnCommand = function(self)
@@ -76,6 +82,11 @@ local t = Def.ActorFrame {
 				MovableValues.LaneOrderY = self:GetY()
 			end
 		end
+		-- size set in Customize Gameplay (key ;)
+		if MovableValues and MovableValues.LaneOrderZoom == nil then
+			MovableValues.LaneOrderZoom = 1
+		end
+		self:zoom(mv.LaneOrderZoom or 1)
 		self:playcommand("Show")
 	end,
 	DoneLoadingNextSongMessageCommand = function(self)

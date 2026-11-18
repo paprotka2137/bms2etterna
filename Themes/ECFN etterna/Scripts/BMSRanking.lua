@@ -272,6 +272,41 @@ function R.askLogin(stepper)
 end
 
 -- drop cached rankings when a play was sent or the login changed
+-- After a play on an unranked chart (the site answers the upload with a 4th
+-- field "U") the game sends the chart's Good enough rating, since the site
+-- has no rating of its own for charts outside the tables. Once per chart a
+-- session; the site keeps the first value it gets.
+R.calcSent = R.calcSent or {}
+function R.sendUnrankedCalc(ck, response)
+	if not ck or R.calcSent[ck] or not R.loggedIn() or not getBMSSiteRating then
+		return
+	end
+	local first = parse(response)[1]
+	if not first or first[1] ~= "OK" or first[4] ~= "U" then
+		return
+	end
+	local ok, steps = pcall(function()
+		return SONGMAN:GetStepsByChartKey(ck)
+	end)
+	if not ok or not steps then
+		return
+	end
+	local ok2, easy, hard = pcall(getBMSSiteRating, steps)
+	if not ok2 or not easy or not hard then
+		return
+	end
+	R.calcSent[ck] = true
+	DLMAN:BMSRequest("POST", "/api/game/calc", {
+		chart_key = ck,
+		easy = string.format("%.2f", easy),
+		hard = string.format("%.2f", hard),
+	}, function(status, body)
+		if status ~= 200 then
+			R.calcSent[ck] = nil
+		end
+	end)
+end
+
 function R.forget(ck)
 	if ck then
 		R.cache[ck] = nil

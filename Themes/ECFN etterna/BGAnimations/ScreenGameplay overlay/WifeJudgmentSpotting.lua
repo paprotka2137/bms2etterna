@@ -46,8 +46,11 @@ local curMeanSum = 0
 local curMeanCount = 0
 local judgect
 local pbtarget
--- 7k target tracker: target and PB as score rates (0-1), set further down
+-- 7k target tracker: target and PB as score rates (0-1), set further down.
+-- The target is the pacemaker picked in Player Options (Scripts/BMSPacemaker.lua),
+-- the same one the ECFN score graph (pacemaker.lua) draws.
 local bmsTarget = (playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).TargetGoal or 93) / 100
+local bmsTargetText
 local bmsPBRate
 local positive = getMainColor("positive")
 local highlight = getMainColor("highlight")
@@ -300,7 +303,7 @@ local t =
 			-- 7k: the engine's differential is in wife points against a wife
 			-- target, but 7k shows the EX rate, so pace the target (or the
 			-- PB's EX rate) on the same EX score shown on screen
-			pbtarget = targetTrackerMode ~= 0 and bmsPBRate or nil
+			pbtarget = nil
 			local goal = pbtarget or bmsTarget
 			if o2jamPlay then
 				-- O2Jam score is not linear in notes: percent points behind / ahead
@@ -314,6 +317,14 @@ local t =
 			tDiff = msg.WifePBDifferential
 		end
 		jdgCur = msg.Judgment
+		if hideMSD() then
+			-- the ECFN score graph (pacemaker.lua) draws the same score
+			Broadcast(MESSAGEMAN, "BMSPace", {
+				ex = bmsEx,
+				judged = bmsJudged,
+				rate = o2jamPlay and (wifey / 100) or (bmsJudged > 0 and bmsEx / (bmsJudged * 2) or 0),
+			})
+		end
 		self:playcommand("SpottedOffset")
 	end,
 	PracticeModeResetMessageCommand = function(self)
@@ -327,6 +338,9 @@ local t =
 		jdgCur = nil
 		curMeanSum = 0
 		curMeanCount = 0
+		if hideMSD() then
+			Broadcast(MESSAGEMAN, "BMSPace", {ex = 0, judged = 0, rate = 0})
+		end
 		self:playcommand("SpottedOffset")
 	end
 }
@@ -357,23 +371,18 @@ end
 -- Mostly clientside now. We set our desired target goal and listen to the results rather than calculating ourselves.
 local target = playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).TargetGoal
 
--- 7k PB target: the best EX rate (O2Jam: score) at the current rate on this chart
-if hideMSD() and targetTrackerMode ~= 0 then
-	local rate = getCurRateValue()
-	for k, scores in pairs(getRateTable() or {}) do
-		local r = tonumber((k:gsub("x", "")))
-		if r and math.abs(r - rate) < 0.001 then
-			for _, sc in ipairs(scores) do
-				local v = getBMSScoreRate(sc)
-				if v > 0 and (bmsPBRate == nil or v > bmsPBRate) then
-					bmsPBRate = v
-				end
-			end
-		end
-	end
+-- 7k PB target: the best EX rate (O2Jam: score) at the current rate on this
+-- chart; set target: the pacemaker (A- .. AAA+, MAX, NEXT, MYBEST, goal %)
+if hideMSD() then
+	bmsPBRate = getBMSPBRateForCurrentChart()
+	local _, _, text
+	bmsTarget, _, text = getPacemakerRate(bmsPBRate)
+	bmsTargetText = text
+	-- the pacemaker replaces Tracker Mode on 7k (MYBEST is the PB mode)
+	bmsPBRate = nil
 end
 GAMESTATE:GetPlayerState():SetTargetGoal(target / 100)
-GAMESTATE:GetPlayerState():SetGoalTrackerUsesReplay(targetTrackerMode == 2)
+GAMESTATE:GetPlayerState():SetGoalTrackerUsesReplay(targetTrackerMode == 2 and not hideMSD())
 
 -- We can save space by wrapping the personal best and set percent trackers into one function, however
 -- this would make the actor needlessly cumbersome and unnecessarily punish those who don't use the
@@ -416,7 +425,11 @@ if targetTrackerMode == 0 then
 				else
 					diffuse(self, negative)
 				end
-				self:settextf("%5.2f (%5.2f%%)", tDiff, target)
+				if hideMSD() then
+					self:settextf("%5.2f (%s %5.2f%%)", tDiff, bmsTargetText or "", bmsTarget * 100)
+				else
+					self:settextf("%5.2f (%5.2f%%)", tDiff, target)
+				end
 			end
 		}
 else
@@ -447,7 +460,11 @@ else
 					else
 						diffuse(self, negative)
 					end
-					self:settextf("%5.2f (%5.2f%%)", tDiff, target)
+					if hideMSD() then
+						self:settextf("%5.2f (%s %5.2f%%)", tDiff, bmsTargetText or "", bmsTarget * 100)
+					else
+						self:settextf("%5.2f (%5.2f%%)", tDiff, target)
+					end
 				end
 			end
 		}

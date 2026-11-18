@@ -48,6 +48,30 @@ if hideMSD() then
     local lampFrames = {2, 1, 1, 1, 1, 1, 2, 3, 3, 3}
     local lampDelays = {0.04, 1, 1, 1, 1, 1, 0.05, 0.1 / 3, 0.1 / 3, 0.1 / 3}
 
+    -- what a song bar shows that never changes on the select screen: its 7k
+    -- chart, level and whether it has long notes. Every bar is set again on
+    -- each wheel move, so this is read once per song (the cache is emptied
+    -- every time the song select loads, like the lamps)
+    local function barInfo(song)
+        local key = song:GetSongDir()
+        local cache = ecfnBarCache
+        local info = cache and cache[key]
+        if info == nil then
+            local st = getBMSSongSteps(song)
+            local level, row = getBMSLevelDisplay(song, st)
+            local holds = 0
+            if st then
+                local rv = st:GetRadarValues(PLAYER_1)
+                holds = rv:GetValue("RadarCategory_Holds") + rv:GetValue("RadarCategory_Rolls")
+            end
+            info = {level = level, row = row, ln = holds > 0}
+            if cache then
+                cache[key] = info
+            end
+        end
+        return info
+    end
+
     local t = Def.ActorFrame {
         Def.Sprite {
             Name = "Bar",
@@ -105,13 +129,7 @@ if hideMSD() then
                 self:halign(0):xy(-88 * s, -3 * s):zoomto(80 * s, 24 * s)
             end,
             SetCommand = function(self, params)
-                local st = params.Type == "Song" and params.Song and getBMSSongSteps(params.Song)
-                local holds = 0
-                if st then
-                    local rv = st:GetRadarValues(PLAYER_1)
-                    holds = rv:GetValue("RadarCategory_Holds") + rv:GetValue("RadarCategory_Rolls")
-                end
-                self:visible(holds > 0)
+                self:visible(params.Type == "Song" and params.Song and barInfo(params.Song).ln or false)
             end,
         },
     }
@@ -131,8 +149,8 @@ if hideMSD() then
             if params.Type ~= "Song" or not params.Song then
                 return
             end
-            local st = getBMSSongSteps(params.Song)
-            local level, row = getBMSLevelDisplay(params.Song, st)
+            local info = barInfo(params.Song)
+            local level, row = info.level, info.row
             if level == nil then
                 unknown:visible(true)
                 return

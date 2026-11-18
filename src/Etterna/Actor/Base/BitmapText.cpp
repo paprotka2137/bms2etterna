@@ -1495,17 +1495,15 @@ class LunaBitmapText : public Luna<BitmapText>
 	{
 		std::string s = SArg(1);
 		std::string sAlt;
-		/* XXX: Lua strings should simply use "\n" natively. However, some
-		 * settext calls may be made from GetMetric() calls to other strings,
-		 * and it's confusing for :: to work in some strings and not others.
-		 * Eventually, all strings should be Lua expressions, but until then,
-		 * continue to support this. */
-		s_replace(s, "::", "\n");
+		/* The old "::" -> newline alias is no longer applied here: it broke
+		 * song titles, artists and pack names that really contain "::"
+		 * (e.g. "Fractured Sunshine [:.::: ::::]" became a pile of empty
+		 * lines). Theme language strings still get the alias, it now lives
+		 * in ThemeManager::GetString. Lua strings should use "\n". */
 		FontCharAliases::ReplaceMarkers(s);
 
 		if (lua_gettop(L) > 1) {
 			sAlt = SArg(2);
-			s_replace(sAlt, "::", "\n");
 			FontCharAliases::ReplaceMarkers(sAlt);
 		}
 

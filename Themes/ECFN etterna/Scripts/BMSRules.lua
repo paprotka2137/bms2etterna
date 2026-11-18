@@ -616,13 +616,19 @@ function getBestBMSLampFrame(chartKey)
 	return best
 end
 
--- the hardest 7k chart of a song
+-- the hardest 7k chart of a song. Enum.Reverse builds a new table on every
+-- call, so the order is read once (the wheel asks this for every bar it moves)
+local difficultyOrder
 function getBMSSongSteps(song)
-	local best
+	if not difficultyOrder then
+		difficultyOrder = Enum.Reverse(Difficulty)
+	end
+	local best, bestOrder
 	for _, st in ipairs(song:GetAllSteps()) do
 		if st:GetStepsType() == "StepsType_Kb7_Single" then
-			if best == nil or Enum.Reverse(Difficulty)[st:GetDifficulty()] > Enum.Reverse(Difficulty)[best:GetDifficulty()] then
-				best = st
+			local o = difficultyOrder[st:GetDifficulty()]
+			if best == nil or o > bestOrder then
+				best, bestOrder = st, o
 			end
 		end
 	end

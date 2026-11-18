@@ -552,6 +552,25 @@ function getBMSClearDifficulty(steps, rate)
 	return e, gr, h, pe, ph, pg
 end
 
+-- The chart's Good enough rating as the ranking site keeps it: EASY and HARD
+-- level at 1.0x on the insane ★ scale, whatever scale is shown (the same
+-- numbers the site's tools/calcrating.py writes to public/calcrating.json).
+-- The game sends it for unranked charts, which the site has no rating for.
+function getBMSSiteRating(steps)
+	if not isCalcSteps(steps) then return nil end
+	local key = steps:GetChartKey() .. "@1.00"
+	local sk = cache[key]
+	if not sk then
+		local t, col = readNotes(steps, 1)
+		if not t then return nil end
+		sk = bmsClearSkills(t, col, steps:GetBMSTotal())
+		if not sk then return nil end
+		cache[key] = sk
+	end
+	local hs = through(sk[3], HARD_MAP)
+	return toStar(min(sk[1], hs), 1), toStar(hs, 1)
+end
+
 ---------------------------------------------------------------------------
 -- debug view: everything the calc saw, and the patterns in the chart
 ---------------------------------------------------------------------------

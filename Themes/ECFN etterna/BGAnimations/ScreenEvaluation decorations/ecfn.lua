@@ -1307,6 +1307,9 @@ if BMSRanking and BMSRanking.loggedIn() then
 			end
 		end,
 		BMSScoreUploadedMessageCommand = function(self, params)
+			if params.ok then
+				R.sendUnrankedCalc(params.chartkey, params.response)
+			end
 			if params.chartkey == ck then
 				R.forget(ck)
 				board = R.chart(ck)

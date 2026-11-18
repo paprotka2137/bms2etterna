@@ -16,6 +16,8 @@ end
 t[#t + 1] = LoadActor("leaderboard.lua")
 -- 7k: the lane order this song plays on
 t[#t + 1] = LoadActor("lanes")
+-- 7k: the ECFN score graph (pacemaker)
+t[#t + 1] = LoadActor("pacemaker")
 if inReplay then
 	t[#t + 1] = LoadActor("replayscrolling")
 end

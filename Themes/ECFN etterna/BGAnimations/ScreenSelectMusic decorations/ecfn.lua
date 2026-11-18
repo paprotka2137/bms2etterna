@@ -20,6 +20,13 @@ local shiftY = -123
 
 -- lamps of the wheel bars, filled by the wheel items
 ecfnLampCache = {}
+-- level and LN label of the wheel bars, filled by the wheel items
+ecfnBarCache = {}
+
+-- the heavy reads (densities, FAST/SLOW from the replay) kept while the
+-- screen is up, so going back to a chart does not read it again
+local densityCache = {}
+local replayCache = {}
 
 ---------------------------------------------------------------------------
 -- chart and score data
@@ -186,6 +193,16 @@ local function readReplay()
 	if not s then
 		return
 	end
+	local key = s:GetScoreKey()
+	local hit = key and replayCache[key]
+	if hit then
+		data.fast, data.slow = hit.fast, hit.slow
+		return
+	end
+	-- a play without replay data is remembered too
+	if key then
+		replayCache[key] = {}
+	end
 	local replay = s:GetReplay()
 	if not replay then
 		return
@@ -221,6 +238,9 @@ local function readReplay()
 		end
 	end
 	data.fast, data.slow = fast, slow
+	if key then
+		replayCache[key] = {fast = fast, slow = slow}
+	end
 end
 
 -- notes per second for the graph and the densities, the BPM at every second
@@ -232,6 +252,17 @@ local function readDensity()
 		return
 	end
 	local rate = data.rate or 1
+	local key = steps:GetChartKey() .. "@" .. string.format("%.3f", rate)
+	local hit = densityCache[key]
+	if hit then
+		if hit.density then
+			data.density = hit.density
+			data.peak, data.average, data.endDensity = hit.peak, hit.average, hit.endDensity
+			data.mainBpm, data.bpmLine = hit.mainBpm, hit.bpmLine
+		end
+		return
+	end
+	densityCache[key] = {}
 	local all = steps:GetCDGraphVectors(rate)
 	if not all or not all[1] or #all[1] == 0 then
 		return
@@ -282,6 +313,10 @@ local function readDensity()
 	end
 	data.mainBpm = mainBpm
 	data.bpmLine = line
+	densityCache[key] = {
+		density = data.density, peak = data.peak, average = data.average,
+		endDensity = data.endDensity, mainBpm = mainBpm, bpmLine = line,
+	}
 end
 
 -- how hard the chart is to EASY clear and HARD clear, on the scale of the
@@ -485,23 +520,34 @@ end
 -- layout
 ---------------------------------------------------------------------------
 
+-- a wheel move changes the song and the steps, both messages come in the
+-- same frame: the chart is read once for them
+local function queueChart(self)
+	if not self.chartQueued then
+		self.chartQueued = true
+		self:queuecommand("Chart")
+	end
+end
+
 local t = Def.ActorFrame {
 	Name = "ECFNSelect",
 	BeginCommand = function(self)
-		self:queuecommand("Chart")
+		queueChart(self)
+		self:queuecommand("Picture")
 	end,
 	CurrentSongChangedMessageCommand = function(self)
-		self:queuecommand("Chart")
+		queueChart(self)
 	end,
 	CurrentStepsChangedMessageCommand = function(self)
-		self:queuecommand("Chart")
+		queueChart(self)
 	end,
 	CurrentRateChangedMessageCommand = function(self)
 		self:queuecommand("Heavy")
 	end,
-	-- the heavy parts wait for the wheel to stop
+	-- the heavy parts wait for the wheel to stop, and a moment more so that
+	-- tapping through songs does not read every chart it passes
 	DelayedChartUpdateMessageCommand = function(self)
-		self:queuecommand("Heavy")
+		self:GetChild("HeavyTimer"):playcommand("Wait")
 	end,
 	BMSOptionChangedMessageCommand = function(self)
 		self:playcommand("Refresh")
@@ -511,6 +557,7 @@ local t = Def.ActorFrame {
 		self:playcommand("Refresh")
 	end,
 	ChartCommand = function(self)
+		self.chartQueued = false
 		readChart()
 		-- the densities need to wait for the wheel, until then they are blank
 		data.density = nil
@@ -523,7 +570,21 @@ local t = Def.ActorFrame {
 		readClearDifficulty()
 		self:playcommand("Refresh")
 		self:playcommand("Graph")
+		self:playcommand("Picture")
 	end,
+	-- waits after the wheel stops, another chart before then cancels it
+	Def.Actor {
+		Name = "HeavyTimer",
+		WaitCommand = function(self)
+			self:stoptweening():sleep(0.08):queuecommand("Go")
+		end,
+		ChartCommand = function(self)
+			self:stoptweening()
+		end,
+		GoCommand = function(self)
+			self:GetParent():playcommand("Heavy")
+		end,
+	},
 }
 
 -- the decide screen's pictures, loaded here (never shown) so that screen
@@ -675,15 +736,32 @@ end
 p[#p + 1] = Img("line.png", 424, 222, 2, 453)
 p[#p + 1] = Img("bms_info.png", 30, 222, 384, 453)
 
--- stage picture: background, jacket or banner of the song
+-- stage picture: background, jacket or banner of the song. Loading a big
+-- picture from disk stalls a frame, so it fades out while the wheel moves
+-- and the new one loads once it stops (Picture, with Heavy).
 p[#p + 1] = Def.Sprite {
 	RefreshCommand = function(self)
 		local song = data.song
 		local pic = song and (song:GetBackgroundPath() or song:GetJacketPath() or song:GetBannerPath())
+		self.want = pic
+		if pic ~= self.pic then
+			if not self.faded then
+				self.faded = true
+				self:stoptweening():linear(0.1):diffusealpha(0)
+			end
+		elseif self.faded then
+			-- back on the song it shows
+			self.faded = false
+			self:stoptweening():linear(0.1):diffusealpha(1)
+		end
+	end,
+	PictureCommand = function(self)
+		local pic = self.want
 		if pic == self.pic then
 			return
 		end
 		self.pic = pic
+		self.faded = false
 		self:finishtweening()
 		if pic then
 			self:visible(true)

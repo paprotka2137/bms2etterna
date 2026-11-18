@@ -161,6 +161,10 @@ local t = Def.ActorFrame {
 		end
 	end,
 	BMSScoreUploadedMessageCommand = function(self, params)
+		-- the answer can come after the result screen is gone
+		if params.ok then
+			R.sendUnrankedCalc(params.chartkey, params.response)
+		end
 		R.forget(params.chartkey)
 		if onTab then
 			self:playcommand("Load")
