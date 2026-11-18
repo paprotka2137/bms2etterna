@@ -70,6 +70,8 @@ local function loadValuesTable()
 	MovableValues.MusicRateX = playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).GameplayXYCoordinates[keymode].MusicRateX
 	MovableValues.MusicRateY = playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).GameplayXYCoordinates[keymode].MusicRateY
 	MovableValues.MusicRateZoom = playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).GameplaySizes[keymode].MusicRateZoom
+	MovableValues.LaneOrderX = playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).GameplayXYCoordinates[keymode].LaneOrderX
+	MovableValues.LaneOrderY = playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).GameplayXYCoordinates[keymode].LaneOrderY
 end
 
 function unsetMovableKeymode()
@@ -902,8 +904,31 @@ Movable = {
 			property = "Zoom",
 			inc = -0.01
 		}
+	},
+	-- 7k: the lane order keys (RANDOM, CUSTOM...)
+	DeviceButton_period = {
+		name = "LaneOrder",
+		textHeader = "Lane Order Position:",
+		element = {},
+		properties = {"X", "Y"},
+		elementTree = "GameplayXYCoordinates",
+		DeviceButton_up = {
+			property = "Y",
+			inc = -3
+		},
+		DeviceButton_down = {
+			property = "Y",
+			inc = 3
+		},
+		DeviceButton_left = {
+			property = "X",
+			inc = -3
+		},
+		DeviceButton_right = {
+			property = "X",
+			inc = 3
+		}
 	}
-	
 }
 
 local function updatetext(button)

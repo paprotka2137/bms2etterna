@@ -29,6 +29,7 @@
 #include "Etterna/Singletons/GameSoundManager.h"
 #include "Etterna/Singletons/FilterManager.h"
 #include "Etterna/Singletons/GameState.h"
+#include "Etterna/Actor/Gameplay/LifeMeterBar.h"
 #include <RageUtil/Sound/RageSound.h>
 
 #include <algorithm>
@@ -427,6 +428,8 @@ Song::ReloadFromSongDir(const std::string& sDir)
 	// instead of loading from the cache. -Kyz
 	FILEMAN->Remove(GetCacheFilePath());
 	SONGINDEX->DeleteSongFromDBByDir(GetSongDir());
+	// BMS TOTAL / RANK are read straight off the chart files and kept
+	LifeMeterBar::ForgetBMSFileValues();
 
 	auto vOldSteps = m_vpSteps;
 

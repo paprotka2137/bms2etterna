@@ -11,6 +11,13 @@ PID="$1"
 PKG="$2"
 ROOT="$3"
 
+# run a copy from the temp folder: the update replaces this file while the
+# shell is still reading it
+if [ "$4" != "copied" ]; then
+	COPY="$(mktemp "${TMPDIR:-/tmp}/res-extensa-update.XXXXXX")" &&
+		cp "$0" "$COPY" && exec sh "$COPY" "$PID" "$PKG" "$ROOT" copied
+fi
+
 mkdir -p "$ROOT/Logs"
 exec >>"$ROOT/Logs/update.log" 2>&1
 echo "=== $(date) update: $PKG into $ROOT"
@@ -88,3 +95,4 @@ else
 	echo "update failed, starting the old version"
 fi
 start_game
+[ "$4" = "copied" ] && rm -f "$0"

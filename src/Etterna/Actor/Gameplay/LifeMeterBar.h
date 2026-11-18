@@ -52,6 +52,9 @@ class LifeMeterBar : public LifeMeter
 	static int GetBMSRank(const Song* song,
 						  const Steps* steps,
 						  std::string& source);
+	/** @brief Forget TOTAL / RANK values read off chart files, so the next
+	 * lookup reads the files again (song reload) */
+	static void ForgetBMSFileValues();
 
   private:
 	// BMS (beatoraja) gauge, used instead of the normal bar on 7k charts.

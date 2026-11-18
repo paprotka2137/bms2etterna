@@ -2,8 +2,8 @@
 -- the bottom of the notefield (the same keys as the lane picker and the
 -- site: a key is white or blue by the chart lane on it, 1 3 5 7 white,
 -- 2 4 6 blue, tall or short by where it sits). Only for moved lanes
--- (Mirror, Random, Color Random, R-Random, custom); S-Random and H-Random
--- move notes one by one, so they just show their name.
+-- (Mirror, Random, R-Random, custom); S-Random and H-Random move notes one
+-- by one, so they just show their name. Customize Gameplay moves it (key .).
 
 if not hideMSD() or GAMESTATE:GetCurrentStyle():ColumnsPerPlayer() ~= 7 then
 	return Def.ActorFrame {}
@@ -26,11 +26,18 @@ local labels = {
 	BMSArrange_Custom = "CUSTOM",
 }
 
+local allowedCustomization = playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).CustomizeGameplay
+
 local function current()
 	local po = GAMESTATE:GetPlayerState():GetPlayerOptions("ModsLevel_Stage")
 	local label = labels[po:ArrangeSetting()]
 	local order = GAMESTATE.GetBMSLaneOrder and GAMESTATE:GetBMSLaneOrder() or ""
-	return label, (#order == 7) and order or nil
+	order = (#order == 7) and order or nil
+	-- Customize Gameplay shows it even with the lanes off, so it can be moved
+	if allowedCustomization and label == nil then
+		return "LANE ORDER", "1234567"
+	end
+	return label, order
 end
 
 -- right edge and bottom of the notefield, the same sums as lanecover.lua
@@ -49,9 +56,26 @@ local function place(self)
 end
 
 local t = Def.ActorFrame {
-	Name = "BMSLaneOrder",
+	Name = "LaneOrder",
+	InitCommand = function(self)
+		if allowedCustomization and Movable and Movable.DeviceButton_period then
+			Movable.DeviceButton_period.element = self
+			Movable.DeviceButton_period.condition = true
+		end
+	end,
 	OnCommand = function(self)
-		place(self)
+		-- a position set in Customize Gameplay (key .), otherwise next to
+		-- the notefield
+		local mv = MovableValues or {}
+		if mv.LaneOrderX and mv.LaneOrderY and mv.LaneOrderX >= 0 and mv.LaneOrderY >= 0 then
+			self:xy(mv.LaneOrderX, mv.LaneOrderY)
+		else
+			place(self)
+			if MovableValues then
+				MovableValues.LaneOrderX = self:GetX()
+				MovableValues.LaneOrderY = self:GetY()
+			end
+		end
 		self:playcommand("Show")
 	end,
 	DoneLoadingNextSongMessageCommand = function(self)
@@ -102,5 +126,8 @@ for k = 1, 7 do
 		end,
 	}
 end
+
+-- the outline Customize Gameplay drags it by (label and keys)
+t[#t + 1] = MovableBorder(7 * KW + 6 * KG, KH_WHITE + 14, 1, (7 * KW + 6 * KG) / 2, -KH_WHITE / 2 - 6)
 
 return t

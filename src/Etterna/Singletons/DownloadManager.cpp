@@ -6784,16 +6784,31 @@ BMSUpdateLaunch(const std::string& script, const std::string& package)
 	STARTUPINFOW si{};
 	si.cb = sizeof(si);
 	PROCESS_INFORMATION pi{};
-	if (!CreateProcessW(nullptr,
-						wcmd.data(),
-						nullptr,
-						nullptr,
-						FALSE,
-						CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP,
-						nullptr,
-						nullptr,
-						&si,
-						&pi)) {
+	// out of the game's job, if it has one: a job that ends its processes
+	// when the game closes would take the updater with it
+	const DWORD flags = CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP;
+	auto started = CreateProcessW(nullptr,
+								  wcmd.data(),
+								  nullptr,
+								  nullptr,
+								  FALSE,
+								  flags | CREATE_BREAKAWAY_FROM_JOB,
+								  nullptr,
+								  nullptr,
+								  &si,
+								  &pi);
+	if (!started) // the job doesn't allow leaving it
+		started = CreateProcessW(nullptr,
+								 wcmd.data(),
+								 nullptr,
+								 nullptr,
+								 FALSE,
+								 flags,
+								 nullptr,
+								 nullptr,
+								 &si,
+								 &pi);
+	if (!started) {
 		Locator::getLogger()->error("Update: can't start {}", cmd);
 		return false;
 	}

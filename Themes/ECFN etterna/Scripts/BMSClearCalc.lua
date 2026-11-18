@@ -23,8 +23,9 @@ local P = {0.869284, 2.477, 0.327945, 0.8, 5.6, 10.1646, 0.366215, 0.06, 0.26881
 -- run, so HARD has to stay HARD_Z standard deviations above dying. EASY and
 -- GROOVE: a real gauge swings, so the skill is a mix (SUM_W) of the skill to
 -- end at TARGET (the end of the chart matters) and of the skill to gain 60%
--- over the whole chart with no cap or floor (every part counts the same).
-local HARD_Z, TARGET, SUM_W = 0.5, 56.4783, 0.8
+-- over the whole chart with no cap (every part counts the same, but the
+-- gauge still stops at its 2% floor).
+local HARD_Z, TARGET, SUM_W = 0.5, 56.4783, 0.7
 
 -- rows closer than SWEEP_GAP (rolls, staircases, sweeps) count SWEEP_W in
 -- the densities; in chords of JACK_CHORD notes or more the jack part is
@@ -38,7 +39,7 @@ local JACK_CHORD, JACK_EXP = 6, 0.7
 -- a chordjack (a chord of 3+ that repeats 2+ columns of the row before it,
 -- less than 0.2 s later) is easier than its jacks say: its jack part counts
 -- CJ_JACK and its density CJ_DENS
-local CJ_JACK, CJ_DENS = 1, 1.03
+local CJ_JACK, CJ_DENS = 0.9, 1
 -- the same chord as the row before (a held-shape chordjack, it can be
 -- mashed): its jack part counts SAME_JACK and its densities SAME_DENS
 local SAME_JACK, SAME_DENS = 0.6, 0.5
@@ -75,7 +76,7 @@ local ROLL_JACK = 0.3
 -- by hitting part of it
 local HARD_MISS_MAX = 0.2
 -- HARD: chordjack notes count HARD_CJ of their difficulty
-local HARD_CJ = 0.95
+local HARD_CJ = 1
 -- a chart under SHORT_LEN s of notes is short enough to mash through: its
 -- notes count (length / SHORT_LEN)^SHORT_EXP of their difficulty
 local SHORT_LEN, SHORT_EXP = 60, 0.25
@@ -87,7 +88,7 @@ local LUCK_SPIKE, LUCK_KEEP = 1.8, 0.4
 local MASH_W = 0.6
 -- a fast burst inside a chordstream (a row less than DELAY_GAP after the row
 -- before while the recent average chord is BURST_AVG or more) is hard to hit
-local BURST_W, BURST_AVG = 1.3, 2.0
+local BURST_W, BURST_AVG = 0.8, 2.0
 
 -- HARD's skill is moved by this (ln) before it becomes a level, so that HARD
 -- sits about 2.5 ★ over EASY on the insane table
@@ -368,7 +369,10 @@ local function clears(ld, g, lnS, gain, poor, trace, sum)
 				v, dead = 0, true
 			end
 		elseif sum then
+			-- no cap, but the gauge never goes under 2%: a bad middle is not carried
+			-- past the floor, the gauge can still be won back at the end
 			v = v + (1 - p) * gain + p * poor
+			if v < 2 then v = 2 end
 		else
 			v = v + (1 - p) * gain + p * poor
 			if v > 100 then v = 100 elseif v < 2 then v = 2 end

@@ -214,7 +214,7 @@ local function show()
 		what = "Quick update: only the game files change (" .. mb(info.size) .. "), then the game restarts."
 	elseif info.mode == "full" then
 		what = "Full update (" .. mb(info.size) .. "): the game closes, the new version is put in and the game starts again."
-			.. (platform == "windows" and " Windows may ask to allow the installer." or "")
+			.. (platform == "windows" and " The installer opens with this folder filled in: click Install." or "")
 	else
 		what = "There is no package for this system in the release: get it from the release page."
 	end

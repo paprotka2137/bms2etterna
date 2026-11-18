@@ -253,6 +253,27 @@ function getBestBMSLamp(chartKey)
 	return best, bestScore
 end
 
+-- the play with the best EX score of a chart (failed plays too, like BMS:
+-- a failed play with a better EX is the new best EX), nil if never played
+function getBestBMSExScore(chartKey)
+	local best, bestEx
+	local rates = SCOREMAN:GetScoresByKey(chartKey)
+	if not rates then
+		return nil
+	end
+	for _, hsl in pairs(rates) do
+		for _, s in ipairs(hsl:GetScores()) do
+			if countsForLamp(s) then
+				local ex = getBMSExScore(s)
+				if bestEx == nil or ex > bestEx then
+					best, bestEx = s, ex
+				end
+			end
+		end
+	end
+	return best, bestEx
+end
+
 -- best lamp over all 7k charts of a song
 function getBestBMSLampForSong(song)
 	local best

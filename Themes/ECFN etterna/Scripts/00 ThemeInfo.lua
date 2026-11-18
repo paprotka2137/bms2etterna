@@ -2,7 +2,7 @@
 
 themeInfo = {
 	Name = "res extensa",
-	Version = "0.1.3",
+	Version = "0.1.4",
 	Date = "20260826"
 }
 

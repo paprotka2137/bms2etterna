@@ -88,6 +88,9 @@ return Def.ActorFrame {
 				"m: "..transStr("MeanPosition"),
 				",: "..transStr("MeanSize"),
 			}
+			if hideMSD and hideMSD() then
+				table.insert(text, ".: "..transStr("LaneOrderPosition"))
+			end
 			if playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).LaneCover ~= 0 then
 				local selectStr = THEME:GetString("GameButton", "Select")
 				table.insert(text, selectStr..": "..transStr("LaneCoverHeight"))

@@ -20,7 +20,8 @@ local function isO2()
 	return BMSProfileGame == "o2jam"
 end
 
--- best 1.0x play of an O2Jam chart: best lamp, highest DMJam score
+-- best 1.0x play of an O2Jam chart: best lamp, highest DMJam score (failed
+-- plays count for the score once the chart is cleared, like BMS)
 local function bestO2Jam(ck)
 	local lamp, bestScore, bestValue
 	local rates = SCOREMAN:GetScoresByKey(ck)
@@ -31,17 +32,18 @@ local function bestO2Jam(ck)
 		for _, s in ipairs(hsl:GetScores()) do
 			if s:GetMusicRate() > 0.999 then
 				local l = getBMSLampFromScore(s)
-				if l < 6 then
-					local v = getO2JamScore(s)
-					if lamp == nil or l < lamp then
-						lamp = l
-					end
-					if bestValue == nil or v > bestValue then
-						bestValue, bestScore = v, s
-					end
+				if l < 6 and (lamp == nil or l < lamp) then
+					lamp = l
+				end
+				local v = getO2JamScore(s)
+				if bestValue == nil or v > bestValue then
+					bestValue, bestScore = v, s
 				end
 			end
 		end
+	end
+	if lamp == nil then
+		return nil
 	end
 	return lamp, bestScore, bestValue
 end
@@ -176,6 +178,8 @@ local function gather()
 					lamp, bestScore, value = bestO2Jam(e.ck)
 				else
 					lamp, bestScore = getBestBMSLamp(e.ck)
+					-- the best EX counts failed plays too, like BMS
+					bestScore = lamp and lamp < 6 and getBestBMSExScore(e.ck) or bestScore
 				end
 				if lamp and lamp < 6 then
 					best[#best + 1] = {
@@ -272,7 +276,8 @@ local function loadSite()
 			if f[1] == "B" then
 				local e = siteEntry(f)
 				local l = out[e.o2 and "o2jam" or "bms"]
-				if e.lamp < 6 and e.playLamp < 6 then
+				-- the best EX play can be a failed one, the chart only needs a clear
+				if e.lamp < 6 then
 					l.best[#l.best + 1] = e
 					l.top[#l.top + 1] = e
 				end

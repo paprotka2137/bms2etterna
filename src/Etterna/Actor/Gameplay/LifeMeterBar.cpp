@@ -355,10 +355,15 @@ ReadBMSHeaderValue(const std::string& path,
 
 // #TAG:x; written into a converted .sm/.ssc, -1 when it isn't there. Read
 // from the file itself, the song cache doesn't keep tags it doesn't know.
+// what was read off files, both dropped when a song is reloaded so an edited
+// TOTAL / RANK shows up after Ctrl+Shift+R
+std::unordered_map<std::string, float> smValueCache; // "TAG:path" -> value
+std::unordered_map<std::string, std::string> md5Cache; // bms path -> md5
+
 float
 ReadSMValue(const std::string& path, const std::string& tag)
 {
-	static std::unordered_map<std::string, float> cache;
+	auto& cache = smValueCache;
 	const auto key = tag + ":" + path;
 	const auto cached = cache.find(key);
 	if (cached != cache.end())
@@ -609,7 +614,6 @@ FindBMSValue(const Song* song,
 				source = "#" + tag;
 				return value;
 			}
-			static std::unordered_map<std::string, std::string> md5Cache;
 			auto cached = md5Cache.find(fn);
 			if (cached == md5Cache.end())
 				cached =
@@ -687,6 +691,13 @@ FindBMSValue(const Song* song,
 	return -1.f;
 }
 } // namespace
+
+void
+LifeMeterBar::ForgetBMSFileValues()
+{
+	smValueCache.clear();
+	md5Cache.clear();
+}
 
 float
 LifeMeterBar::FindBMSTotal(const Song* song,

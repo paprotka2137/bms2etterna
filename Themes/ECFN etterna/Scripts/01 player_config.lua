@@ -36,7 +36,10 @@ local defaultGameplayCoordinates = {
 	BPMTextX = SCREEN_CENTER_X,
 	BPMTextY = SCREEN_BOTTOM - 20,
 	MusicRateX = SCREEN_CENTER_X,
-	MusicRateY = SCREEN_BOTTOM - 10
+	MusicRateY = SCREEN_BOTTOM - 10,
+	-- 7k lane order display; -1 = next to the bottom right of the notefield
+	LaneOrderX = -1,
+	LaneOrderY = -1
 }
 
 local defaultGameplaySizes = {
