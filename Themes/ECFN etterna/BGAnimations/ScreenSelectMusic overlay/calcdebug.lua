@@ -23,8 +23,8 @@ local bandsH = nPat * (bandH + bandGap)
 local gh = SH - gy - 50 - bandsH - 40
 local by = gy + gh + 46
 
-local gaugeColors = {color("#7dff4f"), color("#ffffff"), color("#ff4a4a")}
-local gaugeNames = {"EASY", "GROOVE", "HARD"}
+local gaugeColors = {color("#7dff4f"), color("#ffffff"), color("#ff4a4a"), color("#ffd23f")}
+local gaugeNames = {"EASY", "GROOVE", "HARD", "EX HARD"}
 local partColors = {color("#b0b0b0"), color("#4fa3ff"), color("#ff4f6a"), color("#ffd23a")}
 local partNames = {"DENSITY", "HAND", "JACK", "CHORD"}
 
@@ -204,15 +204,19 @@ t[#t + 1] = Text(m, 72, 26, 0, SW * 0.45, function()
 	end
 	local g = d.gauges
 	local pre = d.prefix or ""
-	return string.format("EASY %s%.1f    GROOVE %s%.1f    HARD %s%.1f", g[1].prefix or pre, g[1].star,
+	local s = string.format("EASY %s%.1f    GROOVE %s%.1f    HARD %s%.1f", g[1].prefix or pre, g[1].star,
 		g[2].prefix or pre, g[2].star, g[3].prefix or pre, g[3].star)
+	if g[4] then
+		s = s .. string.format("    EX HARD %s%.1f", g[4].prefix or pre, math.max(g[4].star, g[3].star))
+	end
+	return s
 end)
 t[#t + 1] = Text(SW - m, 72, 17, 1, SW * 0.5, function()
 	local d = dbg.data
 	if not d then return nil end
 	local g = d.gauges
-	return string.format("skill %.0f / %.0f / %.0f     TOTAL %.0f    %d notes     easy +%.3f %.1f    hard +%.2f %.1f",
-		math.exp(g[1].skill), math.exp(g[2].skill), math.exp(g[3].skill), d.total, d.notes,
+	return string.format("skill %.0f / %.0f / %.0f / %.0f     TOTAL %.0f    %d notes     easy +%.3f %.1f    hard +%.2f %.1f",
+		math.exp(g[1].skill), math.exp(g[2].skill), math.exp(g[3].skill), math.exp((g[4] or g[3]).skill), d.total, d.notes,
 		g[1].gain, g[1].poor, g[3].gain, g[3].poor)
 end, color("1,1,1,0.75"))
 
@@ -263,7 +267,7 @@ t[#t + 1] = Quads(gx, gy, function(v, d)
 				top = math.max(top, math.exp(d.ld[hardest[i]]))
 			end
 		end
-		for g = 1, 3 do
+		for g = 1, #d.gauges do
 			top = math.max(top, math.exp(d.gauges[g].skill))
 		end
 		top = top * 1.05
@@ -280,15 +284,15 @@ t[#t + 1] = Quads(gx, gy, function(v, d)
 				end
 			end
 		end
-		for g = 1, 3 do
+		for g = 1, #d.gauges do
 			local y = gh - math.exp(d.gauges[g].skill) / top * gh
 			quad(v, 0, y - 1.5, gw, y + 1.5, gaugeColors[g])
 		end
 	elseif dbg.graph == 2 then
 		-- average miss chance of each bar at the skill each gauge needs
 		top = 0.05
-		local vals = {{}, {}, {}}
-		for g = 1, 3 do
+		local vals = {{}, {}, {}, {}}
+		for g = 1, #d.gauges do
 			for i = 1, BINS do
 				local s, c = 0, 0
 				for _, n in ipairs(b[i]) do
@@ -302,18 +306,18 @@ t[#t + 1] = Quads(gx, gy, function(v, d)
 			end
 		end
 		top = top * 1.05
-		for g = 3, 1, -1 do
+		for g = #d.gauges, 1, -1 do
 			line(vals[g], top, gaugeColors[g], 2)
 		end
 	else
 		-- the expected gauge at the end of every bar
 		top = 100
 		-- where EASY and GROOVE have to end (the calc's TARGET)
-		local y80 = gh * (1 - 0.4125)
+		local y80 = gh * (1 - (BMSClearTarget or 56.5) / 100)
 		quad(v, 0, y80 - 1, gw, y80 + 1, color("0.5,1,0.4,0.5"))
 		local y32 = gh * 0.68
 		quad(v, 0, y32 - 1, gw, y32 + 1, color("1,0.3,0.3,0.4"))
-		for g = 3, 1, -1 do
+		for g = #d.gauges, 1, -1 do
 			local vals = {}
 			for i = 1, BINS do
 				local list = b[i]
@@ -362,7 +366,7 @@ t[#t + 1] = Text(gx + gw / 2, gy + gh + 22, 15, 0.5, gw * 0.8, function()
 	if not dbg.data then return nil end
 	if dbg.graph == 1 then return "hardest note in each bar; lines: skill each gauge needs" end
 	if dbg.graph == 2 then return "average miss chance in each bar, for a player who just clears each gauge" end
-	return "expected gauge for a player who just clears it; lines at the EASY/GROOVE goal (41%) and 32%, red: where HARD is lowest"
+	return string.format("expected gauge (no luck) for a player who just clears it; green: where EASY/GROOVE has to end (%d%%), red line: HARD's 32%% (less damage below), red bar: where HARD is lowest", math.floor((BMSClearTarget or 56.5) + 0.5))
 end, color("1,1,1,0.55"))
 
 -- legend
@@ -379,7 +383,7 @@ for k = 1, 4 do
 		return gaugeNames[k]
 	end)
 end
-for g = 1, 3 do
+for g = 1, 4 do
 	local y = gy + 30 + 34 * 4 + 20 + 28 * (g - 1)
 	t[#t + 1] = Quads(m, y, function(v)
 		if dbg.graph == 1 then

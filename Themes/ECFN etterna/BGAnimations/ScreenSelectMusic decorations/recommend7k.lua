@@ -24,6 +24,9 @@ BMSRecommendMode = BMSRecommendMode or "hard"
 BMSRecommendTables = BMSRecommendTables or {insane = true, satellite = true, stella = true, overjoy = true}
 local TABLES = {{"insane", "INSANE"}, {"satellite", "SATELLITE"}, {"stella", "STELLA"}, {"overjoy", "OVERJOY"}}
 local prefix = {insane = "★", satellite = "sl", stella = "st", overjoy = "★★"}
+-- every table of tablecharts.json, so the LV column can list them all (the
+-- chips above still pick which ones the rating counts)
+local ALL_TABLES = {"insane", "satellite", "stella", "overjoy", "delayjoy", "delay", "dystopia", "ude", "gachimijoy"}
 local lists = {clear = {}, hard = {}}
 local nowRating
 
@@ -66,6 +69,10 @@ end
 
 local function parseGR(str)
 	local out = {}
+	-- made by another calc version: the game's own calc rates the charts
+	if BMSCalcFileCurrent and not BMSCalcFileCurrent(str) then
+		return out
+	end
 	for k, e, h in (str or ""):gmatch('"([^"]+)":%[(-?[%d%.]+),(-?[%d%.]+)%]') do
 		out[k] = {tonumber(e), tonumber(h)}
 	end
@@ -121,10 +128,10 @@ local function parseTC(str)
 	if str then
 		-- where each table's part starts: {"insane":{"1":[["key","song"],...],...},"satellite":{...}}
 		local starts = {}
-		for _, t in ipairs(TABLES) do
-			local a, b = str:find('"' .. t[1] .. '":{', 1, true)
+		for _, t in ipairs(ALL_TABLES) do
+			local a, b = str:find('"' .. t .. '":{', 1, true)
 			if b then
-				starts[#starts + 1] = {t = t[1], from = b}
+				starts[#starts + 1] = {t = t, from = b}
 			end
 		end
 		table.sort(starts, function(x, y)
@@ -282,7 +289,7 @@ local function build()
 					if up and up > 0.0005 then
 						local list = out[tg[1]]
 						list[#list + 1] = {
-							ck = c.ck, v = v, gain = up, lamp = l, title = c.song,
+							ck = c.ck, v = v, gain = up, lamp = l, title = c.song, lv = c.lv,
 							levelName = (prefix[x.t] or "★") .. (x.l or "?"),
 						}
 					end
@@ -436,7 +443,7 @@ for k, tb in ipairs(TABLES) do
 end
 
 -- column names
-local col = {num = 18, lv = 24, title = 62, v = W.width - 112, now = W.width - 62, gain = W.width - 10}
+local col = {num = 18, lv = 24, title = 96, v = W.width - 112, now = W.width - 62, gain = W.width - 10}
 local function head(x, align, label)
 	t[#t + 1] = W.text(x, listY - 14, 0.3, align, function(self)
 		self:settext(label):diffuse(W.gray)
@@ -466,10 +473,18 @@ for i = 1, rows do
 				self:settext(entry(i) and (page * rows + i) or ""):diffuse(W.gray)
 			end,
 		},
-		W.text(col.lv, y, 0.32, 0) .. {
+		W.text(col.lv, y, 0.32, 0, function(self)
+			self:maxwidth((col.title - col.lv - 4) / 0.32)
+		end) .. {
 			ShowCommand = function(self)
 				local e = entry(i)
-				self:settext(e and e.levelName or ""):diffuse(color("#d080ff"))
+				-- every table the chart is in, worked out once per row
+				if e and not e.tablesText then
+					local steps = SONGMAN:GetStepsByChartKey(e.ck)
+					local song = steps and SONGMAN:GetSongByChartKey(e.ck)
+					e.tablesText = rxTablesLabel and rxTablesLabel(e.ck, steps, song, e.lv, e.levelName) or e.levelName
+				end
+				self:settext(e and e.tablesText or ""):diffuse(color("#d080ff"))
 			end,
 		},
 		W.text(col.title, y, 0.32, 0, function(self)

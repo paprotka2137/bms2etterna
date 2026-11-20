@@ -43,6 +43,8 @@ class MusicWheel : public WheelBase
 
 	auto GetPreferredSelectionForRandomOrPortal() -> Song*;
 
+	// selects the song, leaving the table browser for "Songs" when the
+	// current view doesn't have it
 	auto SelectSong(const Song* p) -> bool;
 	auto SelectSection(const std::string& SectionName) -> bool;
 	void SetOpenSection(const std::string& group) override;
@@ -75,10 +77,30 @@ class MusicWheel : public WheelBase
 	auto SelectSongOrCourse() -> bool;
 	void SelectSongAfterSearch();
 
+	// BMS-style browsing for the group sort: a root with "Songs" (the pack
+	// list) and "Tables" (tables -> one table's levels -> charts). The path
+	// is {} at the root, {"Songs"}, {"Tables"} or {"Tables", table id}.
+	static auto GetBrowsePath() -> const std::vector<std::string>&;
+	auto IsBrowsing() const -> bool; // the browser is on (group sort, solo)
+	auto InSongsView() const -> bool; // showing the normal wheel
+	// one level up; false when there is nothing above (at the root, or the
+	// browser is off), so Back can leave the screen
+	auto BrowseBack() -> bool;
+	void BrowseInto(const std::string& folder);
+	void SetBrowsePath(const std::vector<std::string>& path);
+	void ShowSongsForFilter();
+
 	// Lua
 	void PushSelf(lua_State* L) override;
 
   protected:
+	auto SelectSongInView(const Song* p) -> bool;
+	void BuildBrowseItems(
+	  std::vector<std::unique_ptr<MusicWheelItemData>>& arrayWheelItemDatas,
+	  const std::vector<Song*>& arraySongs,
+	  SortOrder so);
+	void RefreshBrowseView(const std::string& selectFolder);
+
 	auto MakeItem() -> MusicWheelItem* override;
 
 	std::vector<std::string> hashList;
@@ -92,6 +114,8 @@ class MusicWheel : public WheelBase
 	auto SearchGroupNames(const std::string& findme) -> bool;
 	static void FilterBySkillsets(std::vector<Song*>& inv);
 	std::string lastvalidsearch;
+	// the search typed while inside one table of the table browser
+	std::string m_sTableSearch;
 	std::string groupnamesearchmatch;
 
 	void UpdateSwitch() override;
@@ -133,6 +157,10 @@ class MusicWheel : public WheelBase
 		NEEDREFILTER,
 		VALID
 	} m_WheelItemDatasStatus[NUM_SortOrder]{};
+	// whether the cached wheel lists were built for the multiplayer screen
+	// (they then hold the "Common Packs Only" filter); a solo song select
+	// rebuilds them so every pack shows again, and vice versa
+	bool m_bBuiltForMulti = false;
 	// Stores pointers owned by m__UnFilteredWheelItemDatas
 	// This is fine because whenever m__UnFilteredWheelItemDatas is updated we
 	// then also update m__WheelItemDatas

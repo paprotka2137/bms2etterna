@@ -1001,7 +1001,7 @@ local function updatetext(button)
 	Movable.message:visible(Movable.pressed)
 end
 
--- Easier customizing (res extensa): Tab / Shift+Tab picks the next element
+-- Easier customizing (res extensa): Space / Shift+Space picks the next element
 -- without remembering its key, the mouse wheel over an element (or on the
 -- picked one) resizes it (Shift+wheel: the left/right size, e.g. width), and
 -- dragging keeps the grab point under the mouse. It goes through the same
@@ -1048,7 +1048,7 @@ local function selectMovable(key)
 	updatetext(key)
 end
 
--- Tab: next element, Shift+Tab: previous one
+-- Space: next element, Shift+Space: previous one
 local function cycleMovable()
 	local keys = movableElementKeys()
 	if #keys == 0 then
@@ -1117,7 +1117,7 @@ function MovableInput(event)
 		end
 
 		local button = event.DeviceInput.button	
-		if button == "DeviceButton_tab" and not event.hellothisismouse then
+		if button == "DeviceButton_space" and not event.hellothisismouse then
 			if event.type == "InputEventType_FirstPress" then
 				cycleMovable()
 			end

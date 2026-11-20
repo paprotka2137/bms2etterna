@@ -520,6 +520,13 @@ end
 -- layout
 ---------------------------------------------------------------------------
 
+-- the chart under the wheel as a string (song folder and chart key)
+local function currentChartId()
+	local song = GAMESTATE:GetCurrentSong()
+	local steps = GAMESTATE:GetCurrentSteps()
+	return (song and song:GetSongDir() or "") .. "|" .. (steps and steps:GetChartKey() or "")
+end
+
 -- a wheel move changes the song and the steps, both messages come in the
 -- same frame: the chart is read once for them
 local function queueChart(self)
@@ -534,6 +541,9 @@ local t = Def.ActorFrame {
 	BeginCommand = function(self)
 		queueChart(self)
 		self:queuecommand("Picture")
+		-- the densities and ratings of the chart the screen opens on (coming
+		-- back from a song the wheel's own message can come before this)
+		self:GetChild("HeavyTimer"):playcommand("Wait")
 	end,
 	CurrentSongChangedMessageCommand = function(self)
 		queueChart(self)
@@ -572,16 +582,18 @@ local t = Def.ActorFrame {
 		self:playcommand("Graph")
 		self:playcommand("Picture")
 	end,
-	-- waits after the wheel stops, another chart before then cancels it
+	-- waits after the wheel stops; when the chart changed in the meantime it
+	-- does nothing, the wheel stopping on the new one starts it again
 	Def.Actor {
 		Name = "HeavyTimer",
 		WaitCommand = function(self)
+			self.chart = currentChartId()
 			self:stoptweening():sleep(0.08):queuecommand("Go")
 		end,
-		ChartCommand = function(self)
-			self:stoptweening()
-		end,
 		GoCommand = function(self)
+			if currentChartId() ~= self.chart then
+				return
+			end
 			self:GetParent():playcommand("Heavy")
 		end,
 	},
@@ -903,6 +915,26 @@ p[#p + 1] = Text(451, 338, 38, 0, 680, songOnly(function()
 	-- one line, some titles carry line breaks
 	return (data.song:GetDisplayMainTitle():gsub("[\r\n]+", " "))
 end), nil, "ECFN Large")
+
+-- a click on the title types it into the search (overlay/ecfnsearch.lua shows it)
+local function searchTitle()
+	local song = GAMESTATE:GetCurrentSong()
+	if not song then
+		return
+	end
+	local title = (song:GetDisplayMainTitle():gsub("[\r\n]+", " "))
+	MESSAGEMAN:Broadcast("SetSearchString", {searchstring = title})
+	local top = SCREENMAN:GetTopScreen()
+	local wheel = top and top.GetMusicWheel and top:GetMusicWheel()
+	if wheel then
+		wheel:SongSearch(title)
+	end
+end
+p[#p + 1] = Click(451, 316, 680, 44, function(event)
+	if event == "DeviceButton_left mouse button" then
+		searchTitle()
+	end
+end)
 p[#p + 1] = Text(451, 382, 22, 0, 640, songOnly(function()
 	return data.song:GetDisplaySubTitle()
 end))

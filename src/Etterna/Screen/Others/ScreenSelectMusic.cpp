@@ -1433,6 +1433,13 @@ ScreenSelectMusic::StartLiveSpectate(Steps* steps)
 bool
 ScreenSelectMusic::MenuBack(const InputEventPlus& /* input */)
 {
+	// table browser: Back goes up a folder (Songs/Tables -> root) before it
+	// leaves the screen
+	if (!IsTransitioning() &&
+		m_SelectionState == SelectionState_SelectingSong &&
+		m_MusicWheel.BrowseBack())
+		return true;
+
 	Cancel(SM_GoToPrevScreen);
 	return true;
 }

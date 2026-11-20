@@ -69,6 +69,17 @@ local function mb(bytes)
 end
 
 local platform = DLMAN:BMSUpdatePlatform()
+
+-- every step goes to Logs/update.log (the updater scripts add theirs), so a
+-- player can send one file when an update doesn't work
+local LOG = "/Logs/update.log"
+local function note(msg)
+	local old = readFile(LOG) or ""
+	if #old > 200000 then
+		old = old:sub(-100000)
+	end
+	writeFile(LOG, old .. "[game " .. os.date("%Y-%m-%d %H:%M:%S") .. "] " .. msg .. "\n")
+end
 local function packageFor(name)
 	if platform == "windows" then
 		return name:find("%.exe$") ~= nil
@@ -129,6 +140,7 @@ local function close()
 end
 
 local function failed(msg)
+	note("failed: " .. msg)
 	busy = false
 	frame:SetUpdateFunction(nil)
 	setText(msg, "Release page opens the download in your browser.")
@@ -151,6 +163,7 @@ local function startUpdate()
 	busy = true
 	frame:GetChild("Buttons"):visible(false)
 	local path = DIR .. info.name
+	note("downloading " .. info.url .. " to " .. path)
 	setText("Downloading " .. info.name .. "...", "")
 	frame:SetUpdateFunction(function()
 		local now, total = DLMAN:BMSUpdateProgress()
@@ -165,13 +178,21 @@ local function startUpdate()
 			return
 		end
 		frame:SetUpdateFunction(nil)
+		note("download finished: " .. tostring(status))
 		if status ~= 200 then
-			failed("The download didn't work (" .. tostring(status) .. ").")
+			local why = ""
+			if status == 0 then
+				why = " No connection, or the https certificate check failed (the game log in Logs says which)."
+			elseif status == -1 then
+				why = " It couldn't be saved in the game folder: is the folder writable?"
+			end
+			failed("The download didn't work (" .. tostring(status) .. ")." .. why)
 			return
 		end
 		if info.mode == "files" then
 			SOUND:StopMusic()
 			local written, bad = DLMAN:BMSUpdateInstallFiles(path)
+			note("files update: " .. tostring(written) .. " written, " .. tostring(bad) .. " failed")
 			if written == nil then
 				failed("The downloaded update couldn't be opened.")
 				return
@@ -204,6 +225,8 @@ local function choose(name)
 end
 
 local function show()
+	note("offering " .. tostring(info.version) .. " (" .. tostring(info.mode) .. " " .. tostring(info.name)
+		.. ") to " .. getThemeVersion() .. " / program " .. tostring(ProductVersion()) .. " on " .. platform)
 	-- the answer came after the title menu was left: ask again next time
 	if not frame then
 		BMSUpdateChecked = false
@@ -235,6 +258,7 @@ end
 local function check()
 	DLMAN:BMSUpdateGet(API, function(status, body)
 		if status ~= 200 or not body then
+			note("checking GitHub failed: " .. tostring(status))
 			return
 		end
 		local version = clean(jsonString(body, "tag_name"))
@@ -365,6 +389,7 @@ return Def.ActorFrame {
 		enabled = false
 	end,
 	LaunchCommand = function(self)
+		note("starting " .. updaterScript() .. " with " .. tostring(pendingPackage or "-"))
 		if not DLMAN:BMSUpdateLaunch(updaterScript(), pendingPackage) then
 			failed("The updater couldn't be started.")
 		end

@@ -27,7 +27,16 @@ n=0
 while kill -0 "$PID" 2>/dev/null; do
 	sleep 1
 	n=$((n + 1))
-	if [ "$n" -ge 120 ]; then
+	# a window that's gone but a process that stays (a stuck thread on
+	# exit) would block the update: end it after 20 seconds
+	if [ "$n" -eq 20 ]; then
+		echo "the game is still running after closing, ending it"
+		kill "$PID" 2>/dev/null
+	fi
+	if [ "$n" -eq 30 ]; then
+		kill -9 "$PID" 2>/dev/null
+	fi
+	if [ "$n" -ge 60 ]; then
 		echo "the game (pid $PID) didn't close, giving up"
 		exit 1
 	fi
@@ -53,10 +62,19 @@ if [ -e "$ROOT/.git" ]; then
 	exit 1
 fi
 
-TMP="$(mktemp -d "${TMPDIR:-/tmp}/res-extensa-update.XXXXXX")" || exit 1
+# unpack next to the game, not in /tmp: /tmp is often a small RAM disk
+mkdir -p "$ROOT/Cache"
+TMP="$(mktemp -d "$ROOT/Cache/update-unpack.XXXXXX" 2>/dev/null ||
+	mktemp -d "${TMPDIR:-/tmp}/res-extensa-update.XXXXXX")"
+if [ -z "$TMP" ]; then
+	echo "no folder to unpack into, starting the old version"
+	start_game
+	exit 1
+fi
 ok=0
 case "$PKG" in
 *.tar.gz)
+	echo "unpacking into $TMP ($(df -h "$TMP" 2>/dev/null | tail -n 1))"
 	if tar xzf "$PKG" -C "$TMP"; then
 		# the package holds <name>/Etterna/Etterna and the data folders next to it
 		BIN="$(find "$TMP" -maxdepth 3 -type f -name Etterna | head -n 1)"

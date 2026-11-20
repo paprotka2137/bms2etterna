@@ -77,6 +77,13 @@ struct MusicWheelItemData : WheelItemBaseData
 
 	// for TYPE_SORT
 	std::string m_sLabel;
+	// table browser: a folder that opens another view ("Songs", "Tables",
+	// a table's id) instead of expanding in place
+	std::string m_sBrowseTo;
+	// table browser: a table's chart that is not in the Songs folder
+	// (TYPE_CUSTOM, m_sLabel is its title, m_sSubLabel its artist)
+	bool m_bUnavailable{ false };
+	std::string m_sSubLabel;
 	std::unique_ptr<GameCommand> m_pAction;
 };
 

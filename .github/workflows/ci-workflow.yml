@@ -40,21 +40,15 @@ jobs:
           download_vulkan_installer ${VULKAN_SDK_PLATFORM}
           unpack_vulkan_installer ${VULKAN_SDK_PLATFORM}
 
-      - name: Setup Crashpad
-        shell: bash
-        run: |
-          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git "$HOME/depot_tools"
-
-          cd main/extern/crashpad
-          "$HOME/depot_tools/gclient" sync
-          "$HOME/depot_tools/gclient" runhooks
-
+      # no crashpad on Linux (like macOS): its handler kept spinning on
+      # CrashData/completed/*.lock on external NTFS/exFAT drives and used CPU
+      # after the game quit, and its reports went to upstream Etterna's server
       - name: Install apt packages
         run: sudo apt update && sudo apt install ${{ matrix.cfg.apt }} nasm ninja-build libglew-dev libxrandr-dev libxtst-dev libpulse-dev libasound-dev libogg-dev libvorbis-dev xorg-dev libcurl4-openssl-dev
       - name: Install OpenSSL 3.5
         run: mkdir -p tmp/openssl && cd tmp/openssl && wget https://github.com/openssl/openssl/releases/download/openssl-3.5.1/openssl-3.5.1.tar.gz && tar -xf openssl-3.5.1.tar.gz && cd openssl-3.5.1 && ./Configure --prefix="${HOME}/toolchain" && make -j `nproc` && make test -j `nproc` && sudo make install
       - name: Generate CMake
-        run: mkdir main/build && cd main/build && cmake -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_TESTS=FALSE -DBUILD_EXAMPLES=FALSE -DOPENSSL_ROOT_DIR=~/toolchain/ -DCMAKE_CXX_FLAGS="-D_DEBUG" ${{ (matrix.cfg.archstr == 'aarch64' || matrix.cfg.cxx == 'g++-11') && '-DWITH_VULKAN=OFF' || '' }} ..
+        run: mkdir main/build && cd main/build && cmake -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DWITH_CRASHPAD=OFF -DBUILD_TESTS=FALSE -DBUILD_EXAMPLES=FALSE -DOPENSSL_ROOT_DIR=~/toolchain/ -DCMAKE_CXX_FLAGS="-D_DEBUG" ${{ (matrix.cfg.archstr == 'aarch64' || matrix.cfg.cxx == 'g++-11') && '-DWITH_VULKAN=OFF' || '' }} ..
         env:
           CXX: ${{matrix.cfg.cxx}}
           CC: ${{matrix.cfg.cc}}
@@ -628,6 +622,7 @@ jobs:
         run: |
           files="res-extensa-files-${{ steps.ver.outputs.version }}.zip"
           zip -qr -X "$files" "Themes/ECFN etterna" NoteSkins Data Assets Scripts \
+            tools/update_bms_tables.py tools/update_bms_tables.bat \
             -x "*.przed-*" "*.bak*" "*/.git*"
           printf '{"version": "%s", "build": "%s", "files": "%s"}\n' \
             "${{ steps.ver.outputs.version }}" "${{ steps.ver.outputs.build }}" "$files" > update.json

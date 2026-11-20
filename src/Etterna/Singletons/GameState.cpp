@@ -571,6 +571,12 @@ GameState::BeginStage()
 		Locator::getLogger()->warn("XXX: m_iNumStagesOfThisSong == {}?", m_iNumStagesOfThisSong);
 
 	ResetStageStatistics();
+	if (m_bHasRoomStageSeed) {
+		m_iStageSeed = m_iRoomStageSeed;
+		m_bHasRoomStageSeed = false;
+		Locator::getLogger()->info("Multiplayer /random: using the room seed {}",
+								   m_iStageSeed);
+	}
 	AdjustSync::ResetOriginalSyncData();
 
 	if (!ARE_STAGE_PLAYER_MODS_FORCED) {

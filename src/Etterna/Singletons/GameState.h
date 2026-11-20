@@ -115,6 +115,10 @@ class GameState
 	int m_iGameSeed, m_iStageSeed;
 
 	void SetNewStageSeed();
+	// Multiplayer /random: the room sends one seed so everyone gets the same
+	// lane random. BeginStage uses it for the next stage, then forgets it.
+	bool m_bHasRoomStageSeed = false;
+	int m_iRoomStageSeed = 0;
 
 	/**
 	 * @brief Determine if a second player can join in at this time.

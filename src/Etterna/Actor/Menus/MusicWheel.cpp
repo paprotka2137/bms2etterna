@@ -21,6 +21,8 @@
 #include "Etterna/Singletons/ThemeManager.h"
 #include "Etterna/Singletons/ScoreManager.h"
 #include "Etterna/Globals/rngthing.h"
+#include "Etterna/Models/Misc/Preference.h"
+#include "BMSTableBrowser.h"
 
 #include <algorithm>
 
@@ -52,6 +54,26 @@ CUSTOM_WHEEL_ITEM_COLOR(std::string s)
 }
 
 static LocalizedString EMPTY_STRING("MusicWheel", "Empty");
+
+// BMS-style browsing (Res Extensa): the group sort opens on a root with two
+// folders, "Songs" (the usual pack list) and "Tables" (difficulty tables ->
+// one table's levels -> its charts, the ones not in Songs greyed out).
+// Kept for the whole session, so coming back from gameplay lands in the
+// same place.
+static Preference<bool> g_bTableBrowser("TableBrowser", true);
+static std::vector<std::string> g_BrowsePath;
+static const std::string BROWSE_SONGS = "Songs";
+static const std::string BROWSE_TABLES = "Tables";
+static const RageColor UNAVAILABLE_COLOR(0.5F, 0.5F, 0.5F, 1.F);
+static const RageColor FOLDER_COLOR(1.F, 1.F, 1.F, 1.F);
+
+// the group sort shows the browser's root, table list or a table (not Songs)
+static auto
+BrowseViewActive() -> bool
+{
+	return g_bTableBrowser && !GAMESTATE->m_bPlayingMulti &&
+		   (g_BrowsePath.empty() || g_BrowsePath[0] != BROWSE_SONGS);
+}
 
 AutoScreenMessage(
   SM_SongChanged); // TODO(Sam): Replace this with a Message and MESSAGEMAN
@@ -110,10 +132,12 @@ void
 MusicWheel::BeginScreen()
 {
 	std::string times;
+	const auto multiChanged = m_bBuiltForMulti != GAMESTATE->m_bPlayingMulti;
 	FOREACH_ENUM(SortOrder, so)
 	{
 		if (m_WheelItemDatasStatus[so] != INVALID) {
-			m_WheelItemDatasStatus[so] = NEEDREFILTER;
+			m_WheelItemDatasStatus[so] =
+			  multiChanged ? INVALID : NEEDREFILTER;
 		}
 	}
 
@@ -181,6 +205,18 @@ MusicWheel::MusicWheel()
 void
 MusicWheel::ReloadSongList(bool searching, const std::string& findme)
 {
+	// inside one table a search filters that table's charts (the missing ones
+	// too); anywhere else in the table browser it shows its results in Songs
+	if (IsBrowsing() && g_BrowsePath.size() == 2) {
+		m_sTableSearch = searching ? make_lower(findme) : "";
+		Trim(m_sTableSearch);
+		// the Songs search's leftovers would hold this one back below
+		groupnamesearchmatch.clear();
+		lastvalidsearch.clear();
+	} else if (searching && !findme.empty()) {
+		ShowSongsForFilter();
+	}
+
 	// if we fallthrough to pack name matching don't keep reloading if we found
 	// a match -mina
 	if (findme.size() > lastvalidsearch.size() &&
@@ -279,11 +315,11 @@ auto
 MusicWheel::SelectSongOrCourse() -> bool
 {
 	if ((GAMESTATE->m_pPreferredSong != nullptr) &&
-		SelectSong(GAMESTATE->m_pPreferredSong)) {
+		SelectSongInView(GAMESTATE->m_pPreferredSong)) {
 		return true;
 	}
 	if ((GAMESTATE->m_pCurSong != nullptr) &&
-		SelectSong(GAMESTATE->m_pCurSong)) {
+		SelectSongInView(GAMESTATE->m_pCurSong)) {
 		return true;
 	}
 
@@ -291,7 +327,7 @@ MusicWheel::SelectSongOrCourse() -> bool
 	auto& wiWheelItems = getWheelItemsData(GAMESTATE->m_SortOrder);
 	for (auto& wiWheelItem : wiWheelItems) {
 		if (wiWheelItem->m_pSong != nullptr) {
-			return SelectSong(wiWheelItem->m_pSong);
+			return SelectSongInView(wiWheelItem->m_pSong);
 		}
 	}
 
@@ -316,6 +352,20 @@ MusicWheel::SelectSection(const std::string& SectionName) -> bool
 
 auto
 MusicWheel::SelectSong(const Song* p) -> bool
+{
+	if (SelectSongInView(p)) {
+		return true;
+	}
+	// not in this view of the table browser: go to Songs, where every song is
+	if (p == nullptr || InSongsView()) {
+		return false;
+	}
+	SetBrowsePath({ BROWSE_SONGS });
+	return SelectSongInView(p);
+}
+
+auto
+MusicWheel::SelectSongInView(const Song* p) -> bool
 {
 	if (p == nullptr) {
 		return false;
@@ -733,6 +783,7 @@ MusicWheel::BuildWheelItemDatas(
 							   searching,
 							   findme);
 	auto startTime = std::chrono::steady_clock::now();
+	m_bBuiltForMulti = GAMESTATE->m_bPlayingMulti;
 
 	std::map<std::string, Commands> commanDZ;
 	if (so == SORT_MODE_MENU) {
@@ -762,8 +813,12 @@ MusicWheel::BuildWheelItemDatas(
 		Message msg("FilterResults");
 		msg.SetParam("Total", static_cast<int>(arraySongs.size()));
 
-		if (FILTERMAN->filteringCommonPacks && NSMAN->IsETTP() &&
-			!NSMAN->commonpacks.empty()) {
+		// "Common Packs Only" is a multiplayer-lobby filter: the theme only
+		// shows its toggle on ScreenNetSelectMusic, so in solo song select
+		// (still logged in to the server after leaving a room) it must not
+		// hide the packs the last room's players didn't share.
+		if (FILTERMAN->filteringCommonPacks && GAMESTATE->m_bPlayingMulti &&
+			NSMAN->IsETTP() && !NSMAN->commonpacks.empty()) {
 			std::vector<Song*> tmp;
 			for (auto& song : arraySongs) {
 				auto& group = song->m_sGroupName;
@@ -781,7 +836,8 @@ MusicWheel::BuildWheelItemDatas(
 		}
 		auto afterCommonPackFilter = std::chrono::steady_clock::now();
 
-		if (searching) {
+		// (a table's search is done in BuildBrowseItems, on the table)
+		if (searching && !(so == SORT_GROUP && BrowseViewActive())) {
 			FilterBySearch(arraySongs, findme);
 		}
 		auto afterSearchFilter = std::chrono::steady_clock::now();
@@ -799,6 +855,17 @@ MusicWheel::BuildWheelItemDatas(
 		msg.SetParam("Matches", static_cast<int>(arraySongs.size()));
 		MESSAGEMAN->Broadcast(msg);
 		auto afterFilterResultsMessage = std::chrono::steady_clock::now();
+
+		// the table browser's root, table list or one table
+		if (so == SORT_GROUP && BrowseViewActive()) {
+			BuildBrowseItems(arrayWheelItemDatas, arraySongs, so);
+			Locator::getLogger()->info(
+			  "BuildWheelItemDatas (table browser) total time: {}ms",
+			  std::chrono::duration<float, std::milli>(
+				std::chrono::steady_clock::now() - startTime)
+				.count());
+			return;
+		}
 
 		auto bUseSections = true;
 
@@ -1285,7 +1352,8 @@ MusicWheel::FilterWheelItemDatas(
 	for (unsigned i = 0; i < filteredSize;) {
 		auto& WID = *aFilteredData[i];
 		++i;
-		if (WID.m_Type != WheelItemDataType_Section) {
+		if (WID.m_Type != WheelItemDataType_Section ||
+			!WID.m_sBrowseTo.empty()) {
 			continue;
 		}
 
@@ -1306,7 +1374,7 @@ MusicWheel::FilterWheelItemDatas(
 		if (WID.m_Type != WheelItemDataType_Section) {
 			continue;
 		}
-		if (WID.m_iSectionCount > 0) {
+		if (WID.m_iSectionCount > 0 || !WID.m_sBrowseTo.empty()) {
 			continue;
 		}
 		aFilteredData.erase(aFilteredData.begin() + i,
@@ -1542,6 +1610,21 @@ MusicWheel::Select() -> bool // return true if this selection ends the screen
 			break;
 	}
 
+	// table browser: folders open their view, missing charts do nothing
+	if (!m_bEmpty && m_iSelection >= 0 &&
+		m_iSelection < static_cast<int>(m_CurWheelItemData.size())) {
+		const auto* cur = GetCurWheelItemData(m_iSelection);
+		if (!cur->m_sBrowseTo.empty()) {
+			m_Moving = 0;
+			BrowseInto(cur->m_sBrowseTo);
+			return false;
+		}
+		if (cur->m_bUnavailable) {
+			m_Moving = 0;
+			return false;
+		}
+	}
+
 	if (!WheelBase::Select()) {
 		return false;
 	}
@@ -1595,7 +1678,7 @@ MusicWheel::SetOpenSection(const std::string& group)
 
 		// Hide songs/courses which are not in the active section
 		if ((d.m_Type == WheelItemDataType_Song ||
-			 d.m_Type == WheelItemDataType_Course) &&
+			 d.m_Type == WheelItemDataType_Course || d.m_bUnavailable) &&
 			!d.m_sText.empty() && d.m_sText != group) {
 			continue;
 		}
@@ -1840,6 +1923,254 @@ MusicWheel::FinishChangingSorts()
 	m_fTimeLeftInState = 0;
 }
 
+// table browser
+
+auto
+MusicWheel::GetBrowsePath() -> const std::vector<std::string>&
+{
+	return g_BrowsePath;
+}
+
+auto
+MusicWheel::IsBrowsing() const -> bool
+{
+	return g_bTableBrowser && !GAMESTATE->m_bPlayingMulti &&
+		   GAMESTATE->m_SortOrder == SORT_GROUP;
+}
+
+auto
+MusicWheel::InSongsView() const -> bool
+{
+	return GAMESTATE->m_SortOrder != SORT_GROUP || !BrowseViewActive();
+}
+
+void
+MusicWheel::BuildBrowseItems(
+  std::vector<std::unique_ptr<MusicWheelItemData>>& arrayWheelItemDatas,
+  const std::vector<Song*>& arraySongs,
+  SortOrder so)
+{
+	arrayWheelItemDatas.clear();
+	allSongsFiltered = arraySongs;
+	auto& byGroup = allSongsByGroupFiltered.at(so);
+	byGroup.clear();
+	packProgressByGroup.at(so).clear();
+
+	const auto& folderColor = FOLDER_COLOR;
+	auto folder = [&](const std::string& text, const std::string& to, int n) {
+		auto wid = std::make_unique<MusicWheelItemData>(
+		  WheelItemDataType_Section, nullptr, text, folderColor, n);
+		wid->m_sBrowseTo = to;
+		arrayWheelItemDatas.emplace_back(std::move(wid));
+	};
+
+	const auto tables = BMSTableBrowser::Build(arraySongs);
+
+	// root: Songs and Tables
+	if (g_BrowsePath.empty()) {
+		folder(BROWSE_SONGS,
+			   BROWSE_SONGS,
+			   static_cast<int>(SONGMAN->GetSongGroupNames().size()));
+		folder(BROWSE_TABLES, BROWSE_TABLES, static_cast<int>(tables.size()));
+		return;
+	}
+
+	// the tables
+	if (g_BrowsePath.size() == 1) {
+		for (const auto& t : tables) {
+			folder(t.name, t.id, t.NumCharts());
+		}
+		return;
+	}
+
+	// one table: a folder per level, opening in place like a pack
+	for (const auto& t : tables) {
+		if (t.id != g_BrowsePath[1]) {
+			continue;
+		}
+		// GetSongs (the random song buttons) picks from this table only
+		allSongsFiltered.clear();
+
+		// the search typed inside this table: title or artist; "title=x",
+		// "artist=x" and the like look at the text after "="
+		auto query = m_sTableSearch;
+		const auto eq = query.rfind('=');
+		if (eq != std::string::npos) {
+			query = query.substr(eq + 1);
+			Trim(query);
+		}
+		auto matches = [&query](const BMSTableBrowser::Entry& e) {
+			if (query.empty()) {
+				return true;
+			}
+			if (e.song != nullptr) {
+				return contains(e.song->GetDisplayFullTitle(), query) ||
+					   contains(e.song->GetTranslitFullTitle(), query) ||
+					   contains(e.song->GetDisplayArtist(), query) ||
+					   contains(e.song->m_sGroupName, query);
+			}
+			return contains(e.title, query) || contains(e.artist, query);
+		};
+		for (const auto& lv : t.levels) {
+			arrayWheelItemDatas.emplace_back(
+			  std::make_unique<MusicWheelItemData>(
+				WheelItemDataType_Section,
+				nullptr,
+				lv.label,
+				folderColor,
+				static_cast<int>(lv.entries.size())));
+			auto& songsHere = byGroup[lv.label];
+			auto played = 0;
+			for (const auto& e : lv.entries) {
+				if (!matches(e)) {
+					continue;
+				}
+				if (e.song != nullptr) {
+					arrayWheelItemDatas.emplace_back(
+					  std::make_unique<MusicWheelItemData>(
+						WheelItemDataType_Song,
+						e.song,
+						lv.label,
+						SONGMAN->GetSongColor(e.song),
+						0));
+					songsHere.emplace_back(e.song);
+					allSongsFiltered.emplace_back(e.song);
+					if (PREFSMAN->m_bPackProgressInWheel) {
+						for (auto& chart : e.song->GetChartsOfCurrentGameMode()) {
+							if (SCOREMAN->KeyHasScores(chart->GetChartKey())) {
+								++played;
+								break;
+							}
+						}
+					}
+				} else {
+					auto wid = std::make_unique<MusicWheelItemData>(
+					  WheelItemDataType_Custom,
+					  nullptr,
+					  lv.label,
+					  UNAVAILABLE_COLOR,
+					  0);
+					wid->m_bUnavailable = true;
+					wid->m_sLabel = e.title;
+					wid->m_sSubLabel = e.artist;
+					arrayWheelItemDatas.emplace_back(std::move(wid));
+				}
+			}
+			if (PREFSMAN->m_bPackProgressInWheel) {
+				packProgressByGroup.at(so)[lv.label] = played;
+			}
+		}
+		return;
+	}
+}
+
+// show the view of g_BrowsePath, the cursor on selectFolder's folder (the
+// one just left) or else on the last song's pack
+void
+MusicWheel::RefreshBrowseView(const std::string& selectFolder)
+{
+	// a table's search stays with that table
+	if (!m_sTableSearch.empty()) {
+		m_sTableSearch.clear();
+		Message msg("SetSearchString");
+		msg.SetParam("searchstring", std::string());
+		MESSAGEMAN->Broadcast(msg);
+	}
+
+	m_WheelItemDatasStatus[SORT_GROUP] = INVALID;
+	// the old items go away in the rebuild: forget them first
+	m_CurWheelItemData.clear();
+	m_nearestCompatibleWheelItemData = nullptr;
+	SetOpenSection("");
+
+	m_iSelection = 0;
+	auto found = false;
+	if (!selectFolder.empty()) {
+		for (auto i = 0; i < static_cast<int>(m_CurWheelItemData.size());
+			 ++i) {
+			if (GetCurWheelItemData(i)->m_sBrowseTo == selectFolder) {
+				m_iSelection = i;
+				found = true;
+				break;
+			}
+		}
+	}
+	if (!found && InSongsView() && !GAMESTATE->m_sLastSongGroup.empty()) {
+		SelectSection(GAMESTATE->m_sLastSongGroup);
+	}
+	RebuildWheelItems();
+	SCREENMAN->PostMessageToTopScreen(SM_SongChanged, 0);
+	MESSAGEMAN->Broadcast("BrowsePathChanged");
+}
+
+void
+MusicWheel::BrowseInto(const std::string& folder)
+{
+	if (!IsBrowsing()) {
+		return;
+	}
+	if (g_BrowsePath.empty()) {
+		g_BrowsePath.push_back(folder);
+	} else if (g_BrowsePath.size() == 1 && g_BrowsePath[0] == BROWSE_TABLES) {
+		g_BrowsePath.push_back(folder);
+	} else {
+		return;
+	}
+	// pick up table files updated while the game runs
+	if (folder == BROWSE_TABLES) {
+		BMSTableBrowser::Reload();
+	}
+	RefreshBrowseView("");
+	m_soundExpand.Play(true);
+}
+
+auto
+MusicWheel::BrowseBack() -> bool
+{
+	if (!IsBrowsing() || g_BrowsePath.empty()) {
+		return false;
+	}
+	if (m_WheelState != STATE_SELECTING &&
+		m_WheelState != STATE_FLYING_ON_AFTER_NEXT_SORT) {
+		return true; // busy (roulette, sort change): just ignore Back
+	}
+	const auto from = g_BrowsePath.back();
+	g_BrowsePath.pop_back();
+	RefreshBrowseView(from);
+	m_soundCollapse.Play(true);
+	return true;
+}
+
+// searches and chart lists filter the Songs view: go there without
+// rebuilding (the caller reloads the list)
+void
+MusicWheel::ShowSongsForFilter()
+{
+	if (IsBrowsing() && !InSongsView()) {
+		g_BrowsePath = { BROWSE_SONGS };
+		MESSAGEMAN->Broadcast("BrowsePathChanged");
+	}
+}
+
+void
+MusicWheel::SetBrowsePath(const std::vector<std::string>& path)
+{
+	std::vector<std::string> p;
+	if (!path.empty() && (path[0] == BROWSE_SONGS || path[0] == BROWSE_TABLES)) {
+		p.push_back(path[0]);
+		if (path[0] == BROWSE_TABLES && path.size() > 1) {
+			p.push_back(path[1]);
+		}
+	}
+	if (p == g_BrowsePath) {
+		return;
+	}
+	g_BrowsePath = p;
+	if (IsBrowsing()) {
+		RefreshBrowseView("");
+	}
+}
+
 // lua start
 #include "Etterna/Models/Lua/LuaBinding.h"
 
@@ -1909,6 +2240,10 @@ class LunaMusicWheel : public Luna<MusicWheel>
 		LuaHelpers::ReadArrayFromTable(newHashList, L);
 		lua_pop(L, 1);
 		p->SetHashList(newHashList);
+		// a chart list (playlist, goals) shows its songs in Songs
+		if (!newHashList.empty()) {
+			p->ShowSongsForFilter();
+		}
 
 		std::vector<std::string> newOutHashList;
 		p->SetOutHashList(newOutHashList);
@@ -1932,6 +2267,9 @@ class LunaMusicWheel : public Luna<MusicWheel>
 
 		p->SetHashList(newHashList);
 		p->SetOutHashList(newOutHashList);
+		if (!newHashList.empty()) {
+			p->ShowSongsForFilter();
+		}
 		p->ReloadSongList(false, "");
 
 		return 1;
@@ -1978,8 +2316,46 @@ class LunaMusicWheel : public Luna<MusicWheel>
 		return 1;
 	}
 
+	static auto GetBrowsePath(T* p, lua_State* L) -> int
+	{
+		lua_newtable(L);
+		const auto& path = MusicWheel::GetBrowsePath();
+		for (auto i = 0; i < static_cast<int>(path.size()); ++i) {
+			lua_pushstring(L, path[i].c_str());
+			lua_rawseti(L, -2, i + 1);
+		}
+		return 1;
+	}
+	static auto SetBrowsePath(T* p, lua_State* L) -> int
+	{
+		std::vector<std::string> path;
+		if (lua_istable(L, 1)) {
+			lua_pushvalue(L, 1);
+			LuaHelpers::ReadArrayFromTable(path, L);
+			lua_pop(L, 1);
+		} else if (lua_isstring(L, 1)) {
+			split(SArg(1), "/", path);
+		}
+		p->SetBrowsePath(path);
+		return 0;
+	}
+	static auto BrowseBack(T* p, lua_State* L) -> int
+	{
+		lua_pushboolean(L, static_cast<int>(p->BrowseBack()));
+		return 1;
+	}
+	static auto IsBrowsingTables(T* p, lua_State* L) -> int
+	{
+		lua_pushboolean(L, static_cast<int>(!p->InSongsView()));
+		return 1;
+	}
+
 	LunaMusicWheel()
 	{
+		ADD_METHOD(GetBrowsePath);
+		ADD_METHOD(SetBrowsePath);
+		ADD_METHOD(BrowseBack);
+		ADD_METHOD(IsBrowsingTables);
 		ADD_METHOD(ChangeSort);
 		ADD_METHOD(GetSelectedSection);
 		ADD_METHOD(IsRouletting);

@@ -715,6 +715,16 @@ DownloadManager::Init()
 							   : RequestResultStatus::Failed;
 				curl_easy_getinfo(
 				  msg->easy_handle, CURLINFO_RESPONSE_CODE, &res.response_code);
+				if (msg->msg == CURLMSG_DONE && msg->data.result != CURLE_OK) {
+					// what went wrong, for the update log and bug reports
+					char* failedUrl = nullptr;
+					curl_easy_getinfo(
+					  msg->easy_handle, CURLINFO_EFFECTIVE_URL, &failedUrl);
+					Locator::getLogger()->warn(
+					  "HTTP request failed: {} ({})",
+					  curl_easy_strerror(msg->data.result),
+					  failedUrl != nullptr ? failedUrl : "?");
+				}
 				result_handles.push_back(std::make_pair(msg->easy_handle, res));
 				curl_multi_remove_handle(http_req_handle, msg->easy_handle);
 				curl_easy_cleanup(msg->easy_handle);
@@ -6775,14 +6785,22 @@ DownloadManager::BMSUpdateRequest(
 	curl_easy_setopt_log_err(curlHandle, CURLOPT_HTTPGET, 1L);
 	curl_easy_setopt_log_err(curlHandle, CURLOPT_REDIR_PROTOCOLS_STR, "https");
 	if (!savePath.empty()) {
-		// files that end up running as the game: make sure GitHub sent them
+		// files that end up running as the game: make sure GitHub sent them.
+		// The certificate list comes with the game (Data/cacert.pem, from
+		// Mozilla): the system's can't be relied on. Windows keeps only part
+		// of its list on disk and fetches the rest when its own apps ask,
+		// which OpenSSL never does, and Linux keeps it in different places.
 		curl_easy_setopt_log_err(curlHandle, CURLOPT_SSL_VERIFYPEER, 1L);
 		curl_easy_setopt_log_err(curlHandle, CURLOPT_SSL_VERIFYHOST, 2L);
+		const auto bundled = FILEMAN->ResolvePath("/Data/cacert.pem");
+		const auto haveBundled = FILEMAN->DoesFileExist("/Data/cacert.pem");
+		if (haveBundled)
+			curl_easy_setopt_log_err(curlHandle, CURLOPT_CAINFO, bundled.c_str());
 #ifdef _WIN32
+		// and the Windows list on top
 		curl_easy_setopt_log_err(
 		  curlHandle, CURLOPT_SSL_OPTIONS, static_cast<long>(CURLSSLOPT_NATIVE_CA));
 #else
-		// the bundled OpenSSL doesn't know where this system keeps them
 		static const char* bundles[] = {
 			"/etc/ssl/certs/ca-certificates.crt",
 			"/etc/pki/tls/certs/ca-bundle.crt",
@@ -6790,10 +6808,12 @@ DownloadManager::BMSUpdateRequest(
 			"/etc/ssl/ca-bundle.pem",
 			"/etc/ssl/cert.pem",
 		};
-		for (auto* b : bundles) {
-			if (access(b, R_OK) == 0) {
-				curl_easy_setopt_log_err(curlHandle, CURLOPT_CAINFO, b);
-				break;
+		if (!haveBundled) {
+			for (auto* b : bundles) {
+				if (access(b, R_OK) == 0) {
+					curl_easy_setopt_log_err(curlHandle, CURLOPT_CAINFO, b);
+					break;
+				}
 			}
 		}
 #endif

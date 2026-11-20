@@ -1,4 +1,5 @@
 #include <random>
+#include <algorithm>
 
 using RandomGen = std::mt19937;
 extern RandomGen g_RandomNumberGenerator;
@@ -19,6 +20,29 @@ random_up_to(RandomGen& rng, int limit) -> int
 	}
 
 	return static_cast<int>(res % limit);
+}
+
+// Multiplayer /random seeds end in this 16 bit tag (the room server makes
+// them). Shuffles on such a seed use seeded_shuffle's own Fisher-Yates, which
+// gives the same lanes on every OS; std::shuffle differs between MSVC and
+// libstdc++. Other seeds keep std::shuffle so older replays rebuild the same.
+constexpr unsigned ROOM_SEED_TAG = 0x7B4DU;
+inline auto
+is_room_seed(int seed) -> bool
+{
+	return (static_cast<unsigned>(seed) & 0xFFFFU) == ROOM_SEED_TAG;
+}
+
+template<class It>
+void
+seeded_shuffle(It first, It last, RandomGen& rng, int seed)
+{
+	if (!is_room_seed(seed)) {
+		std::shuffle(first, last, rng);
+		return;
+	}
+	for (auto i = static_cast<int>(last - first) - 1; i > 0; --i)
+		std::iter_swap(first + i, first + random_up_to(rng, i + 1));
 }
 
 inline auto

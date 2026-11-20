@@ -74,6 +74,7 @@ list(APPEND ACTOR_GAMEPLAY_HPP
 	"Gameplay/ReceptorArrowRow.h")
 
 list(APPEND ACTOR_MENU_SRC
+	"Menus/BMSTableBrowser.cpp"
 	"Menus/BPMDisplay.cpp"
 	"Menus/ComboGraph.cpp"
 	"Menus/DifficultyList.cpp"
@@ -94,6 +95,7 @@ list(APPEND ACTOR_MENU_SRC
 	"Menus/RoomInfoDisplay.cpp")
 
 list(APPEND ACTOR_MENU_HPP
+	"Menus/BMSTableBrowser.h"
 	"Menus/BPMDisplay.h"
 	"Menus/ComboGraph.h"
 	"Menus/DifficultyList.h"

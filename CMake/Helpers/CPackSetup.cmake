@@ -106,6 +106,7 @@ endif()
 ## Files Only
 install(FILES Songs/instructions.txt        COMPONENT Etterna DESTINATION "${ASSET_DIR}/Songs")
 install(FILES Announcers/instructions.txt   COMPONENT Etterna DESTINATION "${ASSET_DIR}/Announcers")
+install(FILES tools/update_bms_tables.py tools/update_bms_tables.bat COMPONENT Etterna DESTINATION "${ASSET_DIR}/tools")
 
 ## Essential Game Files
 install(DIRECTORY Assets                    COMPONENT Etterna DESTINATION "${ASSET_DIR}")

@@ -19,6 +19,16 @@
 -- of a miss, 8 shortest jack gap (s), 9 chord weight, 10 chord exponent a
 local P = {0.869284, 2.477, 0.327945, 0.8, 5.6, 10.1646, 0.366215, 0.06, 0.268818, 0.800109}
 
+-- the calc's version, raised with every change of the numbers. A rating file
+-- made by another version (the site's calcrating.json or its copy in
+-- Save/BMSCache) is not used: the game's own calc rates the charts instead,
+-- and after an update the unranked charts' ratings on the site are sent again
+-- (BMSRanking.lua R.resendCalc)
+BMSClearCalcVersion = 41
+function BMSCalcFileCurrent(str)
+	return tonumber((str or ""):match('"calcVersion":(%d+)')) == BMSClearCalcVersion
+end
+
 -- The expected gauge has no luck in it. A real HARD gauge also dies to a bad
 -- run, so HARD has to stay HARD_Z standard deviations above dying. EASY and
 -- GROOVE: a real gauge swings, so the skill is a mix (SUM_W) of the skill to
@@ -26,6 +36,8 @@ local P = {0.869284, 2.477, 0.327945, 0.8, 5.6, 10.1646, 0.366215, 0.06, 0.26881
 -- over the whole chart with no cap (every part counts the same, but the
 -- gauge still stops at its 2% floor).
 local HARD_Z, TARGET, SUM_W = 0.5, 56.4783, 0.7
+-- for the debug view: where the expected EASY / GROOVE gauge has to end
+BMSClearTarget = TARGET
 
 -- rows closer than SWEEP_GAP (rolls, staircases, sweeps) count SWEEP_W in
 -- the densities; in chords of JACK_CHORD notes or more the jack part is
@@ -89,6 +101,16 @@ local MASH_W = 0.6
 -- a fast burst inside a chordstream (a row less than DELAY_GAP after the row
 -- before while the recent average chord is BURST_AVG or more) is hard to hit
 local BURST_W, BURST_AVG = 0.8, 2.0
+-- a very fast run (a row SWEEP_GAP..FAST_GAP s after the row before, which
+-- was also less than FAST_GAP after its own row before: 64th runs and
+-- staircases, rows less than FAST_GAP apart) is swept through more than read:
+-- it counts FAST_W
+local FAST_W, FAST_GAP = 0.8, 0.032
+-- a steady chordstream (rows at an even pace, each less than STEADY_GAP s
+-- after the one before and within STEADY_TOL of the gap before it, STEADY_RUN
+-- or more such rows in a row, chords of STEADY_CHORD+) is read as one rhythm
+-- and partly mashed: its rows count STEADY_W in the densities
+local STEADY_W, STEADY_GAP, STEADY_TOL, STEADY_RUN, STEADY_CHORD = 0.85, 0.12, 0.1, 4, 2
 
 -- HARD's skill is moved by this (ln) before it becomes a level, so that HARD
 -- sits about 2.5 ★ over EASY on the insane table
@@ -96,47 +118,49 @@ local HARD_SHIFT = -0.0629
 -- HARD's skill becomes the skill whose EASY level is where HARD should be:
 -- through these points, fitted so a chart's HARD sits about 1.5 ★ over the
 -- EASY of the charts with the same HARD skill (tools/clearcalc/lab/hardmap.py)
+-- then +0.03 (about +1 ★ on HARD), as players found HARD clears harder than
+-- their EASY-to-HARD gap said
 local HARD_MAP = {lo = 1.0000, hi = 1.0000, knots = {
-	{3.55111, 3.43263},
-	{3.64507, 3.52852},
-	{3.70509, 3.59773},
-	{3.75596, 3.65573},
-	{3.79782, 3.68886},
-	{3.83317, 3.71981},
-	{3.86358, 3.75664},
-	{3.89091, 3.77522},
-	{3.91763, 3.79761},
-	{3.94013, 3.83137},
-	{3.96533, 3.85226},
-	{3.99284, 3.86803},
-	{4.02048, 3.90949},
-	{4.04693, 3.92721},
-	{4.07310, 3.96264},
-	{4.09640, 3.98709},
-	{4.12025, 3.99902},
-	{4.14235, 4.02869},
-	{4.16634, 4.04545},
-	{4.19102, 4.07517},
-	{4.21641, 4.08787},
-	{4.23821, 4.12058},
-	{4.25689, 4.14725},
-	{4.27761, 4.15761},
-	{4.29878, 4.17180},
-	{4.31904, 4.19447},
-	{4.33869, 4.22395},
-	{4.36057, 4.25631},
-	{4.38195, 4.26842},
-	{4.40334, 4.27911},
-	{4.42805, 4.31618},
-	{4.44977, 4.34876},
-	{4.47479, 4.38629},
-	{4.49973, 4.42370},
-	{4.52536, 4.45066},
-	{4.55478, 4.47644},
-	{4.59431, 4.50155},
-	{4.64344, 4.54869},
-	{4.71948, 4.61618},
-	{4.85512, 4.81965},
+	{3.55111, 3.46263},
+	{3.64507, 3.55852},
+	{3.70509, 3.62773},
+	{3.75596, 3.68573},
+	{3.79782, 3.71886},
+	{3.83317, 3.74981},
+	{3.86358, 3.78664},
+	{3.89091, 3.80522},
+	{3.91763, 3.82761},
+	{3.94013, 3.86137},
+	{3.96533, 3.88226},
+	{3.99284, 3.89803},
+	{4.02048, 3.93949},
+	{4.04693, 3.95721},
+	{4.07310, 3.99264},
+	{4.09640, 4.01709},
+	{4.12025, 4.02902},
+	{4.14235, 4.05869},
+	{4.16634, 4.07545},
+	{4.19102, 4.10517},
+	{4.21641, 4.11787},
+	{4.23821, 4.15058},
+	{4.25689, 4.17725},
+	{4.27761, 4.18761},
+	{4.29878, 4.20180},
+	{4.31904, 4.22447},
+	{4.33869, 4.25395},
+	{4.36057, 4.28631},
+	{4.38195, 4.29842},
+	{4.40334, 4.30911},
+	{4.42805, 4.34618},
+	{4.44977, 4.37876},
+	{4.47479, 4.41629},
+	{4.49973, 4.45370},
+	{4.52536, 4.48066},
+	{4.55478, 4.50644},
+	{4.59431, 4.53155},
+	{4.64344, 4.57869},
+	{4.71948, 4.64618},
+	{4.85512, 4.84965},
 }}
 
 -- Every scale is set 0.5 lower than the folder medians, by request (the
@@ -147,78 +171,77 @@ local HARD_MAP = {lo = 1.0000, hi = 1.0000, knots = {
 -- Overjoy = ★ + 20). sl, st, oj: that table's own levels.
 local SCALES = {
 	insane = {prefix = "sp", lo = 22.6906, hi = 3.0000, knots = {
-		{3.6066, 1.500},
-		{3.6544, 2.500},
-		{3.6953, 3.500},
-		{3.7283, 4.500},
-		{3.7719, 5.500},
-		{3.7779, 6.500},
-		{3.7991, 7.500},
-		{3.8471, 8.500},
-		{3.8552, 9.500},
-		{3.8685, 10.500},
-		{3.9231, 11.500},
-		{3.9293, 12.500},
-		{3.9603, 13.500},
-		{3.9920, 14.500},
-		{3.9930, 15.500},
-		{4.0221, 16.500},
-		{4.0464, 17.500},
-		{4.0757, 18.500},
-		{4.0875, 19.500},
-		{4.1418, 20.500},
-		{4.1688, 21.500},
-		{4.1960, 22.500},
-		{4.2582, 23.500},
-		{4.2909, 24.500},
-		{4.4229, 25.500},
-		{4.6455, 27.500},
+		{3.5650, 1.500},
+		{3.5940, 2.500},
+		{3.6334, 3.500},
+		{3.6753, 4.500},
+		{3.7016, 5.500},
+		{3.7226, 6.500},
+		{3.7393, 7.500},
+		{3.7739, 8.500},
+		{3.7938, 9.500},
+		{3.8122, 10.500},
+		{3.8411, 11.500},
+		{3.8642, 12.500},
+		{3.8852, 13.500},
+		{3.9317, 15.000},
+		{3.9430, 16.500},
+		{3.9731, 17.500},
+		{3.9909, 18.500},
+		{4.0118, 19.500},
+		{4.0592, 20.500},
+		{4.0950, 22.000},
+		{4.1816, 23.500},
+		{4.2027, 24.500},
+		{4.3659, 25.500},
+		{4.5572, 27.500},
 	}},
 	satellite = {prefix = "sl", lo = 9.4109, hi = 28.4352, knots = {
-		{3.4332, 0.500},
-		{3.5633, 1.500},
-		{3.6531, 2.500},
-		{3.7207, 3.500},
-		{3.7842, 4.500},
-		{3.8225, 5.500},
-		{3.8714, 6.500},
-		{3.9167, 7.500},
-		{3.9475, 8.500},
-		{3.9802, 9.500},
-		{4.0005, 10.500},
-		{4.0413, 11.500},
-		{4.0722, 12.500},
+		{3.4075, 0.500},
+		{3.5271, 1.500},
+		{3.6116, 2.500},
+		{3.6750, 3.500},
+		{3.7326, 4.500},
+		{3.7783, 5.500},
+		{3.8184, 6.500},
+		{3.8526, 7.500},
+		{3.8858, 8.500},
+		{3.9177, 9.500},
+		{3.9376, 10.500},
+		{3.9818, 11.500},
+		{4.0118, 12.500},
 	}},
 	stella = {prefix = "st", lo = 26.5218, hi = 15.8649, knots = {
-		{4.1160, 0.500},
-		{4.1462, 1.500},
-		{4.1964, 2.500},
-		{4.2396, 3.500},
-		{4.2868, 4.500},
-		{4.3269, 5.500},
-		{4.3729, 6.500},
-		{4.4136, 7.500},
-		{4.4397, 8.500},
-		{4.4873, 9.500},
-		{4.5364, 10.500},
-		{4.6249, 11.500},
-		{4.6738, 12.500},
+		{4.0547, 0.500},
+		{4.0831, 1.500},
+		{4.1331, 2.500},
+		{4.1742, 3.500},
+		{4.2231, 4.500},
+		{4.2599, 5.500},
+		{4.3069, 6.500},
+		{4.3459, 7.500},
+		{4.3727, 8.500},
+		{4.4214, 9.500},
+		{4.4677, 10.500},
+		{4.5621, 11.500},
+		{4.6131, 12.500},
 	}},
 	overjoy = {prefix = "oj", lo = 23.9571, hi = 7.5667, knots = {
-		{4.1484, 1.500},
-		{4.1777, 2.500},
-		{4.2500, 3.500},
-		{4.3085, 4.500},
-		{4.3808, 5.500},
-		{4.5085, 6.500},
-		{4.6455, 7.500},
+		{4.0833, 1.500},
+		{4.1215, 2.500},
+		{4.1890, 3.500},
+		{4.2395, 4.500},
+		{4.3153, 5.500},
+		{4.4387, 6.500},
+		{4.5810, 7.500},
 	}},
 }
 local SCALE_ORDER = {"insane", "satellite", "stella", "overjoy"}
 
-local GAIN = {1.2, 1.0, 0.1}
-local POOR = {-4.8, -6.0, -10.0}
-local EPOOR = {-1.6, -2.0, -2.0}
+-- gauges 1 EASY, 2 GROOVE, 3 HARD, 4 EX HARD (this fork's LR2 values)
+local GAIN = {1.2, 1.0, 0.1, 0.1}
+local POOR = {-4.8, -6.0, -10.0, -20.0}
+local EPOOR = {-1.6, -2.0, -2.0, -2.0}
 
 local exp, log, floor, min, max = math.exp, math.log, math.floor, math.min, math.max
 
@@ -248,6 +271,7 @@ local function noteDifficulty(t, col, parts)
 	local prevMask, prevMask2 = -1, -2
 	local prevCols, prevT = {}, -1e9
 	local prevDt, cavg, cjf, prevChord = 1e9, 0, 0, 0
+	local steady = 0
 	local d, cjNote = {}, {}
 	local i = 1
 	while i <= n do
@@ -287,6 +311,9 @@ local function noteDifficulty(t, col, parts)
 			end
 		end
 		if burst then sweep = BURST_W end
+		if dt >= SWEEP_GAP and dt < FAST_GAP and prevDt < FAST_GAP then sweep = sweep * FAST_W end
+		if dt < STEADY_GAP and math.abs(dt - prevDt) <= STEADY_TOL * dt then steady = steady + 1 else steady = 0 end
+		if steady >= STEADY_RUN and chord >= STEADY_CHORD then sweep = sweep * STEADY_W end
 		prevDt, prevChord = dt, chord
 		local cjm = 1
 		if cj then
@@ -351,16 +378,17 @@ end
 -- trace, keeps the gauge and the miss chance at every note
 local function clears(ld, g, lnS, gain, poor, trace, sum)
 	local k = P[6]
-	local v = g == 3 and 100 or 20
+	local v = g >= 3 and 100 or 20
 	local var = 0
 	local dead = false
 	for i = 1, #ld do
 		local p = 1 / (1 + exp(-k * (ld[i] - lnS)))
 		if dead then
 			v = 0
-		elseif g == 3 then
+		elseif g >= 3 then
 			if p > HARD_MISS_MAX then p = HARD_MISS_MAX end
-			local dmg = poor * (v < 32 and .6 or 1)
+			-- HARD takes less damage under 32%, EX HARD does not
+			local dmg = poor * ((g == 3 and v < 32) and .6 or 1)
 			v = v + (1 - p) * gain + p * dmg
 			var = var + p * (1 - p) * (gain - dmg) ^ 2
 			if v > 100 then v, var = 100, 0 end
@@ -381,7 +409,7 @@ local function clears(ld, g, lnS, gain, poor, trace, sum)
 			trace.gauge[i], trace.miss[i] = v, p
 		end
 	end
-	if g == 3 then return not dead end
+	if g >= 3 then return not dead end
 	return v >= (sum and 80 or TARGET)
 end
 
@@ -397,9 +425,9 @@ local function through(x, m)
 	return k[#k][2] + (x - k[#k][1]) * m.hi
 end
 
--- level of a gauge's needed skill (g 1 EASY, 2 GROOVE, 3 HARD) on a scale
+-- level of a gauge's needed skill (g 1 EASY, 2 GROOVE, 3 HARD, 4 EX HARD) on a scale
 local function toLevel(lnS, g, sc)
-	if g == 3 then lnS = through(lnS, HARD_MAP) end
+	if g >= 3 then lnS = through(lnS, HARD_MAP) end
 	return through(lnS, sc or SCALES.insane)
 end
 
@@ -421,7 +449,7 @@ local function gaugeChanges(g, total, n)
 	if g < 3 then
 		return GAIN[g] * total / n, POOR[g] + P[7] * EPOOR[g]
 	end
-	return GAIN[3], (POOR[3] + P[7] * EPOOR[3]) * damageScale(total, n)
+	return GAIN[g], (POOR[g] + P[7] * EPOOR[g]) * damageScale(total, n)
 end
 
 local function defaultTotal(total, n)
@@ -448,15 +476,15 @@ local function neededSkill(ld, g, gain, poor)
 	return s
 end
 
--- skill (ln) a gauge needs: g 1 EASY, 2 GROOVE, 3 HARD
+-- skill (ln) a gauge needs: g 1 EASY, 2 GROOVE, 3 HARD, 4 EX HARD
 function bmsClearSkills(t, col, total)
 	local n = #t
 	if n < 2 then return nil end
 	local ld, lh = noteDifficulty(t, col)
 	total = defaultTotal(total, n)
 	local out = {}
-	for g = 1, 3 do
-		out[g] = neededSkill(g == 3 and lh or ld, g, gaugeChanges(g, total, n))
+	for g = 1, 4 do
+		out[g] = neededSkill(g >= 3 and lh or ld, g, gaugeChanges(g, total, n))
 	end
 	return out
 end
@@ -549,7 +577,9 @@ function getBMSClearDifficulty(steps, rate)
 	local h, ph = shownLevel(hs, 1, sc)
 	if sk[1] > hs then e, pe = h, ph end
 	if sk[2] > hs then gr, pg = h, ph end
-	return e, gr, h, pe, ph, pg
+	-- EX HARD (never under HARD), and its prefix, after the others
+	local ex, px = shownLevel(through(max(sk[4] or sk[3], sk[3]), HARD_MAP), 1, sc)
+	return e, gr, h, pe, ph, pg, ex, px
 end
 
 -- The chart's Good enough rating as the ranking site keeps it: EASY and HARD
@@ -786,10 +816,10 @@ function getBMSClearDebug(steps, rate)
 	local total = defaultTotal(steps:GetBMSTotal(), n)
 	local sc = shownScale(steps)
 	local dbg = {t = t, col = col, ld = ld, parts = parts, total = total, notes = n, gauges = {}, prefix = sc.prefix}
-	for g = 1, 3 do
+	for g = 1, 4 do
 		local gain, poor = gaugeChanges(g, total, n)
 		-- a hair above the needed skill, where the gauge just clears
-		local gd = g == 3 and lh or ld
+		local gd = g >= 3 and lh or ld
 		local s = neededSkill(gd, g, gain, poor) + 1e-6
 		local trace = {gauge = {}, miss = {}}
 		clears(gd, g, s, gain, poor, trace)

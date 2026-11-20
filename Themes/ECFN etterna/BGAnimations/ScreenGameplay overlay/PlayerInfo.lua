@@ -112,35 +112,27 @@ if hideMSD() then
 		end,
 		Def.Quad {
 			InitCommand = function(self)
-				self:halign(0):valign(1):xy(0, 0):zoomto(860, 150)
+				self:halign(0):valign(1):xy(0, 0):zoomto(760, 104)
 				self:diffuse(color("0,0,0,1")):diffusealpha(math.max(bgalpha, 0.5) * 0.6):faderight(0.6)
 			end,
 		},
-		-- avatar in a thin frame
-		Def.Quad {
-			InitCommand = function(self)
-				self:halign(0):valign(0):xy(10, -136):zoomto(116, 116):diffuse(color("1,1,1,0.35"))
-			end,
-		},
+		-- avatar flush in the corner
 		Def.Sprite {
 			InitCommand = function(self)
-				self:halign(0):valign(0):xy(12, -134)
+				self:halign(0):valign(1):xy(0, 0)
 			end,
 			BeginCommand = function(self)
 				self:Load(getAvatarPath(PLAYER_1))
-				self:zoomto(112, 112)
+				self:zoomto(104, 104)
 			end,
 		},
-		-- gauge, and the lane option when the lanes are moved
-		Text(X, -96, 22, 700, color("#ffd75e"), function()
-			local text = getBMSOptionName("Gauge") .. " GAUGE"
-			if getBMSOption("Arrange") ~= 1 then
-				text = text .. "   " .. getBMSArrangeText()
-			end
-			return text
+		-- profile name
+		Text(116, -44, 22, 640, color("#ffd75e"), function()
+			local profile = GetPlayerOrMachineProfile(PLAYER_1)
+			return profile and profile:GetDisplayName() or ""
 		end),
 		-- the other options, small
-		Text(X, -60, 15, 700, color("1,1,1,0.55"), function()
+		Text(116, -16, 15, 640, color("1,1,1,0.55"), function()
 			return getModifierTranslations(GAMESTATE:GetPlayerState():GetPlayerOptionsString("ModsLevel_Current"))
 		end),
 	}

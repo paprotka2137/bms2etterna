@@ -62,6 +62,10 @@ local function loadGR()
 	if f:Open(GR_FILE, 1) then
 		local str = f:Read() or ""
 		f:Close()
+		-- made by another calc version: the game's own calc rates the charts
+		if BMSCalcFileCurrent and not BMSCalcFileCurrent(str) then
+			str = ""
+		end
 		for k, e, h in str:gmatch('"([^"]+)":%[(-?[%d%.]+),(-?[%d%.]+)%]') do
 			out[k] = {tonumber(e), tonumber(h)}
 		end
@@ -214,6 +218,55 @@ local ST = {[0] = 19.5, 21, 22, 22.75, 23.5, 24, 24.5, 25.25, 25.75, 26.5, 27.25
 local OJ = {[0] = 23, 24, 25, 26, 27, 28, 29, 30, 31}
 local prefix = {insane = "★", satellite = "sl", stella = "st", overjoy = "★★", o2jam = "Lv"}
 
+-- songs by their full title, to find a site chart whose key isn't on this
+-- computer (played on another computer, or converted again since then)
+local titleIndex
+local function songsTitled(title)
+	if not titleIndex then
+		titleIndex = {}
+		for _, s in ipairs(SONGMAN:GetAllSongs()) do
+			for _, t in ipairs({s:GetDisplayFullTitle(), s:GetTranslitFullTitle()}) do
+				local l = titleIndex[t] or {}
+				titleIndex[t] = l
+				if l[#l] ~= s then
+					l[#l + 1] = s
+				end
+			end
+		end
+	end
+	return titleIndex[title] or {}
+end
+
+-- the song and 7k chart of a site row: by chart key, else the same title
+-- (the same pack first) with the same difficulty
+local function siteSong(ck, title, pack, diff)
+	local steps = SONGMAN:GetStepsByChartKey(ck)
+	local song = steps and SONGMAN:GetSongByChartKey(ck)
+	if song then
+		return song, steps
+	end
+	if not title or title == "" then
+		return nil
+	end
+	local pick
+	for _, s in ipairs(songsTitled(title)) do
+		if not pick or (s:GetGroupName() == pack and pick:GetGroupName() ~= pack) then
+			pick = s
+		end
+	end
+	if not pick then
+		return nil
+	end
+	local charts = pick:GetStepsByStepsType("StepsType_Kb7_Single") or {}
+	local chart = charts[1]
+	for _, st in ipairs(charts) do
+		if st:GetDifficulty() == "Difficulty_" .. (diff or "") then
+			chart = st
+		end
+	end
+	return pick, chart
+end
+
 local function siteEntry(f)
 	local ck, tbl, lv = f[2], f[8] or "", tonumber(f[9])
 	local notes = math.max(tonumber(f[6]) or 0, 1)
@@ -226,10 +279,10 @@ local function siteEntry(f)
 	elseif tbl == "overjoy" then
 		hard = (OJ[lv or -1] or 23 + (lv or 0)) + 0.03
 	end
-	local song = SONGMAN:GetSongByChartKey(ck)
+	local song, steps = siteSong(ck, f[10], f[12], f[11])
 	local ex = tonumber(f[5]) or 0
 	return {
-		ck = ck, song = song, o2 = o2,
+		ck = ck, song = song, steps = steps, o2 = o2,
 		level = hard,
 		levelName = lv and ((prefix[tbl] or "★") .. lv) or "?",
 		title = song and song:GetDisplayMainTitle() or (f[10] or "?"),
@@ -378,7 +431,7 @@ t.BMSProfileRefreshMessageCommand = function(self)
 end
 
 -- column names
-local col = {num = 18, lv = 24, title = 62, gr = W.width - 172, rateX = W.width - 150, ex = W.width - 92, lamp = W.width - 62, date = W.width - 10}
+local col = {num = 18, lv = 24, title = 90, gr = W.width - 172, rateX = W.width - 150, ex = W.width - 92, lamp = W.width - 62, date = W.width - 10}
 local function head(x, align, label, o2label)
 	t[#t + 1] = W.text(x, listY - 14, 0.3, align, function(self)
 		self:settext(label):diffuse(W.gray)
@@ -411,7 +464,9 @@ for i = 1, rows do
 		W.rowBand(i, y, nil, function(i)
 			local e = entry(i)
 			if e and e.song then
-				W.pickSong(e.song)
+				W.pickSong(e.song, e.steps)
+			elseif e then
+				ms.ok("This chart isn't on this computer")
 			end
 		end),
 		W.text(col.num, y, 0.3, 1) .. {
@@ -419,10 +474,16 @@ for i = 1, rows do
 				self:settext(entry(i) and (page * rows + i) or ""):diffuse(W.gray)
 			end,
 		},
-		W.text(col.lv, y, 0.32, 0) .. {
+		W.text(col.lv, y, 0.32, 0, function(self)
+			self:maxwidth((col.title - col.lv - 4) / 0.32)
+		end) .. {
 			ShowCommand = function(self)
 				local e = entry(i)
-				self:settext(e and e.levelName or ""):diffuse(color("#d080ff"))
+				-- BMS: every table the chart is in, worked out once per row
+				if e and not e.o2 and not e.tablesText then
+					e.tablesText = rxTablesLabel and rxTablesLabel(e.ck, e.steps, e.song, nil, e.levelName) or e.levelName
+				end
+				self:settext(e and (e.tablesText or e.levelName) or ""):diffuse(color("#d080ff"))
 			end,
 		},
 		W.text(col.title, y, 0.32, 0, function(self)
@@ -431,8 +492,9 @@ for i = 1, rows do
 			ShowCommand = function(self)
 				local e = entry(i)
 				self:settext(e and e.title or "")
-				-- invalid scores in red like Til Death
-				self:diffuse(e and not e.valid and W.red or W.white)
+				-- invalid scores in red like Til Death, charts that aren't on
+				-- this computer (site plays) in gray
+				self:diffuse(e and not e.valid and W.red or e and not e.song and W.gray or W.white)
 			end,
 		},
 		-- the Good enough rating of the lamp (BEST), as on the site

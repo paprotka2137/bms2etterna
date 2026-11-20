@@ -300,10 +300,69 @@ function R.sendUnrankedCalc(ck, response)
 		chart_key = ck,
 		easy = string.format("%.2f", easy),
 		hard = string.format("%.2f", hard),
+		version = tostring(BMSClearCalcVersion or 0),
 	}, function(status, body)
 		if status ~= 200 then
 			R.calcSent[ck] = nil
 		end
+	end)
+end
+
+-- after an update that changed the calc (BMSClearCalcVersion), the site's
+-- ratings of the unranked charts on this computer are sent again, once (the
+-- site keeps the value of the newest calc version). The version that was last
+-- sent is kept in Save/BMSCache/calcversion.txt.
+local CALC_VER_FILE = "/Save/BMSCache/calcversion.txt"
+local function readSmall(path)
+	local f = RageFileUtil.CreateRageFile()
+	local s
+	if f:Open(path, 1) then
+		s = f:Read()
+		f:Close()
+	end
+	f:destroy()
+	return s
+end
+local function writeSmall(path, s)
+	local f = RageFileUtil.CreateRageFile()
+	if f:Open(path, 2) then
+		f:Write(s)
+		f:Close()
+	end
+	f:destroy()
+end
+function R.resendCalc()
+	if BMSCalcResent or not BMSClearCalcVersion or not R.loggedIn() or not getBMSSiteRating then
+		return
+	end
+	if tonumber(readSmall(CALC_VER_FILE) or "") == BMSClearCalcVersion then
+		BMSCalcResent = true
+		return
+	end
+	BMSCalcResent = true
+	DLMAN:BMSRequest("GET", "/api/unranked-calc", {}, function(status, body)
+		if status ~= 200 or not body then
+			BMSCalcResent = nil
+			return
+		end
+		for ck in body:gmatch('"(X%x+)":%[') do
+			local ok, steps = pcall(function()
+				return SONGMAN:GetStepsByChartKey(ck)
+			end)
+			if ok and steps then
+				local ok2, easy, hard = pcall(getBMSSiteRating, steps)
+				if ok2 and easy and hard then
+					R.calcSent[ck] = true
+					DLMAN:BMSRequest("POST", "/api/game/calc", {
+						chart_key = ck,
+						easy = string.format("%.2f", easy),
+						hard = string.format("%.2f", hard),
+						version = tostring(BMSClearCalcVersion),
+					}, function() end)
+				end
+			end
+		end
+		writeSmall(CALC_VER_FILE, tostring(BMSClearCalcVersion))
 	end)
 end
 

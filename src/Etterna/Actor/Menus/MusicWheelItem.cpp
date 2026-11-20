@@ -278,6 +278,10 @@ MusicWheelItem::LoadFromWheelItemData(const WheelItemBaseData* pData,
 		msg.SetParam("Type", MusicWheelItemTypeToString(type));
 		msg.SetParam("Color", pWID->m_color);
 		msg.SetParam("Label", pWID->m_sLabel);
+		// table browser
+		msg.SetParam("SubLabel", pWID->m_sSubLabel);
+		msg.SetParam("Unavailable", pWID->m_bUnavailable);
+		msg.SetParam("BrowseFolder", !pWID->m_sBrowseTo.empty());
 
 		this->HandleMessage(msg);
 	}

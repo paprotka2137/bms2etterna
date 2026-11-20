@@ -1064,6 +1064,15 @@ ETTProtocol::handleStartChart(rapidjson::Value& payload)
 	const auto type = NSMAN->song != nullptr && state == 0
 						? ettpc_startingchart
 						: ettpc_notstartingchart;
+
+	// /random in the room: everyone plays this round on the room's seed
+	const bool roomSeed = type == ettpc_startingchart &&
+						  payload.HasMember("roomseed") &&
+						  payload["roomseed"].IsInt();
+	GAMESTATE->m_bHasRoomStageSeed = roomSeed;
+	if (roomSeed)
+		GAMESTATE->m_iRoomStageSeed = payload["roomseed"].GetInt();
+
 	auto doc = newMsg(type);
 
 	if (type == ettpc_startingchart) {

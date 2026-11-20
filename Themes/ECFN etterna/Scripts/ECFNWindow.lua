@@ -138,10 +138,37 @@ function ECFNWindow.rowBand(i, y, picked, onClick)
 	}
 end
 
--- moves the music wheel to a song
-function ECFNWindow.pickSong(song)
+-- moves the music wheel to a song (and to its chart, when steps are given).
+-- A song the wheel doesn't show (a search, a filter or the sort hides it) is
+-- brought back: the search and the filters are dropped, then the Group sort,
+-- like the multiplayer lobby does. Returns whether the wheel got there.
+function ECFNWindow.pickSong(song, steps)
 	local top = SCREENMAN:GetTopScreen()
-	if song and top and top.GetMusicWheel then
-		top:GetMusicWheel():SelectSong(song)
+	if not (song and top and top.GetMusicWheel) then
+		return false
 	end
+	local w = top:GetMusicWheel()
+	if steps then
+		-- the screen picks the chart closest to this difficulty
+		GAMESTATE:SetPreferredDifficulty(PLAYER_1, steps:GetDifficulty())
+	end
+	if w:SelectSong(song) then
+		return true
+	end
+	MESSAGEMAN:Broadcast("SetSearchString", {searchstring = ""})
+	FILTERMAN:ResetAllFilters()
+	if FILTERMAN:GetFilteringCommonPacks() then
+		FILTERMAN:ToggleCommonPackFilter()
+	end
+	MESSAGEMAN:Broadcast("UpdateFilter")
+	MESSAGEMAN:Broadcast("MaxFilterRateChanged")
+	w:SongSearch("")
+	if w:SelectSong(song) then
+		return true
+	end
+	if GAMESTATE:GetSortOrder() ~= "SortOrder_Group" then
+		w:ChangeSort("SortOrder_Group")
+		return w:SelectSong(song)
+	end
+	return false
 end

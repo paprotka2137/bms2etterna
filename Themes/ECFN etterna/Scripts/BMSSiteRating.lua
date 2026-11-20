@@ -57,8 +57,11 @@ local function done()
 	MESSAGEMAN:Broadcast("BMSSiteRatingLoaded", {rating = S.rating})
 end
 
+-- only this player's lamps (?name=): the whole Players list reads every play
+-- of every player from the site's database (an older site ignores ?name and
+-- sends the whole list, which still works)
 local function askPlayers(name)
-	DLMAN:BMSRequest("GET", "/api/players", {}, function(status, body)
+	DLMAN:BMSRequest("GET", "/api/players", {name = name}, function(status, body)
 		if status ~= 200 then
 			return
 		end
@@ -90,6 +93,10 @@ function S.refresh()
 	end
 	if S.name ~= name then
 		S.rating = nil
+	end
+	-- once per game start: after a calc update, send the unranked charts' ratings again
+	if BMSRanking.resendCalc then
+		BMSRanking.resendCalc()
 	end
 	-- the unranked charts' ratings change as people play them: asked every time,
 	-- calcrating.json wins where both have a chart

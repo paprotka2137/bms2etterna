@@ -1541,22 +1541,22 @@ GetTrackMapping(StepsType st,
 				// ignore turntable in beat mode
 				switch (st) {
 					case StepsType_beat_single5: {
-						std::shuffle(
-						  &iTakeFromTrack[0], &iTakeFromTrack[5], rnd);
-						std::shuffle(
-						  &iTakeFromTrack[6], &iTakeFromTrack[11], rnd);
+						seeded_shuffle(
+						  &iTakeFromTrack[0], &iTakeFromTrack[5], rnd, GAMESTATE->m_iStageSeed);
+						seeded_shuffle(
+						  &iTakeFromTrack[6], &iTakeFromTrack[11], rnd, GAMESTATE->m_iStageSeed);
 						break;
 					}
 					case StepsType_beat_single7: {
-						std::shuffle(
-						  &iTakeFromTrack[1], &iTakeFromTrack[8], rnd);
-						std::shuffle(
-						  &iTakeFromTrack[9], &iTakeFromTrack[16], rnd);
+						seeded_shuffle(
+						  &iTakeFromTrack[1], &iTakeFromTrack[8], rnd, GAMESTATE->m_iStageSeed);
+						seeded_shuffle(
+						  &iTakeFromTrack[9], &iTakeFromTrack[16], rnd, GAMESTATE->m_iStageSeed);
 						break;
 					}
 					default: {
-						std::shuffle(
-						  &iTakeFromTrack[0], &iTakeFromTrack[NumTracks], rnd);
+						seeded_shuffle(
+						  &iTakeFromTrack[0], &iTakeFromTrack[NumTracks], rnd, GAMESTATE->m_iStageSeed);
 						break;
 					}
 				}
@@ -1565,8 +1565,19 @@ GetTrackMapping(StepsType st,
 			f();
 			// shuffle again if shuffle managed to
 			// shuffle them in the same order
+			// A room seed re-rolls from itself (not the global RNG, and
+			// keeping its tag) so everyone in the room re-rolls the same way.
 			while (!memcmp(iOrig, iTakeFromTrack, sizeof iOrig)) {
-				GAMESTATE->SetNewStageSeed();
+				if (is_room_seed(GAMESTATE->m_iStageSeed)) {
+					const auto next =
+					  static_cast<unsigned>(GAMESTATE->m_iStageSeed) *
+						1103515245U +
+					  12345U;
+					GAMESTATE->m_iStageSeed = static_cast<int>(
+					  (next & 0xFFFF0000U) | ROOM_SEED_TAG);
+				} else {
+					GAMESTATE->SetNewStageSeed();
+				}
 				f();
 			}
 
@@ -1761,7 +1772,7 @@ HRanShuffleTaps(NoteData& input, int startIndex, int endIndex)
 	RandomGen rnd(GAMESTATE->m_iStageSeed);
 
 	auto shfl = [&rnd](std::vector<int>& stuff) {
-		std::shuffle(stuff.begin(), stuff.end(), rnd);
+		seeded_shuffle(stuff.begin(), stuff.end(), rnd, GAMESTATE->m_iStageSeed);
 	};
 
 	std::set<int> last_row_cols;
@@ -1882,7 +1893,7 @@ SuperShuffleTaps(NoteData& inout, int iStartIndex, int iEndIndex)
 		std::vector<int> doot(inout.GetNumTracks());
 		iota(std::begin(doot), std::end(doot), 0);
 
-		std::shuffle(doot.begin(), doot.end(), rnd);
+		seeded_shuffle(doot.begin(), doot.end(), rnd, GAMESTATE->m_iStageSeed);
 		for (auto tdoot = 0; tdoot < inout.GetNumTracks(); tdoot++) {
 			const auto t1 = doot[tdoot];
 			const auto& tn1 = inout.GetTapNote(t1, r);
@@ -3055,7 +3066,7 @@ BMSArrangeMapping(int arrange,
 			// never hand back the original order
 			auto same = true;
 			while (same) {
-				std::shuffle(&iTakeFromTrack[0], &iTakeFromTrack[n], rnd);
+				seeded_shuffle(&iTakeFromTrack[0], &iTakeFromTrack[n], rnd, seed);
 				same = true;
 				for (auto t = 0; t < n; ++t)
 					if (iTakeFromTrack[t] != t)
@@ -3092,8 +3103,8 @@ BMSArrangeMapping(int arrange,
 				return false;
 			auto same = true;
 			while (same) {
-				std::shuffle(&white[0], &white[nw], rnd);
-				std::shuffle(&blue[0], &blue[nb], rnd);
+				seeded_shuffle(&white[0], &white[nw], rnd, seed);
+				seeded_shuffle(&blue[0], &blue[nb], rnd, seed);
 				same = true;
 				auto wi = 0, bi = 0;
 				for (auto t = 0; t < n; ++t) {
