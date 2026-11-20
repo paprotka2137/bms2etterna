@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-class HighScore;
+struct HighScore;
 class Song;
 class Steps;
 
