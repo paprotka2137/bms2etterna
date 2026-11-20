@@ -1,0 +1,843 @@
+-- BMS 7k ranking site: logging in from the game and the chart rankings.
+-- The game sends every 1.0x kb7 play by itself once logged in (C++ side,
+-- DLMAN:BMSUploadScore after each song). The site answers in plain text:
+-- the first line is "OK ..." or "ERR <message>", fields split by tabs.
+
+BMSRanking = BMSRanking or {}
+local R = BMSRanking
+R.cache = {}
+
+local function split(s, sep)
+	local out = {}
+	local start = 1
+	while true do
+		local i = s:find(sep, start, true)
+		if not i then
+			out[#out + 1] = s:sub(start)
+			return out
+		end
+		out[#out + 1] = s:sub(start, i - 1)
+		start = i + #sep
+	end
+end
+
+local function parse(body)
+	local lines = {}
+	local text = (body or ""):gsub("\r", "")
+	for _, l in ipairs(split(text, "\n")) do
+		if l ~= "" then
+			lines[#lines + 1] = split(l, "\t")
+		end
+	end
+	return lines
+end
+
+-- false on a game built without the ranking code
+function R.available()
+	return DLMAN ~= nil and DLMAN.BMSRequest ~= nil
+end
+
+function R.loggedIn()
+	return R.available() and DLMAN:BMSIsLoggedIn()
+end
+
+function R.name()
+	return R.available() and DLMAN:BMSGetName() or ""
+end
+
+local function errorOf(status, lines)
+	if status == 0 then
+		return "no connection to the ranking site"
+	end
+	if lines[1] and lines[1][1] == "ERR" then
+		return lines[1][2] or "error"
+	end
+	return "site error " .. tostring(status)
+end
+
+-- the ranking of a chart: returns the cached board, or nil and asks the
+-- site, which broadcasts BMSBoardLoaded {chartkey} when it answers (actors
+-- listen for that instead of getting a callback, so an answer that comes
+-- after the screen is gone touches nothing).
+-- board = {notes, players, rows = {{rank, name, lamp, ex, judged, pg, gr,
+-- gd, bd, pr, combo, gauge, date, lane, key}}, me = my row or nil, err = message}
+R.pending = {}
+function R.chart(ck, force)
+	if not ck then
+		return nil
+	end
+	if not R.available() then
+		return {err = "this build of the game has no ranking support", rows = {}}
+	end
+	local c = R.cache[ck]
+	if c and not force and GetTimeSinceStart() - c.t < (c.board.err and 5 or 60) then
+		return c.board
+	end
+	if R.pending[ck] then
+		return nil
+	end
+	R.pending[ck] = true
+	DLMAN:BMSRequest("GET", "/api/game/chart/" .. ck, {}, function(status, body)
+		R.pending[ck] = nil
+		local lines = parse(body)
+		local board = {rows = {}}
+		if status ~= 200 or not lines[1] or lines[1][1] ~= "OK" then
+			board.err = errorOf(status, lines)
+		else
+			board.notes = tonumber(lines[1][2]) or 0
+			board.players = tonumber(lines[1][3]) or 0
+			local me = string.lower(R.name())
+			for i = 2, #lines do
+				local f = lines[i]
+				local row = {
+					rank = tonumber(f[1]) or i - 1,
+					name = f[2] or "?",
+					lamp = tonumber(f[3]) or 6,
+					ex = tonumber(f[4]) or 0,
+					judged = tonumber(f[5]) or 0,
+					pg = tonumber(f[6]) or 0,
+					gr = tonumber(f[7]) or 0,
+					gd = tonumber(f[8]) or 0,
+					bd = tonumber(f[9]) or 0,
+					pr = tonumber(f[10]) or 0,
+					combo = tonumber(f[11]) or 0,
+					gauge = f[12] or "",
+					date = f[13] or "",
+					-- "RANDOM 3527164": newer sites add the lane order of the play
+					lane = R.shortLane(((f[14] or ""):gsub(" %d+$", ""))),
+					laneOrder = (f[14] or ""):match("^%S+ (%d%d%d%d%d%d%d)$"),
+					-- the play's key on the site, sent by newer versions of the site
+					key = (f[15] and f[15] ~= "") and f[15] or nil,
+				}
+				row.bp = row.bd + row.pr
+				board.rows[#board.rows + 1] = row
+				if me ~= "" and string.lower(row.name) == me then
+					board.me = row
+				end
+			end
+		end
+		R.cache[ck] = {t = GetTimeSinceStart(), board = board}
+		MESSAGEMAN:Broadcast("BMSBoardLoaded", {chartkey = ck})
+	end)
+	return nil
+end
+
+-- lane option of a score from its modifiers, the same names as the site:
+-- OFF, RANDOM, R-RANDOM, S-RANDOM, H-RANDOM, MIRROR or the lane order ("2143657")
+function R.laneOf(mods)
+	for t in string.gmatch(string.lower(mods or ""), "[^,]+") do
+		t = t:gsub("^%s+", ""):gsub("%s+$", "")
+		if t == "bmsrandom" or t == "random" then
+			return "RANDOM"
+		elseif t == "srandom" or t == "s-random" or t == "bmssrandom" then
+			return "S-RANDOM"
+		elseif t == "hrandom" or t == "h-random" or t == "bmshrandom" then
+			return "H-RANDOM"
+		elseif t == "rrandom" or t == "r-random" or t == "bmsrrandom" then
+			return "R-RANDOM"
+		elseif t == "crandom" or t == "c-random" or t == "bmscrandom" then
+			return "C-RANDOM"
+		elseif t == "mirror" or t == "bmsmirror" then
+			return "MIRROR"
+		end
+	end
+	for t in string.gmatch(string.lower(mods or ""), "[^,]+") do
+		local order = t:match("^%s*lanes(%d%d%d%d%d%d%d)%s*$")
+		if order then
+			return order == "1234567" and "OFF" or order
+		end
+	end
+	return "OFF"
+end
+
+-- the lane order a RANDOM / R-RANDOM / MIRROR score was played on
+-- ("3527164": lane 1 had the chart's lane 3...), nil for other options and
+-- on a game built without it
+function R.laneOrderOf(score)
+	if not score or not score.GetBMSLaneOrder then
+		return nil
+	end
+	local lane = R.laneOf(score:GetModifiers())
+	if lane ~= "RANDOM" and lane ~= "C-RANDOM" and lane ~= "R-RANDOM" and lane ~= "MIRROR" then
+		return nil
+	end
+	local order = score:GetBMSLaneOrder()
+	return (order and #order == 7) and order or nil
+end
+
+-- short form for the narrow column
+function R.shortLane(lane)
+	local short = {["RANDOM"] = "RAN", ["S-RANDOM"] = "S-RAN", ["H-RANDOM"] = "H-RAN", ["R-RANDOM"] = "R-RAN", ["C-RANDOM"] = "C-RAN", ["MIRROR"] = "MIR", [""] = "-"}
+	return short[lane] or lane
+end
+
+-- "93.21%" of the chart's max EX (2 per note), "-" before anyone clears it
+-- notes: the chart's own note count from the game, so failed plays get a
+-- rate too before anyone has cleared the chart (the site only knows the
+-- note count from a clear)
+function R.rate(board, row, notes)
+	-- O2Jam charts: the site keeps the DMJam score in thousandths
+	if isO2JamPlay() then
+		local v = row.ex / 1000
+		return string.format("%.3f %s", v, getO2JamGrade(v))
+	end
+	local n = (notes and notes > 0) and notes or board.notes
+	if not n or n <= 0 then
+		return "-"
+	end
+	return string.format("%.2f%%", row.ex / (2 * n) * 100)
+end
+
+-- note count of the selected chart
+function R.chartNotes()
+	local steps = GAMESTATE:GetCurrentSteps()
+	if not steps then
+		return 0
+	end
+	return steps:GetRadarValues(PLAYER_1):GetValue("RadarCategory_Notes") or 0
+end
+
+function R.login(name, password, cb)
+	DLMAN:BMSRequest("POST", "/api/game/login", {name = name, password = password}, function(status, body)
+		local lines = parse(body)
+		if status == 200 and lines[1] and lines[1][1] == "OK" and lines[1][2] then
+			R.cache = {}
+			DLMAN:BMSSetLogin(lines[1][3] or name, lines[1][2])
+			cb(true, lines[1][3] or name)
+		else
+			cb(false, errorOf(status, lines))
+		end
+	end)
+end
+
+function R.logout()
+	if R.loggedIn() then
+		DLMAN:BMSRequest("POST", "/api/game/logout", {}, function() end)
+	end
+	R.cache = {}
+	DLMAN:BMSSetLogin("", "")
+end
+
+-- asks for the nick and the password in two text boxes, then logs in.
+-- `stepper` is any actor, it waits a moment between the two boxes like
+-- the Etterna Online login does
+function R.askLogin(stepper)
+	if not R.available() then
+		ms.ok("This build of the game has no ranking support")
+		return
+	end
+	local redir = SCREENMAN:get_input_redirected(PLAYER_1)
+	local function setRedir(v)
+		if redir then
+			SCREENMAN:set_input_redirected(PLAYER_1, v)
+		end
+	end
+	setRedir(false)
+	local trim = function(s)
+		return (s:gsub("^%s*(.-)%s*$", "%1"))
+	end
+	easyInputStringOKCancel("Ranking nick or email:", 255, false, function(name)
+		name = trim(name)
+		if name == "" then
+			setRedir(true)
+			return
+		end
+		R.pendingName = name
+		stepper:stoptweening():sleep(0.04):queuecommand("BMSLoginStep2")
+	end, function()
+		setRedir(true)
+	end)
+	-- the actor runs this from BMSLoginStep2Command
+	R.step2 = function()
+		easyInputStringOKCancel("Ranking password:", 255, true, function(password)
+			local name = R.pendingName
+			R.pendingName = nil
+			setRedir(true)
+			if password == "" then
+				return
+			end
+			ms.ok("Logging in to the ranking...")
+			R.login(name, password, function(ok, msg)
+				if ok then
+					ms.ok("Ranking: logged in as " .. msg)
+				else
+					ms.ok("Ranking login failed: " .. msg)
+				end
+			end)
+		end, function()
+			R.pendingName = nil
+			setRedir(true)
+		end)
+	end
+end
+
+-- drop cached rankings when a play was sent or the login changed
+-- After a play on an unranked chart (the site answers the upload with a 4th
+-- field "U") the game sends the chart's Good enough rating, since the site
+-- has no rating of its own for charts outside the tables. Once per chart a
+-- session; the site keeps the first value it gets.
+R.calcSent = R.calcSent or {}
+function R.sendUnrankedCalc(ck, response)
+	if not ck or R.calcSent[ck] or not R.loggedIn() or not getBMSSiteRating then
+		return
+	end
+	local first = parse(response)[1]
+	if not first or first[1] ~= "OK" or first[4] ~= "U" then
+		return
+	end
+	local ok, steps = pcall(function()
+		return SONGMAN:GetStepsByChartKey(ck)
+	end)
+	if not ok or not steps then
+		return
+	end
+	local ok2, easy, hard = pcall(getBMSSiteRating, steps)
+	if not ok2 or not easy or not hard then
+		return
+	end
+	R.calcSent[ck] = true
+	DLMAN:BMSRequest("POST", "/api/game/calc", {
+		chart_key = ck,
+		easy = string.format("%.2f", easy),
+		hard = string.format("%.2f", hard),
+		version = tostring(BMSClearCalcVersion or 0),
+	}, function(status, body)
+		if status ~= 200 then
+			R.calcSent[ck] = nil
+		end
+	end)
+end
+
+-- after an update that changed the calc (BMSClearCalcVersion), the site's
+-- ratings of the unranked charts on this computer are sent again, once (the
+-- site keeps the value of the newest calc version). The version that was last
+-- sent is kept in Save/BMSCache/calcversion.txt.
+local CALC_VER_FILE = "/Save/BMSCache/calcversion.txt"
+local function readSmall(path)
+	local f = RageFileUtil.CreateRageFile()
+	local s
+	if f:Open(path, 1) then
+		s = f:Read()
+		f:Close()
+	end
+	f:destroy()
+	return s
+end
+local function writeSmall(path, s)
+	local f = RageFileUtil.CreateRageFile()
+	if f:Open(path, 2) then
+		f:Write(s)
+		f:Close()
+	end
+	f:destroy()
+end
+function R.resendCalc()
+	if BMSCalcResent or not BMSClearCalcVersion or not R.loggedIn() or not getBMSSiteRating then
+		return
+	end
+	if tonumber(readSmall(CALC_VER_FILE) or "") == BMSClearCalcVersion then
+		BMSCalcResent = true
+		return
+	end
+	BMSCalcResent = true
+	DLMAN:BMSRequest("GET", "/api/unranked-calc", {}, function(status, body)
+		if status ~= 200 or not body then
+			BMSCalcResent = nil
+			return
+		end
+		for ck in body:gmatch('"(X%x+)":%[') do
+			local ok, steps = pcall(function()
+				return SONGMAN:GetStepsByChartKey(ck)
+			end)
+			if ok and steps then
+				local ok2, easy, hard = pcall(getBMSSiteRating, steps)
+				if ok2 and easy and hard then
+					R.calcSent[ck] = true
+					DLMAN:BMSRequest("POST", "/api/game/calc", {
+						chart_key = ck,
+						easy = string.format("%.2f", easy),
+						hard = string.format("%.2f", hard),
+						version = tostring(BMSClearCalcVersion),
+					}, function() end)
+				end
+			end
+		end
+		writeSmall(CALC_VER_FILE, tostring(BMSClearCalcVersion))
+	end)
+end
+
+function R.forget(ck)
+	if ck then
+		R.cache[ck] = nil
+		R.pending[ck] = nil
+	else
+		R.cache = {}
+		R.pending = {}
+		R.details = {}
+	end
+end
+
+-- ---------------------------------------------------------------- one play
+-- clicking a player's row in the Ranking window shows that play like the
+-- site's score window: judgments come with the board, the gauge graph,
+-- modifiers and judge come from the site's /api/score (the same one the
+-- site's own page uses), found by the play's key.
+
+-- a small JSON reader for the site's /api answers (the game has none)
+function R.json(str)
+	local pos = 1
+	local function ws()
+		pos = str:find("[^ \t\r\n]", pos) or #str + 1
+	end
+	local value
+	local function utf8(c)
+		if c < 0x80 then
+			return string.char(c)
+		elseif c < 0x800 then
+			return string.char(0xC0 + math.floor(c / 64), 0x80 + c % 64)
+		end
+		return string.char(0xE0 + math.floor(c / 4096), 0x80 + math.floor(c / 64) % 64, 0x80 + c % 64)
+	end
+	local esc = {b = "\b", f = "\f", n = "\n", r = "\r", t = "\t"}
+	local function str_()
+		local out = {}
+		pos = pos + 1
+		while true do
+			local c = str:sub(pos, pos)
+			if c == "" then
+				error("unfinished string")
+			elseif c == '"' then
+				pos = pos + 1
+				return table.concat(out)
+			elseif c == "\\" then
+				local e = str:sub(pos + 1, pos + 1)
+				if e == "u" then
+					local code = tonumber(str:sub(pos + 2, pos + 5), 16) or 63
+					pos = pos + 6
+					-- a surrogate pair: one character outside the BMP
+					if code >= 0xD800 and code <= 0xDBFF and str:sub(pos, pos + 1) == "\\u" then
+						local lo = tonumber(str:sub(pos + 2, pos + 5), 16) or 0
+						pos = pos + 6
+						code = 0x10000 + (code - 0xD800) * 1024 + (lo - 0xDC00)
+						out[#out + 1] = string.char(0xF0 + math.floor(code / 262144), 0x80 + math.floor(code / 4096) % 64,
+							0x80 + math.floor(code / 64) % 64, 0x80 + code % 64)
+					else
+						out[#out + 1] = utf8(code)
+					end
+				else
+					out[#out + 1] = esc[e] or e
+					pos = pos + 2
+				end
+			else
+				local j = str:find('["\\]', pos)
+				if not j then
+					error("unfinished string")
+				end
+				out[#out + 1] = str:sub(pos, j - 1)
+				pos = j
+			end
+		end
+	end
+	value = function()
+		ws()
+		local c = str:sub(pos, pos)
+		if c == "{" then
+			local o = {}
+			pos = pos + 1
+			ws()
+			if str:sub(pos, pos) == "}" then
+				pos = pos + 1
+				return o
+			end
+			while true do
+				ws()
+				local k = str_()
+				ws()
+				pos = pos + 1 -- :
+				o[k] = value()
+				ws()
+				local d = str:sub(pos, pos)
+				pos = pos + 1
+				if d == "}" then
+					return o
+				elseif d ~= "," then
+					error("bad object")
+				end
+			end
+		elseif c == "[" then
+			local a = {}
+			pos = pos + 1
+			ws()
+			if str:sub(pos, pos) == "]" then
+				pos = pos + 1
+				return a
+			end
+			while true do
+				a[#a + 1] = value()
+				ws()
+				local d = str:sub(pos, pos)
+				pos = pos + 1
+				if d == "]" then
+					return a
+				elseif d ~= "," then
+					error("bad array")
+				end
+			end
+		elseif c == '"' then
+			return str_()
+		elseif str:sub(pos, pos + 3) == "true" then
+			pos = pos + 4
+			return true
+		elseif str:sub(pos, pos + 4) == "false" then
+			pos = pos + 5
+			return false
+		elseif str:sub(pos, pos + 3) == "null" then
+			pos = pos + 4
+			return nil
+		end
+		local num = str:match("^-?%d+%.?%d*[eE]?[-+]?%d*", pos)
+		if not num or num == "" then
+			error("bad value at " .. pos)
+		end
+		pos = pos + #num
+		return tonumber(num)
+	end
+	local ok, v = pcall(value)
+	if ok then
+		return v
+	end
+	return nil
+end
+
+function R.urlEncode(s)
+	return (tostring(s):gsub("[^%w%-%._~]", function(c)
+		return string.format("%%%02X", string.byte(c))
+	end))
+end
+
+-- details of one board row: returns them when cached, else nil and asks the
+-- site, which broadcasts BMSScoreDetailLoaded {chartkey, name} when done.
+-- detail = {err = message} or the site's score: lamp, gauge, judge, lanes,
+-- modifiers, played_at, has_replay, score_key, graph = {0-100, ...} or nil
+R.details = {}
+local function detailId(ck, name)
+	return ck .. "|" .. string.lower(name)
+end
+function R.scoreDetail(ck, row)
+	if not ck or not row or not R.available() then
+		return {err = "this build of the game has no ranking support"}
+	end
+	local id = detailId(ck, row.name)
+	local d = R.details[id]
+	if d and (d.ex == row.ex) and (not d.detail.err or GetTimeSinceStart() - d.t < 5) then
+		return d.detail
+	end
+	if R.pending[id] then
+		return nil
+	end
+	R.pending[id] = true
+	local function done(detail)
+		R.pending[id] = nil
+		R.details[id] = {t = GetTimeSinceStart(), ex = row.ex, detail = detail}
+		MESSAGEMAN:Broadcast("BMSScoreDetailLoaded", {chartkey = ck, name = row.name})
+	end
+	local function fetchScore(key)
+		DLMAN:BMSRequest("GET", "/api/score/" .. R.urlEncode(row.name) .. "/" .. R.urlEncode(key), {}, function(status, body)
+			local j = R.json(body or "")
+			if status ~= 200 or type(j) ~= "table" or type(j.score) ~= "table" then
+				local msg = type(j) == "table" and j.error or nil
+				done({err = msg or (status == 0 and "no connection to the ranking site" or "site error " .. tostring(status))})
+				return
+			end
+			local s = j.score
+			local g = s.gauge_graph
+			s.graph = (type(g) == "table" and #g > 1) and g or nil
+			done(s)
+		end)
+	end
+	if row.key then
+		fetchScore(row.key)
+		return nil
+	end
+	-- an older site sends no key with the board: find the play in the
+	-- chart's list of every play (same player, EX and date)
+	DLMAN:BMSRequest("GET", "/api/chart/" .. R.urlEncode(ck), {}, function(status, body)
+		local j = R.json(body or "")
+		if status ~= 200 or type(j) ~= "table" or type(j.all) ~= "table" then
+			R.pending[id] = nil
+			done({err = status == 0 and "no connection to the ranking site" or "could not find this play on the site"})
+			return
+		end
+		local name = string.lower(row.name)
+		local key, bestEx
+		for _, s in ipairs(j.all) do
+			if type(s) == "table" and string.lower(tostring(s.player)) == name then
+				if s.ex == row.ex and tostring(s.played_at) == row.date then
+					key = s.score_key
+					break
+				end
+				if s.ex == row.ex and not bestEx then
+					key, bestEx = s.score_key, s.ex
+				end
+			end
+		end
+		if not key then
+			done({err = "could not find this play on the site"})
+			return
+		end
+		row.key = key
+		fetchScore(key)
+	end)
+	return nil
+end
+
+-- this profile's own copy of a play, when it is on this computer
+function R.localScore(ck, key)
+	local rates = ck and key and SCOREMAN:GetScoresByKey(ck)
+	if not rates then
+		return nil
+	end
+	for _, hsl in pairs(rates) do
+		for _, sc in ipairs(hsl:GetScores()) do
+			if sc:GetScoreKey() == key then
+				return sc
+			end
+		end
+	end
+	return nil
+end
+
+-- DJ level of a rate (0-1), like the site
+function R.djLevel(r)
+	local n = r * 9
+	local levels = {"F", "F", "E", "D", "C", "B", "A", "AA", "AAA"}
+	return levels[math.max(1, math.min(9, math.floor(n) + 1))]
+end
+
+-- ---------------------------------------------------------------- upload local scores
+-- The Ranking window's UPLOAD CHART / UPLOAD FOLDER: this profile's 1.0x
+-- kb7 plays of some charts go to the site the same way as right after a
+-- song (DLMAN:BMSUploadLocalScore, the play's replay included). First the
+-- site says which plays it doesn't have (/api/game/missing): plays already
+-- there are skipped and plays deleted from the site are not sent again.
+-- Then one play at a time. Actors follow R.upload through the
+-- BMSLocalUpload message; it keeps going when the screen changes.
+-- R.upload = {label, total, done, sent, have, deleted, rejected, failed,
+-- running, checked (false: the site has no /api/game/missing yet, so
+-- "sent" also counts plays it already had), reason, err}
+local UPLOAD_CHECK_CHUNK = 400
+
+function R.canUploadLocal()
+	return R.loggedIn() and DLMAN.BMSUploadLocalScore ~= nil
+end
+
+function R.uploading()
+	return R.upload ~= nil and R.upload.running
+end
+
+-- this profile's 1.0x plays of these kb7 charts: {{key, ck}}
+function R.localPlays(cks)
+	local out, seen = {}, {}
+	for _, ck in ipairs(cks or {}) do
+		local steps = SONGMAN:GetStepsByChartKey(ck)
+		local rates = steps and steps:GetStepsType() == "StepsType_Kb7_Single" and SCOREMAN:GetScoresByKey(ck)
+		for _, hsl in pairs(rates or {}) do
+			for _, sc in ipairs(hsl:GetScores()) do
+				local key = sc:GetScoreKey()
+				if not seen[key] and math.abs(sc:GetMusicRate() - 1) <= 0.001 then
+					seen[key] = true
+					out[#out + 1] = {key = key, ck = ck}
+				end
+			end
+		end
+	end
+	return out
+end
+
+-- the chart keys of every kb7 chart of these songs
+function R.chartKeysOfSongs(songs)
+	local cks = {}
+	for _, song in ipairs(songs or {}) do
+		for _, st in ipairs(song:GetAllSteps()) do
+			if st:GetStepsType() == "StepsType_Kb7_Single" then
+				cks[#cks + 1] = st:GetChartKey()
+			end
+		end
+	end
+	return cks
+end
+
+local function uploadNotify(u)
+	MESSAGEMAN:Broadcast("BMSLocalUpload", {phase = u.phase})
+end
+
+-- one line for the Ranking window
+function R.uploadText()
+	local u = R.upload
+	if not u then
+		return ""
+	end
+	if u.phase == "check" then
+		return string.format("%s: checking %d play%s with the site...", u.label, u.total, u.total == 1 and "" or "s")
+	end
+	if u.phase == "send" then
+		return string.format("%s: uploading %d/%d...", u.label, u.done, u.total)
+	end
+	if u.total == 0 then
+		return u.label .. ": no 1.0x 7k plays on this computer"
+	end
+	local parts = {string.format("%d uploaded", u.sent)}
+	if u.checked then
+		parts[#parts + 1] = string.format("%d already on the site", u.have)
+	end
+	if u.deleted > 0 then
+		parts[#parts + 1] = string.format("%d deleted there, skipped", u.deleted)
+	end
+	if u.rejected > 0 then
+		parts[#parts + 1] = string.format("%d refused (%s)", u.rejected, u.reason or "?")
+	end
+	if u.failed > 0 then
+		parts[#parts + 1] = string.format("%d not sent", u.failed)
+	end
+	local s = u.label .. ": " .. table.concat(parts, ", ")
+	if u.err then
+		s = s .. " - " .. u.err
+	end
+	if not u.checked then
+		s = s .. " (this site version can't say which it already had)"
+	end
+	return s
+end
+
+-- sends the plays of these charts; label names them in the progress line.
+-- Returns false and a message when it can't start.
+function R.uploadLocal(cks, label)
+	if R.uploading() then
+		return false, "an upload is already running"
+	end
+	if not R.loggedIn() then
+		return false, "log in to the ranking first"
+	end
+	if not DLMAN.BMSUploadLocalScore then
+		return false, "this build of the game can't upload old plays"
+	end
+	local plays = R.localPlays(cks)
+	local u = {
+		label = label, total = #plays, done = 0, sent = 0, have = 0, deleted = 0,
+		rejected = 0, failed = 0, running = true, checked = true, phase = "check",
+		todo = {}, touched = {},
+	}
+	R.upload = u
+
+	local function finish()
+		u.running = false
+		u.phase = "done"
+		u.failed = u.failed + #u.todo
+		u.todo = {}
+		for ck in pairs(u.touched) do
+			R.forget(ck)
+		end
+		uploadNotify(u)
+		ms.ok("Ranking: " .. R.uploadText())
+	end
+
+	local function sendNext()
+		local p = table.remove(u.todo, 1)
+		if not p then
+			return finish()
+		end
+		local started = DLMAN:BMSUploadLocalScore(p.key, function(status, body)
+			local lines = parse(body)
+			if status == 200 and lines[1] and lines[1][1] == "OK" then
+				u.sent = u.sent + 1
+				u.touched[p.ck] = true
+				R.sendUnrankedCalc(p.ck, body)
+			elseif status == 0 then
+				-- no connection: the rest would fail the same way
+				u.failed = u.failed + 1
+				u.done = u.done + 1
+				u.err = errorOf(status, lines)
+				return finish()
+			else
+				local reason = errorOf(status, lines)
+				if reason:find("deleted this play", 1, true) then
+					u.deleted = u.deleted + 1
+				else
+					u.rejected = u.rejected + 1
+					u.reason = reason
+				end
+			end
+			u.done = u.done + 1
+			uploadNotify(u)
+			sendNext()
+		end)
+		if not started then
+			-- logged out meanwhile, or its chart is gone
+			u.failed = u.failed + 1
+			u.done = u.done + 1
+			return sendNext()
+		end
+	end
+
+	local function startSending()
+		u.phase = "send"
+		uploadNotify(u)
+		sendNext()
+	end
+
+	-- which plays the site doesn't have, UPLOAD_CHECK_CHUNK at a time
+	local function check(from)
+		if from > #plays then
+			return startSending()
+		end
+		local upto = math.min(#plays, from + UPLOAD_CHECK_CHUNK - 1)
+		local keys = {}
+		for i = from, upto do
+			keys[#keys + 1] = plays[i].key
+		end
+		DLMAN:BMSRequest("POST", "/api/game/missing", {keys = table.concat(keys, ",")}, function(status, body)
+			local lines = parse(body)
+			if status == 200 and lines[1] and lines[1][1] == "OK" then
+				local state = {}
+				for i = 2, #lines do
+					state[lines[i][1]] = lines[i][2]
+				end
+				for i = from, upto do
+					local st = state[plays[i].key]
+					if st == "new" then
+						u.todo[#u.todo + 1] = plays[i]
+					else
+						if st == "deleted" then
+							u.deleted = u.deleted + 1
+						else
+							u.have = u.have + 1
+						end
+						u.done = u.done + 1
+					end
+				end
+				return check(upto + 1)
+			end
+			if status == 404 then
+				-- the site isn't updated yet: send everything, it still keeps
+				-- one copy of a play and refuses the deleted ones
+				u.checked = false
+				for i = from, #plays do
+					u.todo[#u.todo + 1] = plays[i]
+				end
+				return startSending()
+			end
+			u.err = errorOf(status, lines)
+			u.failed = #plays - u.done
+			u.todo = {}
+			finish()
+		end)
+	end
+
+	uploadNotify(u)
+	if #plays == 0 then
+		finish()
+	else
+		check(1)
+	end
+	return true
+end

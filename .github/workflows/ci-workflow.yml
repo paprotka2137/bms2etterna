@@ -621,7 +621,7 @@ jobs:
       - name: Pack the files update
         run: |
           files="res-extensa-files-${{ steps.ver.outputs.version }}.zip"
-          zip -qr -X "$files" "Themes/ECFN etterna" NoteSkins Data Assets Scripts \
+          zip -qr -X "$files" "Themes/ECFN etterna" "Themes/Res Extensa" NoteSkins Data Assets Scripts \
             tools/update_bms_tables.py tools/update_bms_tables.bat \
             -x "*.przed-*" "*.bak*" "*/.git*"
           printf '{"version": "%s", "build": "%s", "files": "%s"}\n' \

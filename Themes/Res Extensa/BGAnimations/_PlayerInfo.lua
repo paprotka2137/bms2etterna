@@ -1,0 +1,867 @@
+-- Old avatar actor frame.. renamed since much more will be placed here (hopefully?)
+local t =
+	Def.ActorFrame {
+	Name = "PlayerAvatar"
+}
+
+local profile
+
+local profileName = THEME:GetString("GeneralInfo", "NoProfile")
+local playCount = 0
+local playTime = 0
+local noteCount = 0
+local numfaves = 0
+local AvatarX = 0
+local AvatarY = SCREEN_HEIGHT - 50
+-- 7k song select: the bottom bar ends before the ECFN wheel, what sat on the
+-- right and in the middle moves into it (the clock stays in the corner like ECFN)
+local ecfn = Var("ecfn") == true
+local rightX = ecfn and SCREEN_WIDTH - 12 or SCREEN_WIDTH - 3
+local middleX = ecfn and ecfnX(745) or SCREEN_CENTER_X
+local uploadX = ecfn and ecfnX(640) or SCREEN_WIDTH * 2/3
+local playerRating = 0
+local uploadbarwidth = 100
+local uploadbarheight = 10
+
+local ButtonColor = getMainColor("positive")
+local nonButtonColor = ColorMultiplier(getMainColor("positive"), 1.25)
+-- the ECFN panels use white and pale blue text
+if ecfn then
+	ButtonColor = rxColor("white")
+	nonButtonColor = rxColor("text")
+end
+--------UNCOMMENT THIS NEXT LINE IF YOU WANT THE OLD LOOK--------
+--nonButtonColor = getMainColor("positive")
+
+local setnewdisplayname = function(answer)
+	if answer ~= "" then
+		profile:RenameProfile(answer)
+		profileName = answer
+		MESSAGEMAN:Broadcast("ProfileRenamed", {doot = answer})
+	end
+end
+
+local function highlightIfOver(self)
+	if isOver(self) then
+		local topname = SCREENMAN:GetTopScreen():GetName()
+		if topname ~= "ScreenEvaluationNormal" and topname ~= "ScreenNetEvaluation" then
+			self:diffusealpha(0.6)
+		end
+	else
+		self:diffusealpha(1)
+	end
+end
+
+local translated_info = {
+	ProfileNew = THEME:GetString("ProfileChanges", "ProfileNew"),
+	NameChange = THEME:GetString("ProfileChanges", "ProfileNameChange"),
+	ClickLogin = THEME:GetString("GeneralInfo", "ClickToLogin"),
+	ClickLogout = THEME:GetString("GeneralInfo", "ClickToLogout"),
+	NotLoggedIn = THEME:GetString("GeneralInfo", "NotLoggedIn"),
+	LoggedInAs = THEME:GetString("GeneralInfo", "LoggedInAs.."),
+	LoginFailed = THEME:GetString("GeneralInfo", "LoginFailed"),
+	LoginSuccess = THEME:GetString("GeneralInfo", "LoginSuccess"),
+	LoginCanceled = THEME:GetString("GeneralInfo", "LoginCanceled"),
+	Password = THEME:GetString("GeneralInfo","Password"),
+	Username = THEME:GetString("GeneralInfo","Email"),
+	Plays = THEME:GetString("GeneralInfo", "ProfilePlays"),
+	PlaysThisSession = THEME:GetString("GeneralInfo", "PlaysThisSession"),
+	TapsHit = THEME:GetString("GeneralInfo", "ProfileTapsHit"),
+	Playtime = THEME:GetString("GeneralInfo", "ProfilePlaytime"),
+	Judge = THEME:GetString("GeneralInfo", "ProfileJudge"),
+	JudgeRank = THEME:GetString("GeneralInfo", "ProfileJudgeRank"),
+	Gauge = THEME:GetString("GeneralInfo", "ProfileGauge"),
+	Arrange = THEME:GetString("GeneralInfo", "ProfileArrange"),
+	AutoShift = THEME:GetString("GeneralInfo", "ProfileAutoShift"),
+	RefreshSongs = THEME:GetString("GeneralInfo", "DifferentialReloadTrigger"),
+	SongsLoaded = THEME:GetString("GeneralInfo", "ProfileSongsLoaded"),
+	SessionTime = THEME:GetString("GeneralInfo", "SessionTime"),
+	GroupsLoaded = THEME:GetString("GeneralInfo", "GroupsLoaded"),
+}
+
+local function UpdateTime(self)
+	local year = Year()
+	local month = MonthOfYear() + 1
+	local day = DayOfMonth()
+	local hour = Hour()
+	local minute = Minute()
+	local second = Second()
+	if ecfn then
+		-- the ECFN clock: "2026 11/01  18:55:47"
+		self:GetChild("CurrentTime"):settextf("%04d %02d/%02d  %02d:%02d:%02d", year, month, day, hour, minute, second)
+	else
+		self:GetChild("CurrentTime"):settextf("%04d-%02d-%02d %02d:%02d:%02d", year, month, day, hour, minute, second)
+	end
+
+	local sessiontime = GAMESTATE:GetSessionTime()
+	self:GetChild("SessionTime"):settextf("%s: %s", translated_info["SessionTime"], SecondsToHHMMSS(sessiontime))
+	self:diffuse(nonButtonColor)
+end
+
+-- handle logging in
+local function loginStep1(self)
+	local redir = SCREENMAN:get_input_redirected(PLAYER_1)
+	local function off()
+		if redir then
+			SCREENMAN:set_input_redirected(PLAYER_1, false)
+		end
+	end
+	local function on()
+		if redir then
+			SCREENMAN:set_input_redirected(PLAYER_1, true)
+		end
+	end
+	off()
+
+	username = ""
+
+	-- this sets up 2 text entry windows to pull your username and pass
+	-- if you press escape or just enter nothing, you are forced out
+	-- input redirects are controlled here because we want to be careful not to break any prior redirects
+	easyInputStringOKCancel(
+		translated_info["Username"]..":", 255, true,
+		function(answer)
+			username = answer
+			-- moving on to step 2 if the answer isnt blank
+			if answer:gsub("^%s*(.-)%s*$", "%1") ~= "" then
+				self:sleep(0.04):queuecommand("LoginStep2")
+			else
+				ms.ok(translated_info["LoginCanceled"])
+				on()
+			end
+		end,
+		function()
+			ms.ok(translated_info["LoginCanceled"])
+			on()
+		end
+	)
+end
+
+-- do not use this function outside of first calling loginStep1
+local function loginStep2()
+	local redir = SCREENMAN:get_input_redirected(PLAYER_1)
+	local function off()
+		if redir then
+			SCREENMAN:set_input_redirected(PLAYER_1, false)
+		end
+	end
+	local function on()
+		if redir then
+			SCREENMAN:set_input_redirected(PLAYER_1, true)
+		end
+	end
+	-- try to keep the scope of password here
+	-- if we open up the scope, if a lua error happens on this screen
+	-- the password may show up in the error message
+	local password = ""
+	easyInputStringOKCancel(
+		translated_info["Password"]..":", 255, true,
+		function(answer)
+			password = answer
+			-- log in if not blank
+			if answer:gsub("^%s*(.-)%s*$", "%1") ~= "" then
+				DLMAN:Login(username, password)
+			else
+				ms.ok(translated_info["LoginCanceled"])
+			end
+			on()
+		end,
+		function()
+			ms.ok(translated_info["LoginCanceled"])
+			on()
+		end
+	)
+end
+
+
+
+t[#t + 1] = Def.Actor {
+	BeginCommand = function(self)
+		self:queuecommand("Set")
+	end,
+	SetCommand = function(self)
+		profile = GetPlayerOrMachineProfile(PLAYER_1)
+		profileName = profile:GetDisplayName()
+		playCount = SCOREMAN:GetTotalNumberOfScores()
+		playTime = profile:GetTotalSessionSeconds()
+		noteCount = profile:GetTotalTapsAndHolds()
+		playerRating = profile:GetPlayerRating()
+	end,
+	PlayerRatingUpdatedMessageCommand = function(self)
+		playerRating = profile:GetPlayerRating()
+		self:GetParent():GetDescendant("AvatarPlayerNumber_P1", "Name"):playcommand("Set")
+	end
+}
+
+t[#t + 1] = Def.ActorFrame {
+	Name = "Avatar" .. PLAYER_1,
+	BeginCommand = function(self)
+		self:queuecommand("Set")
+	end,
+	SetCommand = function(self)
+		if profile == nil then
+			self:visible(false)
+		else
+			self:visible(true)
+		end
+	end,
+	UIElements.SpriteButton(1, 1, nil) .. {
+		Name = "Image",
+		InitCommand = function(self)
+			self:visible(true):halign(0):valign(0):xy(AvatarX, AvatarY)
+		end,
+		BeginCommand = function(self)
+			self:queuecommand("ModifyAvatar")
+		end,
+		ModifyAvatarCommand = function(self)
+			self:finishtweening()
+			self:Load(getAvatarPath(PLAYER_1))
+			self:zoomto(50, 50)
+		end,
+		MouseDownCommand = function(self, params)
+			if params.event == "DeviceButton_left mouse button" and not SCREENMAN:get_input_redirected(PLAYER_1) then
+				local top = SCREENMAN:GetTopScreen()
+				SCREENMAN:SetNewScreen("ScreenAssetSettings")
+			end
+		end
+	},
+	UIElements.TextToolTip(1, 1, "Common Normal") .. {
+		Name = "Name",
+		InitCommand = function(self)
+			self:halign(0)
+			self:xy(AvatarX + 54, AvatarY + 8)
+			self:zoom(0.55)
+			self:maxwidth(ecfn and 190 / 0.55 or capWideScale(360,500))
+			self:maxheight(22)
+			self:diffuse(ButtonColor)
+		end,
+		SetCommand = function(self)
+			if ecfn then
+				-- the rating goes in the PLAYER DATA rows
+				self:settext(profileName)
+			else
+				self:settextf("%s: %5.2f", profileName, playerRating)
+			end
+			if profileName == "Default Profile" or profileName == "" then
+				easyInputStringWithFunction(
+					translated_info["ProfileNew"],
+					64,
+					false,
+					setnewdisplayname
+				)
+			end
+		end,
+		MouseDownCommand = function(self, params)
+			if params.event == "DeviceButton_left mouse button" and not SCREENMAN:get_input_redirected(PLAYER_1) then
+				easyInputStringWithFunction(translated_info["NameChange"], 64, false, setnewdisplayname)
+			end
+		end,
+		ProfileRenamedMessageCommand = function(self, params)
+			if ecfn then
+				self:settext(params.doot)
+				return
+			end
+			self:settextf("%s: %5.2f", params.doot, playerRating)
+		end,
+		MouseOverCommand = function(self)
+			highlightIfOver(self)
+		end,
+		MouseOutCommand = function(self)
+			highlightIfOver(self)
+		end,
+	},
+	UIElements.TextToolTip(1, 1, "Common Normal") .. {
+		Name = "loginlogout",
+		InitCommand = function(self)
+			self:xy(middleX, AvatarY + 8):halign(0.5):zoom(0.45):diffuse(ButtonColor)
+			-- 7k logs in on the Ranking window, not to EtternaOnline
+			self:visible(not ecfn)
+		end,
+		BeginCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		SetCommand = function(self)
+			if DLMAN:IsLoggedIn() then
+				self:queuecommand("Login")
+			else
+				self:queuecommand("LogOut")
+			end
+		end,
+		LogOutMessageCommand = function(self)
+			local top = SCREENMAN:GetTopScreen():GetName()
+			if DLMAN:IsLoggedIn() then
+				playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).UserName = ""
+				playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).PasswordToken = ""
+				playerConfig:set_dirty(pn_to_profile_slot(PLAYER_1))
+				playerConfig:save(pn_to_profile_slot(PLAYER_1))
+				DLMAN:Logout()
+			end
+			if top == "ScreenSelectMusic" or top == "ScreenTextEntry" then
+				self:settext(translated_info["ClickLogin"])
+			else
+				self:settext(translated_info["NotLoggedIn"])
+			end
+		end,
+		LoginMessageCommand = function(self)
+			if not SCREENMAN:GetTopScreen() then return end -- ?????
+			local top = SCREENMAN:GetTopScreen():GetName()
+			if not DLMAN:IsLoggedIn() then return end
+			playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).UserName = DLMAN:GetUsername()
+			playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).PasswordToken = DLMAN:GetToken()
+			playerConfig:set_dirty(pn_to_profile_slot(PLAYER_1))
+			playerConfig:save(pn_to_profile_slot(PLAYER_1))
+			if top == "ScreenSelectMusic" or top == "ScreenTextEntry" then
+				self:settext(translated_info["ClickLogout"])
+			else
+				self:settext("")
+			end
+		end,
+		MouseDownCommand = function(self, params)
+			if params.event == "DeviceButton_left mouse button" and not SCREENMAN:get_input_redirected(PLAYER_1) then
+				if DLMAN:IsLoggedIn() then
+					self:queuecommand("LogOut")
+				else
+					loginStep1(self)
+				end
+			end
+		end,
+		OnlineUpdateMessageCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		MouseOverCommand = function(self)
+			highlightIfOver(self)
+		end,
+		MouseOutCommand = function(self)
+			highlightIfOver(self)
+		end,
+		LoginFailedMessageCommand = function(self, params)
+			ms.ok(translated_info["LoginFailed"] .. " -- " .. params.why)
+		end,
+		LoginHotkeyPressedMessageCommand = function(self)
+			if ecfn then
+				return -- no EtternaOnline login on 7k (Ctrl+L)
+			end
+			if DLMAN:IsLoggedIn() then
+				self:queuecommand("LogOut")
+			else
+				loginStep1(self)
+			end
+		end,
+		LoginStep2Command = function(self)
+			loginStep2()
+		end
+	},
+	UIElements.TextToolTip(1, 1, "Common Normal") .. {
+		Name = "LoggedInAs",
+		InitCommand = function(self)
+			self:xy(middleX, AvatarY + 23.5):halign(0.5):zoom(0.45):diffuse(ButtonColor)
+			-- 7k logs in on the Ranking window, not to EtternaOnline
+			self:visible(not ecfn)
+		end,
+		BeginCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		SetCommand = function(self)
+			if DLMAN:IsLoggedIn() then
+				self:queuecommand("Login")
+			else
+				self:queuecommand("LogOut")
+			end
+		end,
+		LogOutMessageCommand = function(self)
+			self:settext("")
+		end,
+		LoginMessageCommand = function(self) --this seems a little clunky -mina
+			if not DLMAN:IsLoggedIn() then
+				self:halign(0.5)
+				return
+			end
+			self:settextf(
+				"%s %s (%5.2f: #%i)",
+				translated_info["LoggedInAs"],
+				DLMAN:GetUsername(),
+				DLMAN:GetSkillsetRating("Overall"),
+				DLMAN:GetSkillsetRank(ms.SkillSets[1])
+			)
+		end,
+		MouseDownCommand = function(self, params)
+			if params.event == "DeviceButton_left mouse button" then
+				DLMAN:ShowUserPage(DLMAN:GetUsername())
+			end
+		end,
+		OnlineUpdateMessageCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		MouseOverCommand = function(self)
+			highlightIfOver(self)
+		end,
+		MouseOutCommand = function(self)
+			highlightIfOver(self)
+		end,
+	},
+	UIElements.TextToolTip(1, 1, "Common Normal") .. {
+		InitCommand = function(self)
+			self:xy(AvatarX + 54, AvatarY + 21):halign(0):zoom(0.35):diffuse(nonButtonColor):visible(not ecfn)
+		end,
+		BeginCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		SetCommand = function(self)
+			self:settextf("%s %s", playCount, translated_info["Plays"])
+		end,
+		MouseOverCommand = function(self)
+			highlightIfOver(self)
+			if not self:IsVisible() then return end
+			TOOLTIP:SetText(SCOREMAN:GetNumScoresThisSession() .. " " .. translated_info["PlaysThisSession"])
+			TOOLTIP:Show()
+		end,
+		MouseOutCommand = function(self)
+			highlightIfOver(self)
+			if not self:IsVisible() then return end
+			TOOLTIP:Hide()
+		end,
+	},
+	LoadFont("Common Normal") .. {
+		InitCommand = function(self)
+			self:xy(AvatarX + 54, AvatarY + 31.5):halign(0):zoom(0.35):diffuse(nonButtonColor):visible(not ecfn)
+		end,
+		BeginCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		SetCommand = function(self)
+			local time = SecondsToHHMMSS(playTime)
+			self:settextf("%s %s", time, translated_info["Playtime"])
+		end
+	},
+	LoadFont("Common Normal") .. {
+		InitCommand = function(self)
+			self:xy(AvatarX + 54, AvatarY + 42):halign(0):zoom(0.35):diffuse(nonButtonColor):visible(not ecfn)
+		end,
+		BeginCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		SetCommand = function(self)
+			self:settextf("%s %s", noteCount, translated_info["TapsHit"])
+		end
+	},
+	UIElements.TextToolTip(1, 1, "Common Normal") .. {
+		InitCommand = function(self)
+			self:xy(SCREEN_CENTER_X - capWideScale(125,175), AvatarY + 41):halign(0.5):zoom(0.4):diffuse(ButtonColor)
+		end,
+		BeginCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		OptionsScreenClosedMessageCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		BMSOptionChangedMessageCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		SetCommand = function(self)
+			-- the ECFN song select has these in its 7KEY panel
+			if ecfn then
+				self:visible(false)
+				return
+			end
+			local online = IsNetSMOnline() and IsSMOnlineLoggedIn() and NSMAN:IsETTP()
+			self:y(AvatarY + 41 - (online and 18 or 0))
+			-- 7k uses the LR2 judge rank instead of the etterna judge
+			if hideMSD() then
+				self:settextf("%s: %s", translated_info["JudgeRank"], getBMSJudgeRankText())
+				return
+			end
+			self:settextf("%s: %s", translated_info["Judge"], GetTimingDifficulty())
+		end,
+		MouseOverCommand = function(self)
+			highlightIfOver(self)
+		end,
+		MouseOutCommand = function(self)
+			highlightIfOver(self)
+		end,
+		MouseDownCommand = function(self, params)
+			if hideMSD() then
+				if params.event == "DeviceButton_left mouse button" then
+					changeBMSOption("JudgeRank", 1)
+				elseif params.event == "DeviceButton_right mouse button" then
+					changeBMSOption("JudgeRank", -1)
+				end
+				return
+			end
+			if params.event == "DeviceButton_left mouse button" then
+				-- raise judge
+				local cur_judge = GetTimingDifficulty()
+				if (cur_judge < 9) then
+					local scale = ms.JudgeScalers[cur_judge+1]
+					SetTimingDifficulty(scale)
+					self:queuecommand("Set")
+				end
+			end
+			if params.event == "DeviceButton_right mouse button" then
+				-- lower judge
+				local cur_judge = GetTimingDifficulty()
+				if (cur_judge > 4) then
+					local scale = ms.JudgeScalers[cur_judge-1]
+					SetTimingDifficulty(scale)
+					self:queuecommand("Set")
+				end
+			end
+		end
+	},
+	-- LR2 gauge picker next to the judge rank, 7k only
+	UIElements.TextToolTip(1, 1, "Common Normal") .. {
+		InitCommand = function(self)
+			self:xy(SCREEN_CENTER_X - capWideScale(125,175), AvatarY + 29):halign(0.5):zoom(0.4):diffuse(ButtonColor)
+		end,
+		BeginCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		OptionsScreenClosedMessageCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		BMSOptionChangedMessageCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		SetCommand = function(self)
+			if not hideMSD() or ecfn then
+				self:visible(false)
+				return
+			end
+			local online = IsNetSMOnline() and IsSMOnlineLoggedIn() and NSMAN:IsETTP()
+			self:y(AvatarY + 29 - (online and 18 or 0))
+			self:visible(true)
+			self:settextf("%s: %s", translated_info["Gauge"], getBMSOptionName("Gauge"))
+		end,
+		MouseOverCommand = function(self)
+			highlightIfOver(self)
+		end,
+		MouseOutCommand = function(self)
+			highlightIfOver(self)
+		end,
+		MouseDownCommand = function(self, params)
+			if not self:IsVisible() then return end
+			if params.event == "DeviceButton_left mouse button" then
+				changeBMSOption("Gauge", 1)
+			elseif params.event == "DeviceButton_right mouse button" then
+				changeBMSOption("Gauge", -1)
+			end
+		end
+	},
+	-- LR2 lane arrangement picker above the gauge, 7k only
+	-- picking Custom (or middle clicking) asks for the lane order
+	UIElements.TextToolTip(1, 1, "Common Normal") .. {
+		InitCommand = function(self)
+			self:xy(SCREEN_CENTER_X - capWideScale(125,175), AvatarY + 17):halign(0.5):zoom(0.4):diffuse(ButtonColor)
+		end,
+		BeginCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		OptionsScreenClosedMessageCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		BMSOptionChangedMessageCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		SetCommand = function(self)
+			if not hideMSD() or ecfn then
+				self:visible(false)
+				return
+			end
+			local online = IsNetSMOnline() and IsSMOnlineLoggedIn() and NSMAN:IsETTP()
+			self:y(AvatarY + 17 - (online and 18 or 0))
+			self:visible(true)
+			self:settextf("%s: %s", translated_info["Arrange"], getBMSArrangeText())
+		end,
+		MouseOverCommand = function(self)
+			highlightIfOver(self)
+		end,
+		MouseOutCommand = function(self)
+			highlightIfOver(self)
+		end,
+		MouseDownCommand = function(self, params)
+			if not self:IsVisible() then return end
+			if params.event == "DeviceButton_left mouse button" then
+				changeBMSOption("Arrange", 1)
+			elseif params.event == "DeviceButton_right mouse button" then
+				changeBMSOption("Arrange", -1)
+			elseif params.event == "DeviceButton_middle mouse button" then
+				editBMSLanes()
+				return
+			else
+				return
+			end
+			if isBMSCustomArrange() then
+				editBMSLanes()
+			end
+		end
+	},
+	-- gauge auto shift toggle above the lanes, 7k only
+	UIElements.TextToolTip(1, 1, "Common Normal") .. {
+		InitCommand = function(self)
+			self:xy(SCREEN_CENTER_X - capWideScale(125,175), AvatarY + 5):halign(0.5):zoom(0.4):diffuse(ButtonColor)
+		end,
+		BeginCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		OptionsScreenClosedMessageCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		BMSOptionChangedMessageCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		SetCommand = function(self)
+			if not hideMSD() or ecfn then
+				self:visible(false)
+				return
+			end
+			local online = IsNetSMOnline() and IsSMOnlineLoggedIn() and NSMAN:IsETTP()
+			self:y(AvatarY + 5 - (online and 18 or 0))
+			self:visible(true)
+			self:settextf("%s: %s", translated_info["AutoShift"], getBMSAutoShiftText())
+		end,
+		MouseOverCommand = function(self)
+			highlightIfOver(self)
+		end,
+		MouseOutCommand = function(self)
+			highlightIfOver(self)
+		end,
+		MouseDownCommand = function(self, params)
+			if not self:IsVisible() then return end
+			if params.event == "DeviceButton_left mouse button" or params.event == "DeviceButton_right mouse button" then
+				toggleBMSAutoShift()
+			end
+		end
+	},
+	UIElements.TextToolTip(1, 1, "Common Normal") .. {
+		Name = "Version",
+		InitCommand = function(self)
+			self:xy(rightX, AvatarY + 8):halign(1):zoom(0.42):diffuse(ButtonColor)
+			-- 7k: the version is in the top bar already
+			self:visible(not ecfn)
+		end,
+		BeginCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		SetCommand = function(self)
+			-- res extensa's own version (APP_DISPLAY_VERSION), not the Etterna base
+			self:settext(ProductFamily() .. " " .. ProductVersion())
+		end,
+		MouseOverCommand = function(self)
+			highlightIfOver(self)
+		end,
+		MouseOutCommand = function(self)
+			highlightIfOver(self)
+		end,
+		MouseDownCommand = function(self, params)
+			if params.event == "DeviceButton_left mouse button" then
+				DLMAN:ShowProjectReleases()
+			end
+		end
+	},
+	UIElements.TextToolTip(1, 1, "Common Normal") .. {
+		Name = "refreshbutton",
+		InitCommand = function(self)
+			self:xy(rightX, AvatarY + (ecfn and 14 or 19)):halign(1):zoom(0.35):diffuse(ButtonColor)
+		end,
+		BeginCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		SetCommand = function(self)
+			self:settextf(translated_info["RefreshSongs"])
+		end,
+		MouseOverCommand = function(self)
+			highlightIfOver(self)
+		end,
+		MouseOutCommand = function(self)
+			highlightIfOver(self)
+		end,
+		MouseDownCommand = function(self, params)
+			if params.event == "DeviceButton_left mouse button" then
+				SONGMAN:DifferentialReload()
+			end
+		end
+	},
+	UIElements.TextToolTip(1, 1, "Common Normal") .. {
+		InitCommand = function(self)
+			self:xy(rightX, AvatarY + (ecfn and 28 or 30)):halign(1):zoom(0.35):diffuse(nonButtonColor)
+		end,
+		BeginCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		SetCommand = function(self)
+			self:settextf("%s: %i", translated_info["SongsLoaded"], SONGMAN:GetNumSongs())
+		end,
+		DFRFinishedMessageCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		MouseOverCommand = function(self)
+			highlightIfOver(self)
+			if not self:IsVisible() then return end
+			TOOLTIP:SetText(SONGMAN:GetNumSongGroups() .. " " .. translated_info["GroupsLoaded"])
+			TOOLTIP:Show()
+		end,
+		MouseOutCommand = function(self)
+			highlightIfOver(self)
+			if not self:IsVisible() then return end
+			TOOLTIP:Hide()
+		end,
+	},
+	-- ok coulda done this as a separate object to avoid copy paste but w.e
+	-- upload progress bar bg
+	UIElements.QuadButton(1,1) .. {
+		InitCommand = function(self)
+			self:xy(uploadX, AvatarY + 41):zoomto(uploadbarwidth, uploadbarheight)
+			self:diffuse(color("#111111")):diffusealpha(0):halign(0)
+		end,
+		UploadProgressMessageCommand = function(self, params)
+			self:diffusealpha(1)
+			if params.percent == 1 then
+				self:diffusealpha(0)
+				if isOver(self) then
+					TOOLTIP:Hide()
+				end
+			end
+		end,
+		SequentialScoreUploadFinishedMessageCommand = function(self)
+			self:diffusealpha(0)
+			if isOver(self) then
+				TOOLTIP:Hide()
+			end
+		end,
+		LogOutMessageCommand = function(self)
+			self:playcommand("SequentialScoreUploadFinished")
+		end,
+		MouseOverCommand = function(self)
+			if not self:IsVisible() or DLMAN:GetQueuedScoreUploadTotal() == 0 then return end
+			local remaining = DLMAN:GetQueuedScoreUploadsRemaining()
+			local total = DLMAN:GetQueuedScoreUploadTotal()
+			TOOLTIP:SetText("Remaining Scores: "..remaining.." out of "..total)
+			TOOLTIP:Show()
+		end,
+		MouseOutCommand = function(self)
+			if not self:IsVisible() then return end
+			TOOLTIP:Hide()
+		end,
+	},
+	-- fill bar
+	Def.Quad {
+		InitCommand = function(self)
+			self:xy(uploadX, AvatarY + 41):zoomto(0, uploadbarheight)
+			self:diffuse(color("#AAAAAAA")):diffusealpha(0):halign(0)
+		end,
+		UploadProgressMessageCommand = function(self, params)
+			self:diffusealpha(1)
+			self:zoomto(params.percent * uploadbarwidth, uploadbarheight)
+			if params.percent == 1 then
+				self:diffusealpha(0)
+			end
+		end,
+		SequentialScoreUploadFinishedMessageCommand = function(self)
+			self:diffusealpha(0)
+		end,
+		LogOutMessageCommand = function(self)
+			self:playcommand("SequentialScoreUploadFinished")
+		end,
+	},
+	-- super required explanatory text
+	LoadFont("Common Normal") .. {
+	    InitCommand = function(self)
+			self:xy(uploadX, AvatarY + 27):halign(0):valign(0)
+			self:diffuse(nonButtonColor):diffusealpha(0):zoom(0.35)
+        	self:settext("Uploading Scores...")
+		end,
+		UploadProgressMessageCommand = function(self, params)
+			self:diffusealpha(1)
+			if params.percent == 1 then
+				self:diffusealpha(0)
+			end
+		end,
+		SequentialScoreUploadFinishedMessageCommand = function(self)
+			self:diffusealpha(0)
+		end,
+		LogOutMessageCommand = function(self)
+			self:playcommand("SequentialScoreUploadFinished")
+		end,
+	}
+}
+
+t[#t + 1] = Def.ActorFrame {
+	InitCommand = function(self)
+		self:SetUpdateFunction(UpdateTime)
+	end,
+	-- 7k: a dark strip so the clock reads over the wheel
+	Def.Quad {
+		InitCommand = function(self)
+			self:xy(SCREEN_WIDTH, SCREEN_BOTTOM):halign(1):valign(1):zoomto(120, 13)
+			-- 7k: no clock, the screen is full enough
+			self:visible(false)
+		end
+	},
+	LoadFont("Common Normal") .. {
+		Name = "CurrentTime",
+		InitCommand = function(self)
+			self:xy(SCREEN_WIDTH - 3, SCREEN_BOTTOM - 3.5):halign(1):valign(1):zoom(0.45)
+			self:visible(not ecfn)
+		end
+	},
+
+	LoadFont("Common Normal") .. {
+		Name = "SessionTime",
+		InitCommand = function(self)
+			self:xy(middleX, SCREEN_BOTTOM - 5):halign(0.5):valign(1):zoom(0.45)
+			-- ECFN has no session time, the bar is full enough
+			self:visible(not ecfn)
+		end
+	}
+}
+
+-- 7k song select: PLAYER DATA rows like the ECFN panels, labels on the left
+-- in pale blue and the numbers on the right
+if ecfn then
+	local rows = {
+		-- the rating the ranking site shows on the player's profile
+		{56, 150, AvatarY + 22, "RATING", function() return BMSSiteRating.text() end},
+		{56, 150, AvatarY + 37, "PLAYS", function() return tostring(playCount) end},
+		{162, 245, AvatarY + 22, "TIME", function() return SecondsToHHMMSS(playTime) end},
+		{162, 245, AvatarY + 37, "NOTES", function() return tostring(noteCount) end},
+	}
+	local block = Def.ActorFrame {
+		BeginCommand = function(self)
+			BMSSiteRating.refresh()
+			self:sleep(0.05):queuecommand("Set")
+		end,
+		BMSSiteRatingLoadedMessageCommand = function(self)
+			self:queuecommand("Set")
+		end,
+		PlayerRatingUpdatedMessageCommand = function(self)
+			self:queuecommand("Set")
+		end,
+	}
+	for _, r in ipairs(rows) do
+		block[#block + 1] = LoadFont("Common Normal") .. {
+			InitCommand = function(self)
+				self:xy(r[1], r[3]):halign(0):zoom(0.34):diffuse(rxColor("muted")):settext(r[4])
+			end,
+		}
+		block[#block + 1] = LoadFont("Common Normal") .. {
+			InitCommand = function(self)
+				self:xy(r[2], r[3]):halign(1):zoom(0.4):diffuse(rxColor("white"))
+			end,
+			SetCommand = function(self)
+				self:settext(r[5]())
+			end,
+		}
+	end
+	t[#t + 1] = block
+end
+
+local function UpdateAvatar(self)
+	if getAvatarUpdateStatus() then
+		self:GetChild("Avatar" .. PLAYER_1):GetChild("Image"):queuecommand("ModifyAvatar")
+		setAvatarUpdateStatus(PLAYER_1, false)
+	end
+end
+t.InitCommand = function(self)
+	self:SetUpdateFunction(UpdateAvatar)
+end
+
+return t
