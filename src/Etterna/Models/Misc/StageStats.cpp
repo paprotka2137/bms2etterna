@@ -555,7 +555,10 @@ FillInHighScore(const PlayerStageStats& pss,
 		}
 		// an O2Jam chart plays by O2Jam rules whatever gauge and judge rank
 		// were picked: write none of them, "O2JamHard" says it instead
-		const auto bO2Jam = OJNLoader::IsO2JamSteps(GAMESTATE->m_pCurSteps);
+		const auto bO2Jam = OJNLoader::IsO2JamPlay();
+		// FLN / SLN only change the notes in O2Jam mode
+		if (!bO2Jam)
+			po.m_BMSLNMod = BMSLNMod_Off;
 		if (bO2Jam) {
 			po.m_BMSGauge = BMSGauge_Normal;
 			po.m_bBMSAutoShift = false;
@@ -853,7 +856,7 @@ StageStats::FinalizeScores()
 		if (gauge >= 0 && gauge < NUM_BMSGauge && !SONGMAN->InBMSCourse())
 			graphGauge = siteGauges[gauge];
 		// the O2Jam hard gauge is kept as BMSGauge_Hard
-		if (OJNLoader::IsO2JamSteps(pSteps)) {
+		if (OJNLoader::IsO2JamPlay()) {
 			gauge = BMSGauge_Hard;
 			graphGauge.clear();
 		}

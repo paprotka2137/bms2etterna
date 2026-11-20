@@ -30,6 +30,9 @@ local blue = color("#3f9fff")
 
 local function currentKey()
 	local steps = GAMESTATE:GetCurrentSteps()
+	if steps and getBMSSiteChartKey then
+		return getBMSSiteChartKey(steps)
+	end
 	return steps and steps:GetChartKey() or nil
 end
 
@@ -75,6 +78,11 @@ local t = Def.ActorFrame {
 	end,
 	TabChangedMessageCommand = function(self)
 		self:queuecommand("Set")
+	end,
+	BMSOptionChangedMessageCommand = function(self, params)
+		if onTab and params and params.kind == "PlayMode" then
+			self:playcommand("Load")
+		end
 	end,
 	CurrentStepsChangedMessageCommand = function(self)
 		if onTab then

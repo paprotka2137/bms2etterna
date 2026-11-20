@@ -8,6 +8,7 @@
 #include "RageUtil/Sound/RageSound.h"
 #include "Etterna/Models/NoteData/NoteData.h"
 #include "Etterna/Models/Misc/TimingData.h"
+#include "Etterna/Models/Misc/PlayerOptions.h"
 
 #include <chrono>
 
@@ -159,6 +160,10 @@ class Player : public ActorFrame
 	static auto GetMissWindowSeconds() -> float;
 	static auto GetMaxStepDistanceSeconds() -> float;
 	static auto GetWindowSeconds(TimingWindow tw) -> float;
+	/** @brief 7k: the judge rank the gauge plays on (the chart's #RANK),
+	 * BMSJudgeRank_Invalid to follow the picked rank */
+	static void SetBMSGaugeRank(BMSJudgeRank rank);
+	static auto GetBMSGaugeRank() -> BMSJudgeRank;
 	static auto GetWindowSecondsCustomScale(TimingWindow tw,
 											float timingScale = 1.F) -> float;
 	static auto GetTimingWindowScale() -> float;

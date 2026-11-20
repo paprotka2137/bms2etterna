@@ -6534,6 +6534,8 @@ DownloadablePack::GetThumbnailTexture()
 // ---------------------------------------------------------------------------
 #include "Etterna/Models/StepsAndStyles/Steps.h"
 #include "Etterna/Models/HighScore/ReplayConstantsAndTypes.h"
+#include "Etterna/Models/NoteData/NoteData.h"
+#include "Etterna/Models/NoteData/NoteDataUtil.h"
 #include "MessageManager.h"
 #include "PrefsManager.h"
 #include "Etterna/Actor/Gameplay/LifeMeterBar.h"
@@ -6619,42 +6621,107 @@ DownloadManager::BMSUploadScore(
 	std::string replay;
 	GetFileContents(FULL_REPLAY_DIR + hs.GetScoreKey(), replay);
 
+	// A play on another judge rank than the chart's own is sent judged on
+	// the chart's: the ranking compares everyone on the chart's #RANK.
+	std::vector<int> tns(NUM_TapNoteScore, 0);
+	for (auto i = 0; i < NUM_TapNoteScore; ++i)
+		tns[i] = hs.GetTapNoteScore(static_cast<TapNoteScore>(i));
+	auto maxCombo = static_cast<int>(hs.GetMaxCombo());
+	auto modifiers = hs.GetModifiers();
+	if (!OJNLoader::IsO2JamScore(hs, steps)) {
+		std::string source;
+		const auto chartRank =
+		  BMSJudgeRankFromChartRank(LifeMeterBar::GetBMSRank(song, steps, source));
+		if (chartRank != BMSJudgeRank_Invalid &&
+			chartRank != BMSJudgeRankFromModifiers(modifiers)) {
+			// RejudgeBMS only reads the replay (loading it when needed)
+			if (!const_cast<HighScore&>(hs).RejudgeBMS(
+				  chartRank, tns, maxCombo)) {
+				Locator::getLogger()->warn(
+				  "BMS ranking upload: {} has no replay to judge on {}",
+				  hs.GetScoreKey(),
+				  BMSJudgeRankToString(chartRank));
+				if (done) {
+					done(0, "");
+				} else {
+					Message msg("BMSScoreUploaded");
+					msg.SetParam("ok", false);
+					msg.SetParam("chartkey", hs.GetChartKey());
+					msg.SetParam("response", std::string("no replay"));
+					MESSAGEMAN->Broadcast(msg);
+				}
+				return;
+			}
+			modifiers = BMSModifiersWithJudgeRank(modifiers, chartRank);
+			Locator::getLogger()->info(
+			  "BMS ranking upload: {} judged on {} for the ranking",
+			  hs.GetScoreKey(),
+			  BMSJudgeRankToString(chartRank));
+		}
+	}
+
 	const auto num = [](int n) { return std::to_string(n); };
+	// O2Jam rules on a chart that is not an O2Jam chart (O2Jam mode): the
+	// site keeps those plays on a chart of their own, its key starts with "O"
+	const auto bO2Jam = OJNLoader::IsO2JamScore(hs, steps);
+	auto siteChartKey = hs.GetChartKey();
+	if (bO2Jam && !OJNLoader::IsO2JamSteps(steps) && !siteChartKey.empty())
+		siteChartKey[0] = 'O';
 	std::vector<std::pair<std::string, std::string>> params = {
 		{ "score_key", hs.GetScoreKey() },
-		{ "chart_key", hs.GetChartKey() },
+		{ "chart_key", siteChartKey },
 		{ "pack", song->m_sGroupName },
 		{ "song", song->GetDisplayFullTitle() },
 		{ "steps", DifficultyToString(steps->GetDifficulty()) },
 		{ "rate", "1" },
 		{ "grade", GradeToString(hs.GetWifeGrade()) },
-		{ "w1", num(hs.GetTapNoteScore(TNS_W1)) },
-		{ "w2", num(hs.GetTapNoteScore(TNS_W2)) },
-		{ "w3", num(hs.GetTapNoteScore(TNS_W3)) },
-		{ "w4", num(hs.GetTapNoteScore(TNS_W4)) },
-		{ "w5", num(hs.GetTapNoteScore(TNS_W5)) },
-		{ "miss", num(hs.GetTapNoteScore(TNS_Miss)) },
+		{ "w1", num(tns[TNS_W1]) },
+		{ "w2", num(tns[TNS_W2]) },
+		{ "w3", num(tns[TNS_W3]) },
+		{ "w4", num(tns[TNS_W4]) },
+		{ "w5", num(tns[TNS_W5]) },
+		{ "miss", num(tns[TNS_Miss]) },
 		{ "letgo", num(hs.GetHoldNoteScore(HNS_LetGo)) },
 		{ "missedhold", num(hs.GetHoldNoteScore(HNS_Missed)) },
-		{ "max_combo", std::to_string(hs.GetMaxCombo()) },
-		{ "modifiers", hs.GetModifiers() },
+		{ "max_combo", std::to_string(maxCombo) },
+		{ "modifiers", modifiers },
 		{ "lane_order", hs.GetBMSLaneOrder() },
 		{ "datetime", hs.GetDateTime().GetString() },
 		{ "replay_raw", replay },
 		{ "gauge_graph", gaugeGraph },
 		{ "graph_gauge", graphGauge },
 		// O2Jam charts are ranked by O2Jam rules (DMJam score)
-		{ "mode", OJNLoader::IsO2JamSteps(steps) ? "o2jam" : "bms" },
+		{ "mode", bO2Jam ? "o2jam" : "bms" },
 	};
-	if (OJNLoader::IsO2JamSteps(steps)) {
+	if (bO2Jam) {
 		// every note plus every long note tail (judged twice in O2Jam), so a
 		// failed play's DMJam score counts the notes it did not reach; the
 		// O2Jam level (EX / NX / HX level of the .ojn)
 		const auto& rv = steps->GetRadarValues();
-		params.emplace_back(
-		  "notes",
-		  num(static_cast<int>(rv[RadarCategory_Notes] +
-							   rv[RadarCategory_Holds])));
+		auto notes =
+		  static_cast<int>(rv[RadarCategory_Notes] + rv[RadarCategory_Holds]);
+		// FLN / SLN turn taps into long notes: count the notes as played
+		PlayerOptions po;
+		po.FromString(hs.GetModifiers());
+		if (po.m_BMSLNMod != BMSLNMod_Off &&
+			steps->GetTimingData() != nullptr) {
+			NoteData nd;
+			steps->GetNoteData(nd);
+			NoteDataUtil::TransformNoteData(
+			  nd, *steps->GetTimingData(), po, steps->m_StepsType);
+			// every tap and long note head, plus each long note tail
+			notes = 0;
+			for (auto t = 0; t < nd.GetNumTracks(); ++t) {
+				for (auto it = nd.begin(t); it != nd.end(t); ++it) {
+					if (it->second.type == TapNoteType_Tap ||
+						it->second.type == TapNoteType_Lift)
+						notes += 1;
+					else if (it->second.type == TapNoteType_HoldHead)
+						notes += 2;
+				}
+			}
+		}
+		params.emplace_back("notes", num(notes));
 		params.emplace_back("level", num(steps->GetMeter()));
 	} else {
 		// the #TOTAL the gauge used, the site checks it against the chart's

@@ -187,13 +187,26 @@ JudgedRows::Resize(size_t iMin)
 // 7k plays with LR2's judge rank windows (PG, GR, GD) instead of the judge
 // scale. LR2's BAD reaches 200ms on every rank, so on 7k the miss window
 // starts there instead of at 180ms.
-static constexpr float LR2_BAD_WINDOW_SEC = 0.2F;
-static const float LR2_WINDOWS[NUM_BMSJudgeRank][3] = {
-	{ 0.021F, 0.060F, 0.120F }, // EASY
-	{ 0.018F, 0.040F, 0.100F }, // NORMAL
-	{ 0.015F, 0.030F, 0.060F }, // HARD
-	{ 0.008F, 0.024F, 0.040F }, // VERY HARD
-};
+static constexpr float LR2_BAD_WINDOW_SEC = BMS_LR2_BAD_WINDOW_SEC;
+#define LR2_WINDOWS BMS_LR2_WINDOWS
+
+// The judge rank the gauge plays on: the chart's own #RANK, whatever judge
+// rank was picked to play on (that one gives the judgments, the score and
+// the combo). Invalid when the chart has none, then the gauge goes by the
+// picked rank too. Set by ScreenGameplay for each song.
+static BMSJudgeRank g_BMSGaugeRank = BMSJudgeRank_Invalid;
+
+void
+Player::SetBMSGaugeRank(BMSJudgeRank rank)
+{
+	g_BMSGaugeRank = rank;
+}
+
+auto
+Player::GetBMSGaugeRank() -> BMSJudgeRank
+{
+	return g_BMSGaugeRank;
+}
 
 static auto
 IsLR2Judging() -> bool
@@ -217,7 +230,36 @@ static constexpr float O2JAM_MIN_BPM = 30.F;
 static auto
 IsO2JamJudging() -> bool
 {
-	return IsLR2Judging() && OJNLoader::IsO2JamSteps(GAMESTATE->m_pCurSteps);
+	return IsLR2Judging() && OJNLoader::IsO2JamPlay();
+}
+
+// judge rank the notes are judged on now (the picked one)
+static auto
+CurrentBMSJudgeRank() -> BMSJudgeRank
+{
+	auto rank = GAMESTATE->m_pPlayerState->m_PlayerOptions.GetCurrent()
+				  .m_BMSJudgeRank;
+	if (rank < 0 || rank >= NUM_BMSJudgeRank)
+		rank = BMSJudgeRank_Easy;
+	return rank;
+}
+
+// What a judged note gives the gauge: its judgment again on the chart's own
+// rank when the play is on another one. Only hits move between PGREAT and
+// BAD; BAD reaches 200ms on every rank, so a POOR stays a POOR.
+static auto
+GaugeTNS(const TapNote& tn) -> TapNoteScore
+{
+	const auto tns = tn.result.tns;
+	if (g_BMSGaugeRank == BMSJudgeRank_Invalid || !IsLR2Judging() ||
+		IsO2JamJudging() || g_BMSGaugeRank == CurrentBMSJudgeRank())
+		return tns;
+	if (tns != TNS_W1 && tns != TNS_W2 && tns != TNS_W3 && tns != TNS_W4)
+		return tns;
+	const auto rejudged =
+	  BMSJudgeOffset(g_BMSGaugeRank, tn.result.fTapNoteOffset);
+	// a BAD given for a note skipped by a press stays one
+	return rejudged == TNS_Miss ? TNS_W4 : rejudged;
 }
 
 static auto
@@ -269,10 +311,7 @@ GetLR2WindowSeconds(TimingWindow tw, float& out) -> bool
 			  MusicRate();
 		return true;
 	}
-	auto rank = GAMESTATE->m_pPlayerState->m_PlayerOptions.GetCurrent()
-				  .m_BMSJudgeRank;
-	if (rank < 0 || rank >= NUM_BMSJudgeRank)
-		rank = BMSJudgeRank_Easy;
+	const auto rank = CurrentBMSJudgeRank();
 	switch (tw) {
 		case TW_W1:
 			out = LR2_WINDOWS[rank][0];
@@ -1399,7 +1438,14 @@ Player::UpdateHoldNotes(int iSongRow,
 					  (m_Timing->GetTimeFromRowFast(iMaxEndRow) -
 					   GAMESTATE->m_Position.m_fMusicSeconds) /
 					  GAMESTATE->m_SongOptions.GetCurrent().m_fMusicRate;
-					if (fLeft <= GetWindowSeconds(TW_W3)) {
+					// the release window is the chart's GOOD, like the
+					// gauge, so a play on a harder rank keeps the same
+					// long notes
+					auto fGood = GetWindowSeconds(TW_W3);
+					if (g_BMSGaugeRank != BMSJudgeRank_Invalid &&
+						!IsO2JamJudging())
+						fGood = LR2_WINDOWS[g_BMSGaugeRank][2];
+					if (fLeft <= fGood) {
 						bLR2Finished = true;
 					} else {
 						fLife = 0.F;
@@ -3589,7 +3635,7 @@ Player::HandleTapRowScore(unsigned row)
 				!bO2Jam) {
 				return;
 			}
-			ChangeLife(tn.result.tns);
+			ChangeLife(GaugeTNS(tn));
 		};
 		if (m_iTapRowScoreCol >= 0) {
 			bmsLife(m_NoteData.GetTapNote(m_iTapRowScoreCol, row));
@@ -3684,7 +3730,6 @@ void
 Player::HandleHoldScore(const TapNote& tn) const
 {
 	const auto holdScore = tn.HoldResult.hns;
-	const auto tapScore = tn.result.tns;
 	const auto bNoCheating = true;
 #ifdef DEBUG
 	bNoCheating = false;
@@ -3698,7 +3743,7 @@ Player::HandleHoldScore(const TapNote& tn) const
 	if (m_pPrimaryScoreKeeper != nullptr) {
 		m_pPrimaryScoreKeeper->HandleHoldScore(tn);
 	}
-	ChangeLife(holdScore, tapScore);
+	ChangeLife(holdScore, GaugeTNS(tn));
 }
 
 auto

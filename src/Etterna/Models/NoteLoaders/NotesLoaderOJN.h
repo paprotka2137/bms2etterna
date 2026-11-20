@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+class HighScore;
 class Song;
 class Steps;
 
@@ -27,6 +28,20 @@ SortLooseCharts(const std::string& packDir);
  * long note tails, DMJam score and the O2Jam hard gauge). */
 bool
 IsO2JamSteps(const Steps* steps);
+/** A 7k chart plays by O2Jam rules in this play mode (a BMSPlayMode): O2Jam
+ * forces them on every 7k chart, BMS turns them off, Auto plays a .ojn by
+ * O2Jam rules and anything else by LR2's. */
+bool
+PlaysByO2Jam(const Steps* steps, int playMode);
+/** The chart being played (or picked) plays by O2Jam rules, with the play
+ * mode of the player's current options. */
+bool
+IsO2JamPlay();
+/** A score was played by O2Jam rules: it says so in its modifiers
+ * ("O2JamHard"), a score saying "BMSMode" was not, and older scores go by
+ * their chart. */
+bool
+IsO2JamScore(const HighScore& hs, const Steps* steps);
 } // namespace OJNLoader
 
 #endif

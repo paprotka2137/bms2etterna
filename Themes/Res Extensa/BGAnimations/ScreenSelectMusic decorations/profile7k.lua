@@ -138,9 +138,10 @@ local function gather()
 		local steps = SONGMAN:GetStepsByChartKey(ck)
 		if steps and steps:GetStepsType() == "StepsType_Kb7_Single" then
 			local song = SONGMAN:GetSongByChartKey(ck)
-			local o2 = isO2JamSteps(steps)
+			-- the play's rules (a BMS chart can be played in O2Jam mode)
+			local o2 = isO2JamScore(hs)
 			local level, levelName
-			if o2 then
+			if isO2JamSteps(steps) then
 				level = steps:GetMeter()
 				levelName = "Lv" .. level
 			else
@@ -431,7 +432,7 @@ t.BMSProfileRefreshMessageCommand = function(self)
 end
 
 -- column names
-local col = {num = 18, lv = 24, title = 90, gr = W.width - 172, rateX = W.width - 150, ex = W.width - 92, lamp = W.width - 62, date = W.width - 10}
+local col = {num = 18, lv = 24, title = 90, gr = W.width - 206, rateX = W.width - 186, ex = W.width - 128, lamp = W.width - 72, date = W.width - 10}
 local function head(x, align, label, o2label)
 	t[#t + 1] = W.text(x, listY - 14, 0.3, align, function(self)
 		self:settext(label):diffuse(W.gray)
@@ -452,7 +453,7 @@ end) .. {
 }
 head(col.rateX, 0.5, "RATE")
 head(col.ex, 1, "EX%", "SCORE")
-head(col.lamp, 0.5, "LAMP")
+head(col.lamp, 1, "LAMP")
 head(col.date, 1, "DATE")
 
 for i = 1, rows do
@@ -524,7 +525,10 @@ for i = 1, rows do
 				end
 			end,
 		},
-		W.text(col.lamp, y, 0.3, 0.5) .. {
+		-- right-aligned and capped so long lamps never reach the date
+		W.text(col.lamp, y, 0.3, 1, function(self)
+			self:maxwidth(50 / 0.3)
+		end) .. {
 			ShowCommand = function(self)
 				local e = entry(i)
 				if e then

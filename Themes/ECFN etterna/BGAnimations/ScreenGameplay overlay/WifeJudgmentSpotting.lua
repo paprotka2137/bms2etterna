@@ -51,6 +51,15 @@ local pbtarget
 -- the same one the ECFN score graph (pacemaker.lua) draws.
 local bmsTarget = (playerConfig:get_data(pn_to_profile_slot(PLAYER_1)).TargetGoal or 93) / 100
 local bmsTargetText
+-- the target's name before its percent: none for MYBEST and a goal %, the
+-- percent alone says it
+local function bmsTargetLabel()
+	local x = bmsTargetText
+	if not x or x == "MYBEST" or x:find("%%") then
+		return ""
+	end
+	return x .. " "
+end
 local bmsPBRate
 local positive = getMainColor("positive")
 local highlight = getMainColor("highlight")
@@ -426,7 +435,7 @@ if targetTrackerMode == 0 then
 					diffuse(self, negative)
 				end
 				if hideMSD() then
-					self:settextf("%5.2f (%s %5.2f%%)", tDiff, bmsTargetText or "", bmsTarget * 100)
+					self:settextf("%5.2f (%s%5.2f%%)", tDiff, bmsTargetLabel(), bmsTarget * 100)
 				else
 					self:settextf("%5.2f (%5.2f%%)", tDiff, target)
 				end
@@ -461,7 +470,7 @@ else
 						diffuse(self, negative)
 					end
 					if hideMSD() then
-						self:settextf("%5.2f (%s %5.2f%%)", tDiff, bmsTargetText or "", bmsTarget * 100)
+						self:settextf("%5.2f (%s%5.2f%%)", tDiff, bmsTargetLabel(), bmsTarget * 100)
 					else
 						self:settextf("%5.2f (%5.2f%%)", tDiff, target)
 					end

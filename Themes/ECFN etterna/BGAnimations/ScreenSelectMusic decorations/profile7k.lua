@@ -138,9 +138,10 @@ local function gather()
 		local steps = SONGMAN:GetStepsByChartKey(ck)
 		if steps and steps:GetStepsType() == "StepsType_Kb7_Single" then
 			local song = SONGMAN:GetSongByChartKey(ck)
-			local o2 = isO2JamSteps(steps)
+			-- the play's rules (a BMS chart can be played in O2Jam mode)
+			local o2 = isO2JamScore(hs)
 			local level, levelName
-			if o2 then
+			if isO2JamSteps(steps) then
 				level = steps:GetMeter()
 				levelName = "Lv" .. level
 			else

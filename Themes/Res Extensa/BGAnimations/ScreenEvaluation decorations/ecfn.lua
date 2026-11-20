@@ -31,8 +31,73 @@ local song = GAMESTATE:GetCurrentSong()
 local steps = GAMESTATE:GetCurrentSteps()
 local isCurrentPlay = pss:GetHighScore() ~= nil and score:GetScoreKey() == pss:GetHighScore():GetScoreKey()
 
+-- The judge rank the result is shown on: the chart's own #RANK first (the
+-- gauge and the clear went by it, the ranking site gets it), then any other
+-- with [ / ] or a click on the gauge / judge line (default.lua builds this
+-- file once per judge rank). Scores are judged again from their replays
+-- (HighScore::RejudgeBMS); the gauge and the clear stay the play's.
+local playedRank = getBMSJudgeRankIndexFromScore(score)
+local chartRank = getBMSChartJudgeRank(steps)
+BMSResultView = BMSResultView or {}
+local rebuilt = BMSResultView.rebuilt == true
+local canRejudge = score.GetBMSRejudge ~= nil and not isO2JamScore(score) and
+	not string.lower(score:GetModifiers() or ""):find("classgauge", 1, true)
+if not rebuilt then
+	-- a score without a replay can only be shown as it was played
+	if canRejudge then
+		canRejudge = score:GetBMSRejudge(playedRank == 1 and 2 or 1) ~= nil
+	end
+	BMSResultView.played = playedRank
+	BMSResultView.chart = chartRank
+	BMSResultView.enabled = canRejudge
+end
+local viewRank = playedRank
+if canRejudge then
+	viewRank = BMSResultView.rank or chartRank or playedRank
+end
+BMSResultView.current = viewRank
+
+local rejudged = {}
+-- a score's judgments on the shown rank, nil when they are its own
+local function viewTNS(s)
+	if not canRejudge or isO2JamScore(s) or getBMSJudgeRankIndexFromScore(s) == viewRank then
+		return nil
+	end
+	local k = s:GetScoreKey()
+	if rejudged[k] == nil then
+		rejudged[k] = s:GetBMSRejudge(viewRank) or false
+	end
+	return rejudged[k] or nil
+end
+
 local function tns(s, x)
+	local r = viewTNS(s)
+	if r then
+		return r["TapNoteScore_" .. x] or 0
+	end
 	return s:GetTapNoteScore("TapNoteScore_" .. x)
+end
+
+local function maxCombo(s)
+	local r = viewTNS(s)
+	return r and r.MaxCombo or s:GetMaxCombo()
+end
+
+-- lamp of a score on the shown rank: a full combo comes and goes with the
+-- judge rank, the clear doesn't
+local function viewLamp(s)
+	local lamp = getBMSLampFromScore(s)
+	local r = viewTNS(s)
+	if r and lamp ~= 6 then
+		local breaks = r.TapNoteScore_W4 + r.TapNoteScore_W5 + r.TapNoteScore_Miss +
+			s:GetHoldNoteScore("HoldNoteScore_LetGo") + s:GetHoldNoteScore("HoldNoteScore_MissedHold")
+		if breaks == 0 then
+			lamp = 1
+		elseif lamp == 1 then
+			lamp = getBMSGaugeLamp(s)
+		end
+	end
+	return lamp
 end
 
 -- LR2 judgments of a score: PGREAT GREAT GOOD BAD POOR
@@ -50,6 +115,11 @@ local function exScore(s)
 end
 
 local function missCount(s)
+	-- the judged notes stay the same, only BADs come and go
+	local r = viewTNS(s)
+	if r then
+		return getBMSMissCount(s) + r.TapNoteScore_W4 - s:GetTapNoteScore("TapNoteScore_W4")
+	end
 	return getBMSMissCount(s)
 end
 
@@ -76,7 +146,7 @@ do
 end
 local maxEx = math.max(notes * 2, 1)
 local curEx = exScore(score)
-local curMiss = getBMSMissCount(score)
+local curMiss = missCount(score)
 
 -- DJ levels are ninths of the max EX score: index 1 AAA .. 8 F
 local function djLevel(ex)
@@ -122,7 +192,7 @@ local function lampFrame(s)
 	if s == nil then
 		return 0
 	end
-	local lamp = getBMSLampFromScore(s)
+	local lamp = viewLamp(s)
 	if lamp == 6 then
 		return 1
 	elseif lamp == 1 then
@@ -196,8 +266,10 @@ local bestRank = best.ex and djLevel(best.ex) or nil
 local targetEx = curRank == 1 and maxEx or djBorder(1)
 
 -- LR2 windows the score was judged on, and fast/slow per judgment from the replay
-local judgeRank = getBMSJudgeRankIndexFromScore(score)
+local judgeRank = viewRank
 local windows = getBMSWindowsMs(judgeRank)
+-- the gauge went by the chart's own #RANK
+local gaugeWindows = getBMSWindowsMs(chartRank or playedRank)
 local finalSecond = math.max(steps:GetLastSecond(), 1)
 local td = steps:GetTimingData()
 -- O2Jam windows follow the bpm: each note by its own, the graphs by the
@@ -232,7 +304,7 @@ do
 		if ty == nil or ty == "TapNoteType_Tap" or ty == "TapNoteType_HoldHead" or ty == "TapNoteType_Lift" then
 			local j = offsetJudgment(o, o2jam and nrt[i] and o2jamWindowsAt(nrt[i] / 48) or nil)
 			local t = nrt[i] and td:GetElapsedTimeFromNoteRow(nrt[i]) or 0
-			taps[#taps + 1] = {t, o, j}
+			taps[#taps + 1] = {t, o, j, o2jam and j or offsetJudgment(o, gaugeWindows)}
 			-- missed notes went by, beatoraja counts them as late
 			if j == 5 or o > 0 then
 				slow[j] = slow[j] + 1
@@ -606,7 +678,7 @@ local function simulateGauge(name, samples)
 		local tEnd = (i / samples) * finalSecond
 		while k <= #order and order[k][1] <= tEnd do
 			if value > 0 or not p[1] then
-				local inc = change[order[k][3]]
+				local inc = change[order[k][4]]
 				if inc < 0 and value < p[7] then
 					inc = inc * p[8]
 				end
@@ -792,7 +864,20 @@ do
 		if o2jam then
 			text = "O2JAM HARD GAUGE  /  O2JAM JUDGE"
 		else
-			text = text .. "  /  " .. string.upper(getBMSJudgeRankFromScore(score)) .. " JUDGE"
+			text = text .. "  /  " .. string.upper(getBMSOptionName("JudgeRank", viewRank)) .. " JUDGE"
+			local notes = {}
+			if chartRank == viewRank then
+				notes[#notes + 1] = "CHART"
+			end
+			if playedRank ~= viewRank then
+				notes[#notes + 1] = "PLAYED " .. string.upper(getBMSOptionName("JudgeRank", playedRank))
+			end
+			if #notes > 0 then
+				text = text .. " (" .. table.concat(notes, ", ") .. ")"
+			end
+			if canRejudge then
+				text = text .. "  [ ]"
+			end
 		end
 		local rate = score:GetMusicRate()
 		if math.abs(rate - 1) > 0.001 then
@@ -800,11 +885,29 @@ do
 		end
 		return text
 	end
-	local label = Text(560, 349, 12, 1, 360, gaugeText(), color("1,1,1,0.85"))
+	local label = Text(560, 349, 12, 1, 380, gaugeText(), color("1,1,1,0.85"))
 	label.ECFNGaugeViewMessageCommand = function(self)
 		self:settext(gaugeText())
 	end
 	t[#t + 1] = label
+	-- a click on it shows the result on the next judge rank (right click: the one before)
+	if canRejudge then
+		t[#t + 1] = UIElements.QuadButton(1, 1) .. {
+			InitCommand = function(self)
+				self:halign(1):valign(0.5):xy(560, 349):zoomto(380, 18):diffusealpha(0)
+			end,
+			MouseDownCommand = function(self, params)
+				if not BMSResultView.step then
+					return
+				end
+				if params.event == "DeviceButton_left mouse button" then
+					BMSResultView.step(1)
+				elseif params.event == "DeviceButton_right mouse button" then
+					BMSResultView.step(-1)
+				end
+			end,
+		}
+	end
 end
 
 -- big DJ level over the graph
@@ -955,7 +1058,7 @@ if o2jam then
 	t[#t + 1] = Text(45, 620, 15, 0, 300, "NOTES (LONG NOTE = 2)")
 	t[#t + 1] = Text(490, 620, 18, 1, 200, tostring(notes))
 	t[#t + 1] = Text(45, 655, 15, 0, 300, "MAX COMBO")
-	t[#t + 1] = Text(490, 655, 18, 1, 200, tostring(score:GetMaxCombo()))
+	t[#t + 1] = Text(490, 655, 18, 1, 200, tostring(maxCombo(score)))
 	t[#t + 1] = Text(45, 693, 12, 0, 450, "SS > 99   S > 96   A > 90   B > 86   C > 78   D > 50", dim)
 end
 
@@ -993,7 +1096,7 @@ do
 		totalFast = totalFast + fast[k]
 		totalSlow = totalSlow + slow[k]
 	end
-	t[#t + 1] = Num("num_small 11x1.png", 199, 954, 14, 13, 4, score:GetMaxCombo())
+	t[#t + 1] = Num("num_small 11x1.png", 199, 954, 14, 13, 4, maxCombo(score))
 	t[#t + 1] = Num("num_small 11x1.png", 199, 977, 14, 13, 4, counts[4] + counts[5])
 	t[#t + 1] = Num("num_small 11x1.png", 390, 954, 14, 13, 4, totalFast)
 	t[#t + 1] = Num("num_small 11x1.png", 390, 977, 14, 13, 4, totalSlow)
@@ -1213,7 +1316,7 @@ do
 		if mine then
 			t[#t + 1] = Box(1382, y + 2, 518, 30, color("0.3,0.8,1,0.18"))
 		end
-		local lamp = getBMSLampFromScore(s)
+		local lamp = viewLamp(s)
 		t[#t + 1] = Box(1381, y + 4, 4, 26, getBMSLampInfo(lamp, 2))
 		t[#t + 1] = Num("num_white 11x1.png", 1388, y + 7, 17, 20, 4, k)
 		local label = s:GetDate():sub(1, 16)
@@ -1296,8 +1399,13 @@ if BMSRanking and BMSRanking.loggedIn() then
 	local ir = Def.ActorFrame {
 		Name = "IRRanking",
 		BeginCommand = function(self)
-			R.forget(ck)
-			board = R.chart(ck)
+			-- another judge rank of the same result: the board is loaded already
+			if rebuilt and R.cache[ck] and R.cache[ck].board then
+				board = R.cache[ck].board
+			else
+				R.forget(ck)
+				board = R.chart(ck)
+			end
 			self:playcommand("Show")
 		end,
 		BMSBoardLoadedMessageCommand = function(self, params)
@@ -1307,7 +1415,8 @@ if BMSRanking and BMSRanking.loggedIn() then
 			end
 		end,
 		BMSScoreUploadedMessageCommand = function(self, params)
-			if params.ok then
+			-- once, by the result built first
+			if params.ok and not rebuilt then
 				R.sendUnrankedCalc(params.chartkey, params.response)
 			end
 			if params.chartkey == ck then
@@ -1504,7 +1613,7 @@ t[#t + 1] = Num("num_notes 11x1.png", 1035, 1042, 18, 17, 4, notes, {delay = 300
 -- CLEAR / FAILED splash
 ---------------------------------------------------------------------------
 
-do
+if not rebuilt then
 	local name = cleared and "clear" or "failed"
 	local mx, mw = cleared and 350 or 318, cleared and 1219 or 1293
 	local fx, fw = cleared and 295 or 263, cleared and 1329 or 1393
@@ -1626,7 +1735,7 @@ end
 -- a song of a dan course: hand this song over for the COURSE RESULT screen
 ---------------------------------------------------------------------------
 
-if BMSDan and BMSDan.addCourseSong and isCurrentPlay and not o2jam then
+if BMSDan and BMSDan.addCourseSong and isCurrentPlay and not o2jam and not rebuilt then
 	local life = {}
 	local full = gaugeLife(gaugeName, gw) or {}
 	local n = 200
@@ -1642,10 +1751,10 @@ if BMSDan and BMSDan.addCourseSong and isCurrentPlay and not o2jam then
 		fast = {fast[1], fast[2], fast[3], fast[4], fast[5], fast[6]},
 		slow = {slow[1], slow[2], slow[3], slow[4], slow[5], slow[6]},
 		miss = curMiss,
-		maxCombo = score:GetMaxCombo(),
+		maxCombo = maxCombo(score),
 		arrange = arrange,
 		life = life,
 	}
 end
 
-return Def.ActorFrame {t}
+return Def.ActorFrame {Name = "RXView" .. viewRank, t}

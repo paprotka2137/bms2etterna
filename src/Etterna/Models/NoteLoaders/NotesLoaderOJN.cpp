@@ -8,6 +8,10 @@
 #include "Etterna/Models/Songs/Song.h"
 #include "Etterna/Models/StepsAndStyles/Steps.h"
 #include "Etterna/Singletons/GameManager.h"
+#include "Etterna/Singletons/GameState.h"
+#include "Etterna/Models/HighScore/HighScore.h"
+#include "Etterna/Models/Misc/PlayerOptions.h"
+#include "Etterna/Models/Misc/PlayerState.h"
 #include "Core/Services/Locator.hpp"
 #include "RageUtil/File/RageFile.h"
 #include "RageUtil/File/RageFileManager.h"
@@ -851,4 +855,44 @@ OJNLoader::IsO2JamSteps(const Steps* steps)
 		return static_cast<char>(std::tolower(c));
 	});
 	return ext == ".ojn";
+}
+
+bool
+OJNLoader::PlaysByO2Jam(const Steps* steps, int playMode)
+{
+	if (steps == nullptr || steps->m_StepsType != StepsType_kb7_single)
+		return false;
+	switch (playMode) {
+		case BMSPlayMode_O2Jam:
+			return true;
+		case BMSPlayMode_BMS:
+			return false;
+		default:
+			return IsO2JamSteps(steps);
+	}
+}
+
+bool
+OJNLoader::IsO2JamPlay()
+{
+	const Steps* steps = GAMESTATE->m_pCurSteps;
+	if (steps == nullptr || GAMESTATE->m_pPlayerState == nullptr)
+		return IsO2JamSteps(steps);
+	return PlaysByO2Jam(
+	  steps,
+	  GAMESTATE->m_pPlayerState->m_PlayerOptions.GetCurrent().m_BMSPlayMode);
+}
+
+bool
+OJNLoader::IsO2JamScore(const HighScore& hs, const Steps* steps)
+{
+	auto mods = hs.GetModifiers();
+	std::transform(mods.begin(), mods.end(), mods.begin(), [](unsigned char c) {
+		return static_cast<char>(std::tolower(c));
+	});
+	if (mods.find("o2jamhard") != std::string::npos)
+		return true;
+	if (mods.find("bmsmode") != std::string::npos)
+		return false;
+	return IsO2JamSteps(steps);
 }

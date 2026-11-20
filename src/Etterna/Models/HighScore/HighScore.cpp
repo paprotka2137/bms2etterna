@@ -16,10 +16,12 @@
 #include "RageUtil/File/RageFileManager.h"
 #include "Etterna/Models/Misc/PlayerStageStats.h"
 #include "Etterna/Singletons/ReplayManager.h"
+#include "Etterna/Models/Misc/PlayerOptions.h"
 
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <map>
 #include <sstream>
 #include <utility>
 
@@ -597,6 +599,111 @@ HighScore::GetBMSLaneOrder() const -> std::string
 {
 	return NoteDataUtil::BMSLaneOrderFromMods(m_Impl->sModifiers,
 											  m_Impl->stage_seed);
+}
+
+// Each hit of the replay judged on the rank played and on the new one: the
+// counts move from the one to the other, so whatever the replay can't tell
+// (POORs, BADs of skipped notes) stays as it was saved. LR2 long notes let
+// go early were a BAD whatever their head got, on any rank. The max combo is
+// the replay played again (each note one combo, PGREAT to GOOD keep it, BAD
+// and POOR and a long note let go break it).
+auto
+HighScore::RejudgeBMS(int rank, std::vector<int>& tns, int& maxCombo) -> bool
+{
+	tns.assign(NUM_TapNoteScore, 0);
+	for (auto i = 0; i < NUM_TapNoteScore; ++i)
+		tns[i] = m_Impl->iTapNoteScores[i];
+	maxCombo = static_cast<int>(m_Impl->iMaxCombo);
+	if (rank < 0 || rank >= NUM_BMSJudgeRank)
+		return false;
+	const auto played = BMSJudgeRankFromModifiers(m_Impl->sModifiers);
+	const auto target = static_cast<BMSJudgeRank>(rank);
+	if (played == target)
+		return true;
+
+	CheckReplayIsInit();
+	if (replay->GetOffsetVector().empty())
+		replay->LoadReplayData();
+	const auto& offsets = replay->GetOffsetVector();
+	const auto& rows = replay->GetNoteRowVector();
+	const auto& tracks = replay->GetTrackVector();
+	const auto& types = replay->GetTapNoteTypeVector();
+	const auto& holds = replay->GetHoldReplayDataVector();
+	if (offsets.empty() || rows.size() != offsets.size() ||
+		tracks.size() != offsets.size())
+		return false;
+	const auto typed = types.size() == offsets.size();
+	const auto isHit = [](float o) {
+		return std::fabs(o) <= BMS_LR2_BAD_WINDOW_SEC;
+	};
+
+	// long note heads by lane, to find the head of a long note let go
+	std::map<int, std::map<int, size_t>> heads; // track -> row -> index
+	for (size_t i = 0; i < offsets.size(); ++i)
+		if (typed && types[i] == TapNoteType_HoldHead)
+			heads[tracks[i]][rows[i]] = i;
+	std::vector<bool> letGo(offsets.size(), false);
+	std::vector<int> dropRows;
+	for (const auto& h : holds) {
+		const auto lane = heads.find(h.track);
+		if (lane == heads.end())
+			continue;
+		auto it = lane->second.upper_bound(h.row);
+		if (it == lane->second.begin())
+			continue;
+		--it;
+		if (isHit(offsets[it->second])) {
+			letGo[it->second] = true;
+			dropRows.push_back(h.row);
+		}
+	}
+
+	// combo events: (row, order in the row, breaks / keeps the combo)
+	struct Ev
+	{
+		int row;
+		int order;
+		bool keepsPlayed;
+		bool keepsTarget;
+	};
+	std::vector<Ev> evs;
+	const auto keeps = [](TapNoteScore s) {
+		return s == TNS_W1 || s == TNS_W2 || s == TNS_W3;
+	};
+	for (size_t i = 0; i < offsets.size(); ++i) {
+		if (typed && (types[i] == TapNoteType_Mine ||
+					  types[i] == TapNoteType_Fake ||
+					  types[i] == TapNoteType_AutoKeysound))
+			continue;
+		const auto a = BMSJudgeOffset(played, offsets[i]);
+		const auto b = BMSJudgeOffset(target, offsets[i]);
+		evs.push_back({ rows[i], 0, keeps(a), keeps(b) });
+		if (!isHit(offsets[i]) || letGo[i] || a == b)
+			continue;
+		if (tns[a] > 0) {
+			tns[a]--;
+			tns[b]++;
+		}
+	}
+	for (const auto r : dropRows)
+		evs.push_back({ r, 1, false, false });
+	std::stable_sort(evs.begin(), evs.end(), [](const Ev& x, const Ev& y) {
+		return x.row != y.row ? x.row < y.row : x.order < y.order;
+	});
+	auto curA = 0, maxA = 0, curB = 0, maxB = 0;
+	for (const auto& e : evs) {
+		curA = e.keepsPlayed ? curA + 1 : 0;
+		curB = e.keepsTarget ? curB + 1 : 0;
+		maxA = std::max(maxA, curA);
+		maxB = std::max(maxB, curB);
+	}
+	// the replay misses things the game counted (a BAD of a skipped note
+	// judged on the played rank's windows): keep the difference
+	if (maxA == maxCombo)
+		maxCombo = maxB;
+	else
+		maxCombo = std::max(0, maxCombo + maxB - maxA);
+	return true;
 }
 auto
 HighScore::IsUploadedToServer(const std::string& s) const -> bool
@@ -1737,6 +1844,31 @@ class LunaHighScore : public Luna<HighScore>
 	DEFINE_METHOD(GetChartKey, GetChartKey())
 	DEFINE_METHOD(GetEmptyPoorCount, GetEmptyPoors())
 	DEFINE_METHOD(GetBMSLaneOrder, GetBMSLaneOrder())
+	// 7k: GetBMSRejudge(rank 1 EASY .. 4 VERY HARD) gives the score judged
+	// on that judge rank, {TapNoteScore_W1 = n, ..., MaxCombo = n}, nil when
+	// its replay can't be read
+	static auto GetBMSRejudge(T* p, lua_State* L) -> int
+	{
+		std::vector<int> tns;
+		auto maxCombo = 0;
+		if (!p->RejudgeBMS(IArg(1) - 1, tns, maxCombo)) {
+			lua_pushnil(L);
+			return 1;
+		}
+		lua_newtable(L);
+		for (auto i = 0; i < NUM_TapNoteScore; ++i) {
+			lua_pushinteger(L, tns[i]);
+			lua_setfield(
+			  L,
+			  -2,
+			  ("TapNoteScore_" +
+			   TapNoteScoreToString(static_cast<TapNoteScore>(i)))
+				.c_str());
+		}
+		lua_pushinteger(L, maxCombo);
+		lua_setfield(L, -2, "MaxCombo");
+		return 1;
+	}
 	DEFINE_METHOD(GetScoreKey, GetScoreKey())
 	DEFINE_METHOD(GetReplayType, GetReplayType())
 	DEFINE_METHOD(GetDisplayName, GetDisplayName())
@@ -1772,6 +1904,7 @@ class LunaHighScore : public Luna<HighScore>
 		ADD_METHOD(GetChartKey);
 		ADD_METHOD(GetEmptyPoorCount);
 		ADD_METHOD(GetBMSLaneOrder);
+		ADD_METHOD(GetBMSRejudge);
 		ADD_METHOD(GetReplayType);
 		ADD_METHOD(GetReplay);
 		ADD_METHOD(GetJudgmentString);

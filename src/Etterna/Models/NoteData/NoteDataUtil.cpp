@@ -3247,6 +3247,61 @@ ApplyBMSArrange(NoteData& nd,
 	nd.CopyAll(tempNoteData);
 }
 
+// O2Jam long note modifiers (O2Jam mode, 7k only), after the lanes are
+// arranged so the long notes follow the lanes played. Only taps change, so
+// existing long notes and keysounds stay. A tap with no room for a long note
+// before the next note of its lane stays a tap.
+// FLN: every tap holds until the gap (m_iBMSFLNGap rows) before the next
+// note of its lane (the last one of a lane holds for a beat).
+// SLN: every tap becomes a long note m_iBMSSLNLength rows long, shorter when
+// the next note of its lane comes sooner (it then ends the FLN gap before it).
+static constexpr int FLN_LAST_LENGTH = ROWS_PER_BEAT;
+static constexpr int LN_MIN_LENGTH = ROWS_PER_BEAT / 16;
+
+static void
+ApplyBMSLNMod(NoteData& nd, const PlayerOptions& po, int iStartIndex, int iEndIndex)
+{
+	if (po.m_BMSLNMod == BMSLNMod_Off || nd.GetNumTracks() != 7)
+		return;
+	const auto gap = std::clamp(po.m_iBMSFLNGap, 1, 192);
+	const auto slnLength = std::clamp(po.m_iBMSSLNLength, 1, 192);
+	const auto blocks = [](const TapNote& tn) {
+		return tn.type == TapNoteType_Tap || tn.type == TapNoteType_HoldHead ||
+			   tn.type == TapNoteType_Mine || tn.type == TapNoteType_Lift;
+	};
+	for (auto t = 0; t < nd.GetNumTracks(); ++t) {
+		for (auto it = nd.begin(t); it != nd.end(t); ++it) {
+			const auto row = it->first;
+			auto& tn = it->second;
+			if (tn.type != TapNoteType_Tap || row < iStartIndex ||
+				row > iEndIndex)
+				continue;
+			auto next = -1;
+			for (auto nx = std::next(it); nx != nd.end(t); ++nx) {
+				if (blocks(nx->second)) {
+					next = nx->first;
+					break;
+				}
+			}
+			auto len = 0;
+			if (po.m_BMSLNMod == BMSLNMod_FLN)
+				len = next >= 0 ? next - row - gap : FLN_LAST_LENGTH;
+			else {
+				len = slnLength;
+				if (next >= 0)
+					len = std::min(len, next - row - gap);
+			}
+			if (len < (po.m_BMSLNMod == BMSLNMod_FLN
+						  ? LN_MIN_LENGTH
+						  : std::min(LN_MIN_LENGTH, slnLength)))
+				continue;
+			tn.type = TapNoteType_HoldHead;
+			tn.subType = TapNoteSubType_Hold;
+			tn.iDuration = len;
+		}
+	}
+}
+
 void
 NoteDataUtil::TransformNoteData(NoteData& nd,
 								TimingData const& timing_data,
@@ -3343,6 +3398,7 @@ NoteDataUtil::TransformNoteData(NoteData& nd,
 		Turn(nd, st, hran_shuffle, iStartIndex, iEndIndex);
 
 	ApplyBMSArrange(nd, st, po, iStartIndex, iEndIndex);
+	ApplyBMSLNMod(nd, po, iStartIndex, iEndIndex);
 
 	nd.RevalidateATIs(std::vector<int>(), false);
 }

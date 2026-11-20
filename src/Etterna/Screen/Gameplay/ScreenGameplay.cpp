@@ -20,6 +20,7 @@
 #include "Etterna/Models/NoteData/NoteDataWithScoring.h"
 #include "Etterna/Actor/Gameplay/Player.h"
 #include "Etterna/Models/Misc/PlayerState.h"
+#include "Etterna/Models/NoteLoaders/NotesLoaderOJN.h"
 #include "Etterna/Singletons/PrefsManager.h"
 #include "Etterna/Models/Misc/Profile.h"
 #include "Etterna/Singletons/ProfileManager.h"
@@ -578,16 +579,46 @@ ScreenGameplay::ReloadCurrentSong()
 	LoadNextSong();
 }
 
-// 7k plays on the chart's own #RANK, like LR2. The judge rank picked in
-// song select is only for charts that don't have one. The rank goes into the
-// stage options, so the score saves the rank it was played on. Replays keep
-// the rank from their score.
+// FLN / SLN only change the notes of a chart played by O2Jam rules. Replays
+// keep the options of their score.
+static void
+ApplyBMSPlayMode(const Steps* pSteps)
+{
+	if (GamePreferences::m_AutoPlay == PC_REPLAY ||
+		GAMESTATE->m_pPlayerState->m_PlayerController == PC_REPLAY ||
+		GAMESTATE->m_pPlayerState->m_PlayerController == PC_SPECTATE ||
+		GamePreferences::m_AutoPlay == PC_SPECTATE)
+		return;
+	auto& opts = GAMESTATE->m_pPlayerState->m_PlayerOptions;
+	if (opts.GetCurrent().m_BMSLNMod == BMSLNMod_Off)
+		return;
+	if (!OJNLoader::PlaysByO2Jam(pSteps, opts.GetCurrent().m_BMSPlayMode))
+		PO_GROUP_ASSIGN(opts, ModsLevel_Stage, m_BMSLNMod, BMSLNMod_Off);
+	Locator::getLogger()->info(
+	  "O2Jam LN mod: {}",
+	  BMSLNModToString(opts.GetStage().m_BMSLNMod));
+}
+
+// 7k plays on the judge rank picked in song select: it gives the judgments,
+// the score and the combo, and the score saves it. The gauge always goes by
+// the chart's own #RANK, like LR2 (Player::SetBMSGaugeRank); a chart
+// without one has the gauge on the picked rank too. Uploads are judged
+// again on the chart's rank (HighScore::RejudgeBMS). A dan course plays
+// every song on its chart's rank. Replays keep the rank from their score.
 static void
 ApplyBMSChartRank(const Steps* pSteps)
 {
+	Player::SetBMSGaugeRank(BMSJudgeRank_Invalid);
 	const auto* style = GAMESTATE->GetCurrentStyle(PLAYER_1);
-	if (style == nullptr || style->m_iColsPerPlayer != 7 ||
-		GamePreferences::m_AutoPlay == PC_REPLAY ||
+	if (style == nullptr || style->m_iColsPerPlayer != 7)
+		return;
+
+	std::string source;
+	const auto chartRank = BMSJudgeRankFromChartRank(
+	  LifeMeterBar::GetBMSRank(GAMESTATE->m_pCurSong, pSteps, source));
+	Player::SetBMSGaugeRank(chartRank);
+
+	if (GamePreferences::m_AutoPlay == PC_REPLAY ||
 		GAMESTATE->m_pPlayerState->m_PlayerController == PC_REPLAY ||
 		GAMESTATE->m_pPlayerState->m_PlayerController == PC_SPECTATE ||
 		GamePreferences::m_AutoPlay == PC_SPECTATE)
@@ -595,27 +626,18 @@ ApplyBMSChartRank(const Steps* pSteps)
 
 	auto& opts = GAMESTATE->m_pPlayerState->m_PlayerOptions;
 	auto judgeRank = opts.GetPreferred().m_BMSJudgeRank;
-	std::string source;
-	switch (LifeMeterBar::GetBMSRank(GAMESTATE->m_pCurSong, pSteps, source)) {
-		case 0:
-			judgeRank = BMSJudgeRank_VeryHard;
-			break;
-		case 1:
-			judgeRank = BMSJudgeRank_Hard;
-			break;
-		case 2:
-			judgeRank = BMSJudgeRank_Normal;
-			break;
-		case 3:
-		case 4: // VERY EASY, wider than LR2's EASY, which is the widest we have
-			judgeRank = BMSJudgeRank_Easy;
-			break;
-		default: // no #RANK, keep the picked one
-			break;
-	}
-	Locator::getLogger()->info("BMS judge rank: {} ({})",
-							   BMSJudgeRankToString(judgeRank),
-							   source);
+	// AUTO and dan courses play on the chart's own rank
+	if ((opts.GetPreferred().m_bBMSJudgeAuto || SONGMAN->InBMSCourse()) &&
+		chartRank != BMSJudgeRank_Invalid)
+		judgeRank = chartRank;
+	// the score saves the rank it was played on, not AUTO
+	PO_GROUP_ASSIGN(opts, ModsLevel_Stage, m_bBMSJudgeAuto, false);
+	Locator::getLogger()->info(
+	  "BMS judge rank: {}, gauge on {} ({})",
+	  BMSJudgeRankToString(judgeRank),
+	  chartRank == BMSJudgeRank_Invalid ? std::string("the same")
+										: BMSJudgeRankToString(chartRank),
+	  source);
 	PO_GROUP_ASSIGN(opts, ModsLevel_Stage, m_BMSJudgeRank, judgeRank);
 }
 
@@ -692,6 +714,7 @@ ScreenGameplay::LoadNextSong()
 	}
 
 	FoldBMSMirrorTurn();
+	ApplyBMSPlayMode(GetPlayerInfo()->m_vpStepsQueue[iPlaySongIndex]);
 
 	SetupSong(iPlaySongIndex);
 

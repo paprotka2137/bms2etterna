@@ -16,6 +16,16 @@ local bmsOptionValues = {
 	-- CRandom (Random with the numbers off: white lanes among white keys, blue
 	-- among blue) is a setting of Random in the lane picker, not a stop of its own
 	Arrange = {"Off", "Mirror", "Random", "RRandom", "SRandom", "HRandom", "Custom", "CRandom"},
+	-- rules the 7k charts play by: Auto (an O2Jam .ojn by O2Jam rules, the
+	-- rest by LR2's), BMS or O2Jam for every chart
+	PlayMode = {"Auto", "BMS", "O2Jam"},
+	-- O2Jam mode long note modifiers
+	LNMod = {"Off", "FLN", "SLN"},
+}
+-- shown as is, not from the language file
+local bmsOptionLabels = {
+	PlayMode = {"Auto", "BMS", "O2Jam"},
+	LNMod = {"Off", "FLN", "SLN"},
 }
 local bmsOptionNames = {
 	JudgeRank = {"JudgeRankEasy", "JudgeRankNormal", "JudgeRankHard", "JudgeRankVeryHard"},
@@ -26,6 +36,8 @@ local bmsOptionEnums = {
 	JudgeRank = {setting = "JudgeRankSetting", enum = "BMSJudgeRank_"},
 	Gauge = {setting = "GaugeSetting", enum = "BMSGauge_"},
 	Arrange = {setting = "ArrangeSetting", enum = "BMSArrange_"},
+	PlayMode = {setting = "PlayModeSetting", enum = "BMSPlayMode_"},
+	LNMod = {setting = "LNModSetting", enum = "BMSLNMod_"},
 }
 local modsLevels = {"ModsLevel_Preferred", "ModsLevel_Stage", "ModsLevel_Song", "ModsLevel_Current"}
 
@@ -58,6 +70,10 @@ function getBMSOption(kind)
 	end
 	local e = bmsOptionEnums[kind]
 	local po = GAMESTATE:GetPlayerState():GetPlayerOptions("ModsLevel_Preferred")
+	-- a game built before the option has no setting for it
+	if po[e.setting] == nil then
+		return kind == "Gauge" and 2 or 1
+	end
 	local cur = po[e.setting](po)
 	for i, v in ipairs(bmsOptionValues[kind]) do
 		if cur == e.enum .. v then
@@ -68,11 +84,16 @@ function getBMSOption(kind)
 end
 
 function getBMSOptionName(kind, i)
+	if bmsOptionLabels[kind] then
+		return bmsOptionLabels[kind][i or getBMSOption(kind)]
+	end
 	return THEME:GetString("OptionNames", bmsOptionNames[kind][i or getBMSOption(kind)])
 end
 
 -- judge rank index (1 Easy .. 4 VeryHard) from the selected chart's own #RANK,
--- nil when it has none. Gameplay uses it over the picked rank, like LR2.
+-- nil when it has none. The gauge always plays on it, like LR2, and the
+-- ranking site gets scores judged on it; the notes are judged on the picked
+-- rank.
 function getBMSChartJudgeRank(steps)
 	steps = steps or GAMESTATE:GetCurrentSteps()
 	if not steps or not steps.GetBMSRank then
@@ -86,18 +107,46 @@ function getBMSChartJudgeRank(steps)
 	return ({4, 3, 2, 1})[rank + 1] or 1
 end
 
--- judge rank the selected chart will be played on
-function getBMSEffectiveJudgeRank()
-	return getBMSChartJudgeRank() or getBMSOption("JudgeRank")
+-- AUTO judge rank: every chart plays on its own #RANK (the picked rank for
+-- charts without one)
+function getBMSJudgeAuto()
+	local po = GAMESTATE:GetPlayerState():GetPlayerOptions("ModsLevel_Preferred")
+	return po.BMSJudgeAuto ~= nil and po:BMSJudgeAuto() == true
 end
 
--- "Normal", or "Normal (chart)" when the chart's #RANK overrides the picker
-function getBMSJudgeRankText()
-	local chart = getBMSChartJudgeRank()
-	if chart then
-		return getBMSOptionName("JudgeRank", chart) .. " (" .. THEME:GetString("GeneralInfo", "BMSChartRank") .. ")"
+-- judge rank the selected chart's notes will be judged on (the picked one,
+-- the chart's own on AUTO; a dan course plays on each chart's own)
+function getBMSEffectiveJudgeRank()
+	if getBMSJudgeAuto() then
+		return getBMSChartJudgeRank() or getBMSOption("JudgeRank")
 	end
-	return getBMSOptionName("JudgeRank")
+	return getBMSOption("JudgeRank")
+end
+
+-- "Normal", or "Auto (Normal)" with the rank AUTO gives the selected chart
+function getBMSJudgeRankName()
+	local name = getBMSOptionName("JudgeRank", getBMSEffectiveJudgeRank())
+	if getBMSJudgeAuto() then
+		return THEME:GetString("OptionNames", "JudgeRankAuto") .. " (" .. name .. ")"
+	end
+	return name
+end
+
+-- "Normal", "Normal (chart)" when it is the chart's #RANK too, or
+-- "Hard (chart: Normal)" when the chart's #RANK is another one
+function getBMSJudgeRankText()
+	if getBMSJudgeAuto() then
+		return getBMSJudgeRankName()
+	end
+	local chart = getBMSChartJudgeRank()
+	local picked = getBMSOption("JudgeRank")
+	local label = THEME:GetString("GeneralInfo", "BMSChartRank")
+	if chart and chart == picked then
+		return getBMSOptionName("JudgeRank", picked) .. " (" .. label .. ")"
+	elseif chart then
+		return getBMSOptionName("JudgeRank", picked) .. " (" .. label .. ": " .. getBMSOptionName("JudgeRank", chart) .. ")"
+	end
+	return getBMSOptionName("JudgeRank", picked)
 end
 
 local function setBMSOption(kind, i)
@@ -105,15 +154,39 @@ local function setBMSOption(kind, i)
 	local ps = GAMESTATE:GetPlayerState()
 	for _, lvl in ipairs(modsLevels) do
 		local po = ps:GetPlayerOptions(lvl)
-		po[e.setting](po, e.enum .. bmsOptionValues[kind][i])
+		if po[e.setting] then
+			po[e.setting](po, e.enum .. bmsOptionValues[kind][i])
+		end
 	end
 	MESSAGEMAN:Broadcast("BMSOptionChanged", {kind = kind})
 end
 
+-- the judge rank picker stops at AUTO, EASY, NORMAL, HARD, VERY HARD;
+-- AUTO keeps the rank picked last for charts without a #RANK
+local function changeBMSJudgeRank(delta)
+	local i = getBMSJudgeAuto() and 0 or getBMSOption("JudgeRank")
+	local n = #bmsOptionValues.JudgeRank
+	local j = math.min(math.max(i + delta, 0), n)
+	if j == i then
+		return
+	end
+	local ps = GAMESTATE:GetPlayerState()
+	for _, lvl in ipairs(modsLevels) do
+		local po = ps:GetPlayerOptions(lvl)
+		if po.BMSJudgeAuto then
+			po:BMSJudgeAuto(j == 0)
+		end
+		if j > 0 then
+			po:JudgeRankSetting("BMSJudgeRank_" .. bmsOptionValues.JudgeRank[j])
+		end
+	end
+	MESSAGEMAN:Broadcast("BMSOptionChanged", {kind = "JudgeRank"})
+end
+
 -- moves the setting by delta, stopping at the ends (the lane arrangement wraps around)
 function changeBMSOption(kind, delta)
-	-- the chart's own judge rank can't be overridden
-	if kind == "JudgeRank" and getBMSChartJudgeRank() then
+	if kind == "JudgeRank" then
+		changeBMSJudgeRank(delta)
 		return
 	end
 	local n = #bmsOptionValues[kind]
@@ -125,6 +198,9 @@ function changeBMSOption(kind, delta)
 		if i > n then
 			i = 3
 		end
+		i = (i + delta - 1) % n + 1
+	elseif kind == "PlayMode" or kind == "LNMod" then
+		-- switches go round
 		i = (i + delta - 1) % n + 1
 	else
 		i = math.min(math.max(i + delta, 1), n)
@@ -337,9 +413,117 @@ function isO2JamSteps(steps)
 	return fn:sub(-4) == ".ojn"
 end
 
--- the chart being played (or picked) is an O2Jam chart
+-- "Auto", "BMS" or "O2Jam": the play mode picked in song select
+function getBMSPlayMode()
+	local ps = GAMESTATE:GetPlayerState()
+	local po = ps and ps:GetPlayerOptions("ModsLevel_Current")
+	if not po or not po.PlayModeSetting then
+		return "Auto"
+	end
+	return (po:PlayModeSetting():gsub("^BMSPlayMode_", ""))
+end
+
+-- a 7k chart plays by O2Jam rules in the picked play mode: O2Jam mode on
+-- every chart, Auto only on O2Jam charts (.ojn)
+function isO2JamPlayOf(steps)
+	if steps == nil then
+		return false
+	end
+	if steps.GetStepsType and steps:GetStepsType() ~= "StepsType_Kb7_Single" then
+		return false
+	end
+	local mode = getBMSPlayMode()
+	if mode == "O2Jam" then
+		return true
+	elseif mode == "BMS" then
+		return false
+	end
+	return isO2JamSteps(steps)
+end
+
+-- the chart being played (or picked) plays by O2Jam rules
 function isO2JamPlay()
-	return isO2JamSteps(GAMESTATE:GetCurrentSteps())
+	return isO2JamPlayOf(GAMESTATE:GetCurrentSteps())
+end
+
+-- "AUTO (O2JAM)", "BMS", "O2JAM": the mode and, on Auto, what the chart plays by
+function getBMSPlayModeText(steps)
+	steps = steps or GAMESTATE:GetCurrentSteps()
+	local mode = getBMSPlayMode()
+	if mode == "Auto" and steps then
+		return "Auto (" .. (isO2JamPlayOf(steps) and "O2Jam" or "BMS") .. ")"
+	end
+	return mode
+end
+
+-- the site keeps plays of a BMS chart in O2Jam mode on a chart of its own,
+-- its key starts with "O" instead of "X"
+function getBMSSiteChartKey(steps)
+	if not steps then
+		return nil
+	end
+	local ck = steps:GetChartKey()
+	if ck and isO2JamPlayOf(steps) and not isO2JamSteps(steps) then
+		return "O" .. ck:sub(2)
+	end
+	return ck
+end
+
+-- FLN gap and SLN length, in rows (48 a beat)
+local lnRows = {3, 4, 6, 8, 12, 16, 24, 48}
+local lnRowNames = {[3] = "1/16", [4] = "1/12", [6] = "1/8", [8] = "1/6", [12] = "1/4", [16] = "1/3", [24] = "1/2", [48] = "1"}
+
+-- the picked LN modifier's size: rows and "Gap" / "Length", nil when off
+function getBMSLNValue()
+	local mod = getBMSOptionName("LNMod")
+	local po = GAMESTATE:GetPlayerState():GetPlayerOptions("ModsLevel_Preferred")
+	if mod == "FLN" and po.FLNGap then
+		return po:FLNGap(), "Gap"
+	elseif mod == "SLN" and po.SLNLength then
+		return po:SLNLength(), "Length"
+	end
+	return nil
+end
+
+-- "1/8 beat", "-" when no LN modifier is on
+function getBMSLNValueText()
+	local rows = getBMSLNValue()
+	if not rows then
+		return "-"
+	end
+	local name = lnRowNames[rows] or string.format("%d/48", rows)
+	return name .. " beat"
+end
+
+-- "Gap" for FLN, "Length" for SLN
+function getBMSLNValueLabel()
+	local _, label = getBMSLNValue()
+	return label or "Gap"
+end
+
+-- one step longer or shorter (FLN gap or SLN length)
+function changeBMSLNValue(delta)
+	local rows, label = getBMSLNValue()
+	if not rows then
+		return
+	end
+	local i = 1
+	for k, v in ipairs(lnRows) do
+		if v <= rows then
+			i = k
+		end
+	end
+	i = math.min(math.max(i + delta, 1), #lnRows)
+	local ps = GAMESTATE:GetPlayerState()
+	for _, lvl in ipairs(modsLevels) do
+		local po = ps:GetPlayerOptions(lvl)
+		if label == "Gap" then
+			po:FLNGap(lnRows[i])
+		else
+			po:SLNLength(lnRows[i])
+		end
+	end
+	MESSAGEMAN:Broadcast("BMSOptionChanged", {kind = "LNValue"})
 end
 
 -- a score played by O2Jam rules: the game writes "O2JamHard" into its
@@ -349,8 +533,13 @@ function isO2JamScore(score)
 	if score == nil then
 		return false
 	end
-	if string.lower(score:GetModifiers() or ""):find("o2jamhard", 1, true) then
+	local mods = string.lower(score:GetModifiers() or "")
+	if mods:find("o2jamhard", 1, true) then
 		return true
+	end
+	-- played in BMS mode
+	if mods:find("bmsmode", 1, true) then
+		return false
 	end
 	local ck = score:GetChartKey()
 	if o2jamChartCache[ck] == nil then
@@ -685,4 +874,80 @@ Def.BitmapText = function(t)
 	-- one call deeper than the actor file, Def looks the caller up by level
 	t._Level = (t._Level or 1) + 1
 	return makeBitmapText(t)
+end
+
+-- 7k result screen on every judge rank: the result file (in
+-- BGAnimations/ScreenEvaluation decorations/) is built again for each rank
+-- the first time it is picked with [ / ] or a click, and kept, hidden, for
+-- the next time (deleting it would leave its mouse buttons behind). The
+-- result file names its frame "RXView<rank>" and reads BMSResultView.
+function BMSResultViews(file)
+	BMSResultView = {}
+	local path = THEME:GetCurrentThemeDirectory()
+	if path:sub(1, 1) ~= "/" then
+		path = "/" .. path
+	end
+	path = path .. "BGAnimations/ScreenEvaluation decorations/" .. file
+	return Def.ActorFrame {
+		Name = "BMSResultViews",
+		InitCommand = function(self)
+			local frame = self
+			BMSResultView.step = function(d)
+				local v = BMSResultView
+				if not v.enabled or v.busy then
+					return
+				end
+				local r = math.max(1, math.min(4, (v.current or v.played or 1) + d))
+				if r == v.current then
+					return
+				end
+				v.pending = r
+				v.busy = true
+				frame:queuecommand("ShowRank")
+			end
+		end,
+		OnCommand = function(self)
+			SCREENMAN:GetTopScreen():AddInputCallback(function(event)
+				if event.type ~= "InputEventType_FirstPress" then
+					return
+				end
+				local b = event.DeviceInput.button
+				if b == "DeviceButton_[" then
+					BMSResultView.step(-1)
+				elseif b == "DeviceButton_]" then
+					BMSResultView.step(1)
+				end
+			end)
+		end,
+		ShowRankCommand = function(self)
+			local v = BMSResultView
+			local r = v.pending
+			v.pending = nil
+			for i = 1, 4 do
+				local c = self:GetChild("RXView" .. i)
+				if c then
+					c:visible(i == r)
+				end
+			end
+			if self:GetChild("RXView" .. r) then
+				v.current = r
+			else
+				v.rank = r
+				v.rebuilt = true
+				local c = self:AddChildFromPath(path)
+				if c then
+					c:playcommand("Begin")
+					c:playcommand("On")
+				else
+					-- could not build it: back to the one shown before
+					local back = self:GetChild("RXView" .. (v.current or v.played or 1))
+					if back then
+						back:visible(true)
+					end
+				end
+			end
+			v.busy = false
+		end,
+		LoadActor(path),
+	}
 end

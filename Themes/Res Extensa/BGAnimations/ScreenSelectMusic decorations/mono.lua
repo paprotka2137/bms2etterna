@@ -102,7 +102,7 @@ local function readChart()
 	data.total = (total and total > 0) and total or nil
 	-- O2Jam charts: a long note is judged twice, the score is the DMJam
 	-- score (100.000 at most, kept in thousandths) and there is no TOTAL
-	data.o2jam = isO2JamSteps(steps)
+	data.o2jam = isO2JamPlayOf(steps)
 	data.judged = notes
 	if data.o2jam then
 		data.judged = notes + rv:GetValue("RadarCategory_Holds")
@@ -402,7 +402,12 @@ local t = Def.ActorFrame {
 	BMSChartTablesMessageCommand = function(self)
 		self:playcommand("Refresh")
 	end,
-	BMSOptionChangedMessageCommand = function(self)
+	BMSOptionChangedMessageCommand = function(self, params)
+		-- another mode reads the chart again (rules, scores)
+		if params and params.kind == "PlayMode" then
+			self:playcommand("Heavy")
+			return
+		end
 		self:playcommand("Refresh")
 	end,
 	BMSClearScaleChangedMessageCommand = function(self)
@@ -531,8 +536,11 @@ local p = Def.ActorFrame {
 		self.preview = false
 		self:visible(true)
 	end,
+	-- a tab window (Profile, Goals, Ranking...) hides the panels so its
+	-- rows don't sit over the song's text; the search tab types in the top bar
 	TabChangedMessageCommand = function(self)
-		self:visible(not self.preview)
+		local i = getTabIndex()
+		self:visible(not self.preview and (i == 0 or i == 3))
 	end,
 }
 t[#t + 1] = p
@@ -783,30 +791,51 @@ do
 			end,
 		},
 		{
-			label = THEME:GetString("GeneralInfo", "ProfileGauge"),
+			-- O2Jam plays on the O2Jam hard gauge, its cell picks FLN / SLN
+			label = function()
+				if data.o2jam then
+					return "LN"
+				end
+				return THEME:GetString("GeneralInfo", "ProfileGauge")
+			end,
 			value = function()
 				if data.o2jam then
-					return "O2Jam Hard"
+					return getBMSOptionName("LNMod")
 				end
 				return getBMSOptionName("Gauge")
 			end,
 			click = function(event)
+				local kind = data.o2jam and "LNMod" or "Gauge"
 				if event == "DeviceButton_left mouse button" then
-					changeBMSOption("Gauge", 1)
+					changeBMSOption(kind, 1)
 				elseif event == "DeviceButton_right mouse button" then
-					changeBMSOption("Gauge", -1)
+					changeBMSOption(kind, -1)
 				end
 			end,
 		},
 		{
-			label = THEME:GetString("GeneralInfo", "ProfileAutoShift"),
+			-- O2Jam has no auto shift, its cell sets the FLN gap / SLN length
+			label = function()
+				if data.o2jam then
+					return "LN " .. getBMSLNValueLabel()
+				end
+				return THEME:GetString("GeneralInfo", "ProfileAutoShift")
+			end,
 			value = function()
 				if data.o2jam then
-					return "-"
+					return getBMSLNValueText()
 				end
 				return getBMSAutoShiftText()
 			end,
 			click = function(event)
+				if data.o2jam then
+					if event == "DeviceButton_left mouse button" then
+						changeBMSLNValue(1)
+					elseif event == "DeviceButton_right mouse button" then
+						changeBMSLNValue(-1)
+					end
+					return
+				end
 				if event == "DeviceButton_left mouse button" or event == "DeviceButton_right mouse button" then
 					toggleBMSAutoShift()
 				end
@@ -821,7 +850,7 @@ do
 				if data.o2jam then
 					return "O2Jam"
 				end
-				return getBMSOptionName("JudgeRank", getBMSEffectiveJudgeRank())
+				return getBMSJudgeRankName()
 			end,
 			click = function(event)
 				if event == "DeviceButton_left mouse button" then
@@ -837,12 +866,35 @@ do
 	for i, o in ipairs(options) do
 		local x = RL + ((i - 1) % 2) * cw
 		local y0 = y0 + math.floor((i - 1) / 2) * 92
-		p[#p + 1] = rxLabel(rxFont.normal, x, y0 + 14, 13, 0, string.upper(o.label), rxColor("muted"), cw - 16)
+		if type(o.label) == "function" then
+			p[#p + 1] = rxText(rxFont.normal, x, y0 + 14, 13, 0, cw - 16, function()
+				return string.upper(o.label())
+			end, rxColor("muted"))
+		else
+			p[#p + 1] = rxLabel(rxFont.normal, x, y0 + 14, 13, 0, string.upper(o.label), rxColor("muted"), cw - 16)
+		end
 		p[#p + 1] = rxText(rxFont.semibold, x, y0 + 44, 26, 0, cw - 16, function()
 			return o.value()
 		end, rxColor("text"))
 		p[#p + 1] = rxClick(x, y0, cw - 8, 70, o.click, noTab)
 	end
+	-- the play mode, one line under the grid: BMS or O2Jam rules, Auto lets
+	-- the chart decide
+	local my = y0 + 184
+	p[#p + 1] = rxLabel(rxFont.normal, RL, my, 13, 0, "MODE", rxColor("muted"), 80)
+	p[#p + 1] = rxText(rxFont.semibold, RL + 80, my, 20, 0, RR - RL - 96, function()
+		if not data.steps then
+			return nil
+		end
+		return getBMSPlayModeText(data.steps)
+	end, rxColor("text"))
+	p[#p + 1] = rxClick(RL, my - 14, RR - RL - 8, 28, function(event)
+		if event == "DeviceButton_left mouse button" then
+			changeBMSOption("PlayMode", 1)
+		elseif event == "DeviceButton_right mouse button" then
+			changeBMSOption("PlayMode", -1)
+		end
+	end, noTab)
 end
 
 ---------------------------------------------------------------------------

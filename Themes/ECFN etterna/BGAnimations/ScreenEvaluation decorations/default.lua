@@ -3,7 +3,7 @@
 -- LoadActor can't find the folder to resolve the relative path from)
 local t
 if hideMSD() then
-	t = LoadActor("ecfn.lua")
+	t = BMSResultViews("ecfn.lua") -- every judge rank, see BMSRules.lua
 	-- result of a dan course on top
 	t = Def.ActorFrame {t, LoadActor("dancourse.lua")}
 else

@@ -3,9 +3,9 @@
 -- LoadActor can't find the folder to resolve the relative path from)
 local t
 if hideMSD() then
-	t = LoadActor("mono.lua")
+	local views = BMSResultViews("mono.lua") -- every judge rank, see BMSRules.lua
 	-- result of a dan course on top
-	t = Def.ActorFrame {t, LoadActor("dancourse.lua")}
+	t = Def.ActorFrame {views, LoadActor("dancourse.lua")}
 else
 	t = LoadActor("td.lua")
 end

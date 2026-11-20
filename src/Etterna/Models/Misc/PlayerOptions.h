@@ -76,6 +76,65 @@ auto
 BMSJudgeRankToLocalizedString(BMSJudgeRank cat) -> const std::string&;
 LuaDeclareType(BMSJudgeRank);
 
+// LR2's windows of each judge rank in seconds (PGREAT, GREAT, GOOD). BAD
+// reaches 200ms on every rank, past it a note is a POOR.
+inline constexpr float BMS_LR2_BAD_WINDOW_SEC = 0.2F;
+inline constexpr float BMS_LR2_WINDOWS[NUM_BMSJudgeRank][3] = {
+	{ 0.021F, 0.060F, 0.120F }, // EASY
+	{ 0.018F, 0.040F, 0.100F }, // NORMAL
+	{ 0.015F, 0.030F, 0.060F }, // HARD
+	{ 0.008F, 0.024F, 0.040F }, // VERY HARD
+};
+/** @brief judgment of a hit |offset| seconds off on a judge rank (W1 PGREAT,
+ * W2 GREAT, W3 GOOD, W4 BAD, Miss POOR) */
+auto
+BMSJudgeOffset(BMSJudgeRank rank, float offset) -> TapNoteScore;
+/** @brief judge rank of a bms #RANK (0 VERY HARD .. 3 EASY, 4 VERY EASY),
+ * BMSJudgeRank_Invalid when the chart has none (-1) */
+auto
+BMSJudgeRankFromChartRank(int rank) -> BMSJudgeRank;
+/** @brief judge rank saved in a score's modifiers (Easy when none is) */
+auto
+BMSJudgeRankFromModifiers(const std::string& mods) -> BMSJudgeRank;
+/** @brief the modifiers with their judge rank token swapped for rank's */
+auto
+BMSModifiersWithJudgeRank(const std::string& mods, BMSJudgeRank rank)
+  -> std::string;
+
+/** @brief Rules a 7k chart plays by: Auto lets the chart decide (an O2Jam
+ * .ojn plays by O2Jam rules, anything else by LR2's), BMS and O2Jam force
+ * them for every chart. */
+enum BMSPlayMode
+{
+	BMSPlayMode_Auto,
+	BMSPlayMode_BMS,
+	BMSPlayMode_O2Jam,
+	NUM_BMSPlayMode,
+	BMSPlayMode_Invalid
+};
+auto
+BMSPlayModeToString(BMSPlayMode cat) -> const std::string&;
+auto
+BMSPlayModeToLocalizedString(BMSPlayMode cat) -> const std::string&;
+LuaDeclareType(BMSPlayMode);
+
+/** @brief O2Jam long note modifiers, only applied in O2Jam mode on 7k:
+ * FLN turns every tap into a long note reaching the next note of its lane,
+ * SLN into a short long note. */
+enum BMSLNMod
+{
+	BMSLNMod_Off,
+	BMSLNMod_FLN,
+	BMSLNMod_SLN,
+	NUM_BMSLNMod,
+	BMSLNMod_Invalid
+};
+auto
+BMSLNModToString(BMSLNMod cat) -> const std::string&;
+auto
+BMSLNModToLocalizedString(BMSLNMod cat) -> const std::string&;
+LuaDeclareType(BMSLNMod);
+
 /** @brief LR2 style lane arrangement, only applied to 7k charts. */
 enum BMSArrange
 {
@@ -281,12 +340,21 @@ class PlayerOptions
 	BMSGauge m_BMSGauge{ BMSGauge_Normal };	   // only used on 7k charts
 	BMSJudgeRank m_BMSJudgeRank{ BMSJudgeRank_Easy }; // only used on 7k
 	BMSArrange m_BMSArrange{ BMSArrange_Off };		   // only used on 7k
+	BMSPlayMode m_BMSPlayMode{ BMSPlayMode_Auto };	   // only used on 7k
+	BMSLNMod m_BMSLNMod{ BMSLNMod_Off }; // only used in O2Jam mode on 7k
+	// FLN: rows (48 a beat) left free before the next note of the lane
+	int m_iBMSFLNGap{ 6 };
+	// SLN: rows (48 a beat) a long note lasts
+	int m_iBMSSLNLength{ 12 };
 	// lane order for BMSArrange_Custom, e.g. "3216547" (lane 1 plays the
 	// notes of chart lane 3)
 	std::string m_sBMSLanes{ "1234567" };
 	// gauge auto shift: lower gauges run alongside the chosen one and the
 	// best one that survives decides the clear, only used on 7k
 	bool m_bBMSAutoShift{ false };
+	// 7k: judge on each chart's own #RANK (m_BMSJudgeRank for charts
+	// without one); ScreenGameplay turns it into the rank for the stage
+	bool m_bBMSJudgeAuto{ false };
 	int m_BatteryLives{ 4 };
 	/* All floats have a corresponding speed setting, which determines how fast
 	 * PlayerOptions::Approach approaches. */

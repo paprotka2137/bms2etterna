@@ -2,11 +2,9 @@ function getPlayerOptionsList(itemSet)
 	-- 7k plays by LR2 rules: judge rank and gauge replace judge and life
 	local rules = "Judge,Life,Fail"
 	if hideMSD() then
+		-- the judge rank can be picked on charts with their own #RANK too:
+		-- the gauge still plays on the chart's (see ScreenGameplay.cpp)
 		rules = "JudgeRank,Gauge,Fail"
-		-- charts with their own #RANK / #JUDGERANK / #DEFEXRANK always play on it
-		if getBMSChartJudgeRank() then
-			rules = "Gauge,Fail"
-		end
 	end
 	local Items = {
 		["Main"] = "Speed,RateList,NoteSk,RS,PRAC,CG,ScrollDir,Center,Persp,BG,SF,Background," .. rules .. ",Assist,Score",

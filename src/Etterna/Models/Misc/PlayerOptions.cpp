@@ -52,12 +52,108 @@ XToString(BMSJudgeRank);
 XToLocalizedString(BMSJudgeRank);
 LuaXType(BMSJudgeRank);
 
+auto
+BMSJudgeOffset(BMSJudgeRank rank, float offset) -> TapNoteScore
+{
+	if (rank < 0 || rank >= NUM_BMSJudgeRank)
+		rank = BMSJudgeRank_Easy;
+	const auto o = std::fabs(offset);
+	if (o <= BMS_LR2_WINDOWS[rank][0])
+		return TNS_W1;
+	if (o <= BMS_LR2_WINDOWS[rank][1])
+		return TNS_W2;
+	if (o <= BMS_LR2_WINDOWS[rank][2])
+		return TNS_W3;
+	if (o <= BMS_LR2_BAD_WINDOW_SEC)
+		return TNS_W4;
+	return TNS_Miss;
+}
+
+auto
+BMSJudgeRankFromChartRank(int rank) -> BMSJudgeRank
+{
+	switch (rank) {
+		case 0:
+			return BMSJudgeRank_VeryHard;
+		case 1:
+			return BMSJudgeRank_Hard;
+		case 2:
+			return BMSJudgeRank_Normal;
+		case 3:
+		case 4: // VERY EASY, wider than LR2's EASY, which is the widest we have
+			return BMSJudgeRank_Easy;
+		default:
+			return BMSJudgeRank_Invalid;
+	}
+}
+
+// the tokens PlayerOptions::GetString writes for a judge rank
+static auto
+IsBMSJudgeToken(const std::string& lower) -> bool
+{
+	return lower == "easyjudge" || lower == "normaljudge" ||
+		   lower == "hardjudge" || lower == "veryhardjudge";
+}
+
+auto
+BMSJudgeRankFromModifiers(const std::string& mods) -> BMSJudgeRank
+{
+	const auto m = make_lower(mods);
+	if (m.find("veryhardjudge") != std::string::npos)
+		return BMSJudgeRank_VeryHard;
+	if (m.find("hardjudge") != std::string::npos)
+		return BMSJudgeRank_Hard;
+	if (m.find("normaljudge") != std::string::npos)
+		return BMSJudgeRank_Normal;
+	return BMSJudgeRank_Easy;
+}
+
+auto
+BMSModifiersWithJudgeRank(const std::string& mods, BMSJudgeRank rank)
+  -> std::string
+{
+	std::vector<std::string> tokens;
+	split(mods, ",", tokens, true);
+	std::vector<std::string> out;
+	for (auto t : tokens) {
+		Trim(t);
+		if (t.empty() || IsBMSJudgeToken(make_lower(t)))
+			continue;
+		out.push_back(t);
+	}
+	static const char* names[] = { nullptr,
+								   "NormalJudge",
+								   "HardJudge",
+								   "VeryHardJudge" };
+	if (rank > BMSJudgeRank_Easy && rank < NUM_BMSJudgeRank)
+		out.emplace_back(names[rank]);
+	return join(", ", out);
+}
+
 static const char* BMSArrangeNames[] = {
 	"Off", "Mirror", "Random", "RRandom", "SRandom", "HRandom", "Custom", "CRandom",
 };
 XToString(BMSArrange);
 XToLocalizedString(BMSArrange);
 LuaXType(BMSArrange);
+
+static const char* BMSPlayModeNames[] = {
+	"Auto",
+	"BMS",
+	"O2Jam",
+};
+XToString(BMSPlayMode);
+XToLocalizedString(BMSPlayMode);
+LuaXType(BMSPlayMode);
+
+static const char* BMSLNModNames[] = {
+	"Off",
+	"FLN",
+	"SLN",
+};
+XToString(BMSLNMod);
+XToLocalizedString(BMSLNMod);
+LuaXType(BMSLNMod);
 
 void
 NextFloat(float fValues[], int size);
@@ -87,8 +183,13 @@ PlayerOptions::Init()
 	m_BMSGauge = BMSGauge_Normal;
 	m_BMSJudgeRank = BMSJudgeRank_Easy;
 	m_BMSArrange = BMSArrange_Off;
+	m_BMSPlayMode = BMSPlayMode_Auto;
+	m_BMSLNMod = BMSLNMod_Off;
+	m_iBMSFLNGap = 6;
+	m_iBMSSLNLength = 12;
 	m_sBMSLanes = "1234567";
 	m_bBMSAutoShift = false;
+	m_bBMSJudgeAuto = false;
 	m_BatteryLives = 4;
 	m_MinTNSToHideNotes = PREFSMAN->m_MinTNSToHideNotes.Get();
 	m_bSetScrollSpeed = false;
@@ -148,8 +249,13 @@ PlayerOptions::Approach(const PlayerOptions& other, float fDeltaSeconds)
 	DO_COPY(m_BMSGauge);
 	DO_COPY(m_BMSJudgeRank);
 	DO_COPY(m_BMSArrange);
+	DO_COPY(m_BMSPlayMode);
+	DO_COPY(m_BMSLNMod);
+	DO_COPY(m_iBMSFLNGap);
+	DO_COPY(m_iBMSSLNLength);
 	DO_COPY(m_sBMSLanes);
 	DO_COPY(m_bBMSAutoShift);
+	DO_COPY(m_bBMSJudgeAuto);
 	DO_COPY(m_BatteryLives);
 	APPROACH(fTimeSpacing);
 	APPROACH(fScrollSpeed);
@@ -419,6 +525,9 @@ PlayerOptions::GetMods(std::vector<std::string>& AddTo, bool bForceNoteSkin) con
 		default:
 			break;
 	}
+	// after the rank: parsing "AutoJudge" back must come last
+	if (m_bBMSJudgeAuto)
+		AddTo.push_back("AutoJudge");
 
 	switch (m_BMSArrange) {
 		case BMSArrange_Mirror:
@@ -445,6 +554,30 @@ PlayerOptions::GetMods(std::vector<std::string>& AddTo, bool bForceNoteSkin) con
 			AddTo.push_back("Lanes" + m_sBMSLanes);
 			break;
 		case BMSArrange_Off:
+		default:
+			break;
+	}
+
+	switch (m_BMSPlayMode) {
+		case BMSPlayMode_BMS:
+			AddTo.push_back("BMSMode");
+			break;
+		case BMSPlayMode_O2Jam:
+			AddTo.push_back("O2JamMode");
+			break;
+		case BMSPlayMode_Auto:
+		default:
+			break;
+	}
+
+	switch (m_BMSLNMod) {
+		case BMSLNMod_FLN:
+			AddTo.push_back("FLN" + std::to_string(m_iBMSFLNGap));
+			break;
+		case BMSLNMod_SLN:
+			AddTo.push_back("SLN" + std::to_string(m_iBMSSLNLength));
+			break;
+		case BMSLNMod_Off:
 		default:
 			break;
 	}
@@ -677,6 +810,8 @@ PlayerOptions::FromOneModString(const std::string& sOneMod,
 	} else if ((sBit == "easyjudge" || sBit == "normaljudge" ||
 				sBit == "hardjudge" || sBit == "veryhardjudge") &&
 			   (forReplay || !DLMAN->InGameplay())) {
+		// picking a rank by hand leaves AUTO
+		m_bBMSJudgeAuto = false;
 		if (sBit == "normaljudge")
 			m_BMSJudgeRank = BMSJudgeRank_Normal;
 		else if (sBit == "hardjudge")
@@ -704,6 +839,37 @@ PlayerOptions::FromOneModString(const std::string& sOneMod,
 			m_BMSArrange = BMSArrange_SRandom;
 		else
 			m_BMSArrange = BMSArrange_HRandom;
+	} else if ((sBit == "automode" || sBit == "bmsmode" ||
+				sBit == "o2jammode") &&
+			   (forReplay || !DLMAN->InGameplay())) {
+		if (!on || sBit == "automode")
+			m_BMSPlayMode = BMSPlayMode_Auto;
+		else if (sBit == "bmsmode")
+			m_BMSPlayMode = BMSPlayMode_BMS;
+		else
+			m_BMSPlayMode = BMSPlayMode_O2Jam;
+	} else if ((sBit == "nolnmod" ||
+				((sBit.compare(0, 3, "fln") == 0 ||
+				  sBit.compare(0, 3, "sln") == 0) &&
+				 sBit.find_first_not_of("0123456789", 3) ==
+				   std::string::npos)) &&
+			   (forReplay || !DLMAN->InGameplay())) {
+		// "FLN6": FLN with a gap of 6 rows, "SLN12": SLN 12 rows long
+		const auto rows =
+		  sBit.size() > 3 ? std::clamp(StringToInt(sBit.substr(3)), 1, 192) : 0;
+		if (!on || sBit == "nolnmod") {
+			m_BMSLNMod = BMSLNMod_Off;
+		} else if (sBit[0] == 'f') {
+			m_BMSLNMod = BMSLNMod_FLN;
+			if (rows > 0)
+				m_iBMSFLNGap = rows;
+		} else {
+			m_BMSLNMod = BMSLNMod_SLN;
+			if (rows > 0)
+				m_iBMSSLNLength = rows;
+		}
+	} else if (sBit == "autojudge" && (forReplay || !DLMAN->InGameplay())) {
+		m_bBMSJudgeAuto = on;
 	} else if (sBit == "gas" && (forReplay || !DLMAN->InGameplay())) {
 		m_bBMSAutoShift = on;
 	} else if (sBit.size() == 13 && sBit.compare(0, 6, "colors") == 0 &&
@@ -1159,8 +1325,13 @@ PlayerOptions::operator==(const PlayerOptions& other) const
 	COMPARE(m_BMSGauge);
 	COMPARE(m_BMSJudgeRank);
 	COMPARE(m_BMSArrange);
+	COMPARE(m_BMSPlayMode);
+	COMPARE(m_BMSLNMod);
+	COMPARE(m_iBMSFLNGap);
+	COMPARE(m_iBMSSLNLength);
 	COMPARE(m_sBMSLanes);
 	COMPARE(m_bBMSAutoShift);
+	COMPARE(m_bBMSJudgeAuto);
 	COMPARE(m_BatteryLives);
 	COMPARE(m_fTimeSpacing);
 	COMPARE(m_fScrollSpeed);
@@ -1216,8 +1387,13 @@ PlayerOptions::operator=(PlayerOptions const& other)
 	CPY(m_BMSGauge);
 	CPY(m_BMSJudgeRank);
 	CPY(m_BMSArrange);
+	CPY(m_BMSPlayMode);
+	CPY(m_BMSLNMod);
+	CPY(m_iBMSFLNGap);
+	CPY(m_iBMSSLNLength);
 	CPY(m_sBMSLanes);
 	CPY(m_bBMSAutoShift);
+	CPY(m_bBMSJudgeAuto);
 	CPY(m_BatteryLives);
 	CPY_SPEED(fTimeSpacing);
 	CPY_SPEED(fScrollSpeed);
@@ -1510,8 +1686,13 @@ PlayerOptions::GetSavedPrefsString() const
 	SAVE(m_BMSGauge);
 	SAVE(m_BMSJudgeRank);
 	SAVE(m_BMSArrange);
+	SAVE(m_BMSPlayMode);
+	SAVE(m_BMSLNMod);
+	SAVE(m_iBMSFLNGap);
+	SAVE(m_iBMSSLNLength);
 	SAVE(m_sBMSLanes);
 	SAVE(m_bBMSAutoShift);
+	SAVE(m_bBMSJudgeAuto);
 	SAVE(m_BatteryLives);
 	SAVE(m_FailType);
 	SAVE(m_bForceHoldReleases);
@@ -1538,8 +1719,13 @@ PlayerOptions::ResetPrefs(ResetPrefsType type)
 	CPY(m_BMSGauge);
 	CPY(m_BMSJudgeRank);
 	CPY(m_BMSArrange);
+	CPY(m_BMSPlayMode);
+	CPY(m_BMSLNMod);
+	CPY(m_iBMSFLNGap);
+	CPY(m_iBMSSLNLength);
 	CPY(m_sBMSLanes);
 	CPY(m_bBMSAutoShift);
+	CPY(m_bBMSJudgeAuto);
 	CPY(m_BatteryLives);
 	CPY(m_FailType);
 	CPY(m_MinTNSToHideNotes);
@@ -1594,6 +1780,8 @@ class LunaPlayerOptions : public Luna<PlayerOptions>
 	SECENUM_INTERFACE(GaugeSetting, BMSGauge, BMSGauge);
 	SECENUM_INTERFACE(JudgeRankSetting, BMSJudgeRank, BMSJudgeRank);
 	SECENUM_INTERFACE(ArrangeSetting, BMSArrange, BMSArrange);
+	SECENUM_INTERFACE(PlayModeSetting, BMSPlayMode, BMSPlayMode);
+	SECENUM_INTERFACE(LNModSetting, BMSLNMod, BMSLNMod);
 	static int BMSLanes(T* p, lua_State* L)
 	{
 		const auto original = p->m_sBMSLanes;
@@ -1601,6 +1789,32 @@ class LunaPlayerOptions : public Luna<PlayerOptions>
 			p->m_sBMSLanes = SArg(1);
 		}
 		lua_pushstring(L, original.c_str());
+		return 1;
+	}
+	// FLN gap and SLN length in rows (48 a beat), 1 to 192
+	static int FLNGap(T* p, lua_State* L)
+	{
+		const auto original = p->m_iBMSFLNGap;
+		if (lua_isnumber(L, 1) && !DLMAN->InGameplay())
+			p->m_iBMSFLNGap = std::clamp(IArg(1), 1, 192);
+		lua_pushinteger(L, original);
+		return 1;
+	}
+	static int SLNLength(T* p, lua_State* L)
+	{
+		const auto original = p->m_iBMSSLNLength;
+		if (lua_isnumber(L, 1) && !DLMAN->InGameplay())
+			p->m_iBMSSLNLength = std::clamp(IArg(1), 1, 192);
+		lua_pushinteger(L, original);
+		return 1;
+	}
+	static int BMSJudgeAuto(T* p, lua_State* L)
+	{
+		const auto original = p->m_bBMSJudgeAuto;
+		if (lua_isboolean(L, 1) && !DLMAN->InGameplay()) {
+			p->m_bBMSJudgeAuto = BArg(1);
+		}
+		lua_pushboolean(L, original);
 		return 1;
 	}
 	static int BMSAutoShift(T* p, lua_State* L)
@@ -2005,8 +2219,13 @@ class LunaPlayerOptions : public Luna<PlayerOptions>
 		ADD_METHOD(GaugeSetting);
 		ADD_METHOD(JudgeRankSetting);
 		ADD_METHOD(ArrangeSetting);
+		ADD_METHOD(PlayModeSetting);
+		ADD_METHOD(LNModSetting);
+		ADD_METHOD(FLNGap);
+		ADD_METHOD(SLNLength);
 		ADD_METHOD(BMSLanes);
 		ADD_METHOD(BMSAutoShift);
+		ADD_METHOD(BMSJudgeAuto);
 		ADD_METHOD(BatteryLives);
 		ADD_METHOD(TimeSpacing);
 		ADD_METHOD(MaxScrollBPM);

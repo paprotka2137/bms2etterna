@@ -108,7 +108,7 @@ local function readChart()
 	data.total = (total and total > 0) and total or nil
 	-- O2Jam charts: a long note is judged twice, the score is the DMJam
 	-- score (100.000 at most, kept in thousandths) and there is no TOTAL
-	data.o2jam = isO2JamSteps(steps)
+	data.o2jam = isO2JamPlayOf(steps)
 	data.judged = notes
 	if data.o2jam then
 		data.judged = notes + rv:GetValue("RadarCategory_Holds")
@@ -132,7 +132,10 @@ local function readChart()
 	if rates then
 		for _, hsl in pairs(rates) do
 			for _, s in ipairs(hsl:GetScores()) do
-				all[#all + 1] = s
+				-- only the plays of the picked mode (BMS or O2Jam rules)
+				if isO2JamScore(s) == data.o2jam then
+					all[#all + 1] = s
+				end
 			end
 		end
 	end
@@ -159,7 +162,9 @@ local function readChart()
 		end
 	end
 	if data.best and data.o2jam then
-		data.bestCounts = judgeCounts(data.best)
+		-- COOL, GOOD, BAD, MISS on the first four rows (O2Jam has no GREAT)
+		local c = judgeCounts(data.best)
+		data.bestCounts = {c[1] + c[2], c[3], c[4], c[5]}
 		data.grade = getO2JamGrade(data.bestEx / 1000)
 	elseif data.best then
 		data.bestCounts = judgeCounts(data.best)
@@ -559,7 +564,12 @@ local t = Def.ActorFrame {
 	DelayedChartUpdateMessageCommand = function(self)
 		self:GetChild("HeavyTimer"):playcommand("Wait")
 	end,
-	BMSOptionChangedMessageCommand = function(self)
+	BMSOptionChangedMessageCommand = function(self, params)
+		-- another mode reads the chart again (rules, scores)
+		if params and params.kind == "PlayMode" then
+			self:playcommand("Heavy")
+			return
+		end
 		self:playcommand("Refresh")
 	end,
 	BMSClearScaleChangedMessageCommand = function(self)
@@ -800,6 +810,13 @@ for i = 1, 4 do
 		end,
 	})
 end
+-- AUTO: the rank shown is the chart's own, a small tag over it says so
+p[#p + 1] = Text(223 + 39, 566, 9, 0.5, 78, function()
+	if data.o2jam or not getBMSJudgeAuto or not getBMSJudgeAuto() then
+		return ""
+	end
+	return "AUTO"
+end, color("#7CFF5A"))
 p[#p + 1] = Click(223, 573, 78, 22, function(event)
 	if event == "DeviceButton_left mouse button" then
 		changeBMSOption("JudgeRank", 1)
@@ -858,46 +875,80 @@ do
 			end,
 		},
 		{
-			label = THEME:GetString("GeneralInfo", "ProfileGauge"),
-			value = function()
-				-- O2Jam charts always play on the O2Jam hard gauge
+			-- O2Jam plays on the O2Jam hard gauge, its row picks FLN / SLN
+			label = function()
 				if data.o2jam then
-					return "O2Jam Hard"
+					return "LN"
+				end
+				return THEME:GetString("GeneralInfo", "ProfileGauge")
+			end,
+			value = function()
+				if data.o2jam then
+					return getBMSOptionName("LNMod")
 				end
 				return getBMSOptionName("Gauge")
 			end,
 			click = function(event)
+				local kind = data.o2jam and "LNMod" or "Gauge"
 				if event == "DeviceButton_left mouse button" then
-					changeBMSOption("Gauge", 1)
+					changeBMSOption(kind, 1)
 				elseif event == "DeviceButton_right mouse button" then
-					changeBMSOption("Gauge", -1)
+					changeBMSOption(kind, -1)
 				end
 			end,
 		},
 		{
-			label = THEME:GetString("GeneralInfo", "ProfileAutoShift"),
+			-- O2Jam has no auto shift, its row sets the FLN gap / SLN length
+			label = function()
+				if data.o2jam then
+					return getBMSLNValueLabel()
+				end
+				return THEME:GetString("GeneralInfo", "ProfileAutoShift")
+			end,
 			value = function()
 				if data.o2jam then
-					return "-"
+					return getBMSLNValueText()
 				end
 				return getBMSAutoShiftText()
 			end,
 			click = function(event)
+				if data.o2jam then
+					if event == "DeviceButton_left mouse button" then
+						changeBMSLNValue(1)
+					elseif event == "DeviceButton_right mouse button" then
+						changeBMSLNValue(-1)
+					end
+					return
+				end
 				if event == "DeviceButton_left mouse button" or event == "DeviceButton_right mouse button" then
 					toggleBMSAutoShift()
 				end
 			end,
 		},
+		{
+			-- BMS or O2Jam rules, Auto lets the chart decide
+			label = "Mode",
+			value = function()
+				return getBMSPlayModeText(data.steps)
+			end,
+			click = function(event)
+				if event == "DeviceButton_left mouse button" then
+					changeBMSOption("PlayMode", 1)
+				elseif event == "DeviceButton_right mouse button" then
+					changeBMSOption("PlayMode", -1)
+				end
+			end,
+		},
 	}
 	for i, o in ipairs(options) do
-		local y = 596 + 26 * (i - 1)
-		p[#p + 1] = Text(42, y, 16, 0, 64, function()
-			return string.upper(o.label)
+		local y = 596 + 20 * (i - 1)
+		p[#p + 1] = Text(42, y, 10, 0, 66, function()
+			return string.upper(type(o.label) == "function" and o.label() or o.label)
 		end, color("#9fb8d8"))
-		p[#p + 1] = Text(205, y, 16, 1, 92, function()
+		p[#p + 1] = Text(205, y, 10, 1, 88, function()
 			return string.upper(o.value())
 		end)
-		p[#p + 1] = Click(36, y - 12, 172, 24, o.click)
+		p[#p + 1] = Click(36, y - 10, 172, 20, o.click)
 	end
 end
 
@@ -1225,15 +1276,19 @@ end, color("#8fd4ff"))
 
 -- score rate
 p[#p + 1] = Num("num_rate 11x1.png", 490, 958, 15, 14, 3, function()
+	-- O2Jam shows its score above, no rate
+	if data.o2jam then
+		return nil
+	end
 	return data.bestEx and math.floor(math.max(data.bestEx, 0) / data.maxEx * 100)
 end)
 p[#p + 1] = Img("score_per.png", 537, 958, 57, 14, {
 	RefreshCommand = function(self)
-		self:visible(played())
+		self:visible(played() and not data.o2jam)
 	end,
 })
 p[#p + 1] = Num("num_rate 11x1.png", 545, 958, 15, 14, 2, function()
-	if not data.bestEx then
+	if not data.bestEx or data.o2jam then
 		return nil
 	end
 	local pct = math.max(data.bestEx, 0) / data.maxEx * 100
@@ -1367,17 +1422,17 @@ p[#p + 1] = o2Text(48, 865, 15, 0, 150, function() return "SCORE" end)
 p[#p + 1] = o2Text(306, 865, 19, 1, 150, function()
 	return data.bestEx and string.format("%.3f", data.bestEx / 1000) or "-"
 end, color("#66ffff"))
-p[#p + 1] = o2Text(436, 865, 16, 1, 120, function() return "%" end, color("1,1,1,0.6"))
+p[#p + 1] = o2Text(436, 865, 14, 1, 120, function() return "/ 100.000" end, color("1,1,1,0.5"))
 -- PLAY DATA: COOL, (no GREAT), GOOD, BAD, MISS
 do
 	local labels = {
-		{"COOL", "TapNoteScore_W1"}, {"-", nil}, {"GOOD", "TapNoteScore_W3"},
-		{"BAD", "TapNoteScore_W4"}, {"MISS", "TapNoteScore_Miss"},
+		{"COOL", "TapNoteScore_W1"}, {"GOOD", "TapNoteScore_W3"},
+		{"BAD", "TapNoteScore_W4"}, {"MISS", "TapNoteScore_Miss"}, {"", nil},
 	}
 	for k, l in ipairs(labels) do
 		local top = 850 + 20 * (k - 1)
 		p[#p + 1] = O2Box(624, top, 78, 18)
-		p[#p + 1] = o2Text(628, top + 9, 15, 0, 72, function() return l[1] end,
+		p[#p + 1] = o2Text(628, top + 9, 12, 0, 72, function() return l[1] end,
 			l[2] and getBMSJudgeColor(l[2]) or color("1,1,1,0.4"))
 	end
 end

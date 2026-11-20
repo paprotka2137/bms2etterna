@@ -56,6 +56,10 @@ struct HighScore
 	// LR2 lane order of a RANDOM / R-RANDOM / MIRROR 7k play ("3527164"), from
 	// the modifiers and the stage seed; "" when there is none
 	[[nodiscard]] auto GetBMSLaneOrder() const -> std::string;
+	/** @brief 7k: the judgments (indexed by TapNoteScore) and max combo of
+	 * this score judged again on another LR2 judge rank, from its replay.
+	 * False (with the saved values) when the replay can't be read. */
+	auto RejudgeBMS(int rank, std::vector<int>& tns, int& maxCombo) -> bool;
 	[[nodiscard]] auto IsUploadedToServer(const std::string& s) const -> bool;
 	std::vector<float> timeStamps;
 	[[nodiscard]] auto GetOffsetVector() -> const std::vector<float>&;

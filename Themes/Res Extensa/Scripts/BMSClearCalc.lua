@@ -24,7 +24,7 @@ local P = {0.869284, 2.477, 0.327945, 0.8, 5.6, 10.1646, 0.366215, 0.06, 0.26881
 -- Save/BMSCache) is not used: the game's own calc rates the charts instead,
 -- and after an update the unranked charts' ratings on the site are sent again
 -- (BMSRanking.lua R.resendCalc)
-BMSClearCalcVersion = 41
+BMSClearCalcVersion = 44
 function BMSCalcFileCurrent(str)
 	return tonumber((str or ""):match('"calcVersion":(%d+)')) == BMSClearCalcVersion
 end
@@ -51,7 +51,7 @@ local JACK_CHORD, JACK_EXP = 6, 0.7
 -- a chordjack (a chord of 3+ that repeats 2+ columns of the row before it,
 -- less than 0.2 s later) is easier than its jacks say: its jack part counts
 -- CJ_JACK and its density CJ_DENS
-local CJ_JACK, CJ_DENS = 0.9, 1
+local CJ_JACK, CJ_DENS = 0.9, 0.9
 -- the same chord as the row before (a held-shape chordjack, it can be
 -- mashed): its jack part counts SAME_JACK and its densities SAME_DENS
 local SAME_JACK, SAME_DENS = 0.6, 0.5
@@ -61,7 +61,7 @@ local SAME_JACK, SAME_DENS = 0.6, 0.5
 -- chordjack section is timed against it: it counts up to GRACE_W, fully when
 -- the recent share of chordjack rows (see CJ_RUN) is GRACE_CJ or more, fading
 -- to DELAY_W below that
-local DELAY_W, DELAY_GAP, GRACE_W, GRACE_MAX, GRACE_CJ = 1.2, 0.045, 6, 2, 0.3
+local DELAY_W, DELAY_GAP, GRACE_W, GRACE_MAX, GRACE_CJ = 0.7, 0.045, 6, 2, 0.3
 -- a long chordjack run: in a chordjack row, with f the share of chordjack
 -- rows in the recent ones (memory CS_MEM s), the jack and density parts count
 -- max(CJ_RUN_MIN, 1 - CJ_RUN * f) more
@@ -96,8 +96,10 @@ local SHORT_LEN, SHORT_EXP = 60, 0.25
 -- got through with luck or by mashing; it counts LUCK_KEEP of the excess
 local LUCK_SPIKE, LUCK_KEEP = 1.8, 0.4
 -- a full alternation (the row two back again, sharing no key with the row
--- before, less than 0.2 s on: X.X.X.X / .X.X.X.) can be mashed: MASH_W
-local MASH_W = 0.6
+-- before, less than 0.2 s on: X.X.X.X / .X.X.X.) of rows of up to MASH_MAX
+-- notes can be mashed: MASH_W (a trill of big chords inside a dense
+-- chordstream is not mashed)
+local MASH_W, MASH_MAX = 0.6, 2
 -- a fast burst inside a chordstream (a row less than DELAY_GAP after the row
 -- before while the recent average chord is BURST_AVG or more) is hard to hit
 local BURST_W, BURST_AVG = 0.8, 2.0
@@ -105,7 +107,11 @@ local BURST_W, BURST_AVG = 0.8, 2.0
 -- was also less than FAST_GAP after its own row before: 64th runs and
 -- staircases, rows less than FAST_GAP apart) is swept through more than read:
 -- it counts FAST_W
-local FAST_W, FAST_GAP = 0.8, 0.032
+local FAST_W, FAST_GAP = 0.9, 0.055
+-- a staircase (a single note on the next column, the same way as the step
+-- before, less than STAIR_GAP s after the row before) is swept with the hand:
+-- it counts STAIR_W
+local STAIR_W, STAIR_GAP = 0.7, 0.07
 -- a steady chordstream (rows at an even pace, each less than STEADY_GAP s
 -- after the one before and within STEADY_TOL of the gap before it, STEADY_RUN
 -- or more such rows in a row, chords of STEADY_CHORD+) is read as one rhythm
@@ -171,69 +177,70 @@ local HARD_MAP = {lo = 1.0000, hi = 1.0000, knots = {
 -- Overjoy = ★ + 20). sl, st, oj: that table's own levels.
 local SCALES = {
 	insane = {prefix = "sp", lo = 22.6906, hi = 3.0000, knots = {
-		{3.5650, 1.500},
-		{3.5940, 2.500},
-		{3.6334, 3.500},
-		{3.6753, 4.500},
+		{3.5534, 1.500},
+		{3.5870, 2.500},
+		{3.6323, 3.500},
+		{3.6737, 4.500},
 		{3.7016, 5.500},
-		{3.7226, 6.500},
-		{3.7393, 7.500},
-		{3.7739, 8.500},
-		{3.7938, 9.500},
-		{3.8122, 10.500},
-		{3.8411, 11.500},
-		{3.8642, 12.500},
-		{3.8852, 13.500},
-		{3.9317, 15.000},
-		{3.9430, 16.500},
-		{3.9731, 17.500},
-		{3.9909, 18.500},
-		{4.0118, 19.500},
-		{4.0592, 20.500},
-		{4.0950, 22.000},
-		{4.1816, 23.500},
-		{4.2027, 24.500},
-		{4.3659, 25.500},
-		{4.5572, 27.500},
+		{3.7188, 6.500},
+		{3.7410, 7.500},
+		{3.7689, 8.500},
+		{3.7907, 9.500},
+		{3.8085, 10.500},
+		{3.8368, 11.500},
+		{3.8687, 12.500},
+		{3.8811, 13.500},
+		{3.9167, 14.500},
+		{3.9283, 15.500},
+		{3.9416, 16.500},
+		{3.9679, 17.500},
+		{3.9848, 18.500},
+		{4.0064, 19.500},
+		{4.0542, 20.500},
+		{4.0933, 22.000},
+		{4.1765, 23.500},
+		{4.2009, 24.500},
+		{4.3475, 25.500},
+		{4.5555, 27.500},
 	}},
 	satellite = {prefix = "sl", lo = 9.4109, hi = 28.4352, knots = {
-		{3.4075, 0.500},
-		{3.5271, 1.500},
-		{3.6116, 2.500},
-		{3.6750, 3.500},
-		{3.7326, 4.500},
-		{3.7783, 5.500},
-		{3.8184, 6.500},
-		{3.8526, 7.500},
-		{3.8858, 8.500},
-		{3.9177, 9.500},
-		{3.9376, 10.500},
-		{3.9818, 11.500},
-		{4.0118, 12.500},
+		{3.4050, 0.500},
+		{3.5224, 1.500},
+		{3.6102, 2.500},
+		{3.6700, 3.500},
+		{3.7262, 4.500},
+		{3.7707, 5.500},
+		{3.8156, 6.500},
+		{3.8506, 7.500},
+		{3.8818, 8.500},
+		{3.9120, 9.500},
+		{3.9324, 10.500},
+		{3.9772, 11.500},
+		{4.0080, 12.500},
 	}},
 	stella = {prefix = "st", lo = 26.5218, hi = 15.8649, knots = {
-		{4.0547, 0.500},
-		{4.0831, 1.500},
-		{4.1331, 2.500},
-		{4.1742, 3.500},
-		{4.2231, 4.500},
-		{4.2599, 5.500},
-		{4.3069, 6.500},
-		{4.3459, 7.500},
-		{4.3727, 8.500},
-		{4.4214, 9.500},
-		{4.4677, 10.500},
-		{4.5621, 11.500},
-		{4.6131, 12.500},
+		{4.0476, 0.500},
+		{4.0752, 1.500},
+		{4.1238, 2.500},
+		{4.1652, 3.500},
+		{4.2105, 4.500},
+		{4.2484, 5.500},
+		{4.2909, 6.500},
+		{4.3332, 7.500},
+		{4.3525, 8.500},
+		{4.3986, 9.500},
+		{4.4503, 10.500},
+		{4.5407, 11.500},
+		{4.5895, 12.500},
 	}},
 	overjoy = {prefix = "oj", lo = 23.9571, hi = 7.5667, knots = {
-		{4.0833, 1.500},
-		{4.1215, 2.500},
-		{4.1890, 3.500},
-		{4.2395, 4.500},
-		{4.3153, 5.500},
-		{4.4387, 6.500},
-		{4.5810, 7.500},
+		{4.0740, 1.500},
+		{4.1080, 2.500},
+		{4.1780, 3.500},
+		{4.2288, 4.500},
+		{4.2910, 5.500},
+		{4.4205, 6.500},
+		{4.5628, 7.500},
 	}},
 }
 local SCALE_ORDER = {"insane", "satellite", "stella", "overjoy"}
@@ -272,6 +279,7 @@ local function noteDifficulty(t, col, parts)
 	local prevCols, prevT = {}, -1e9
 	local prevDt, cavg, cjf, prevChord = 1e9, 0, 0, 0
 	local steady = 0
+	local stairCol, stairDir = -9, 0
 	local d, cjNote = {}, {}
 	local i = 1
 	while i <= n do
@@ -314,6 +322,10 @@ local function noteDifficulty(t, col, parts)
 		if dt >= SWEEP_GAP and dt < FAST_GAP and prevDt < FAST_GAP then sweep = sweep * FAST_W end
 		if dt < STEADY_GAP and math.abs(dt - prevDt) <= STEADY_TOL * dt then steady = steady + 1 else steady = 0 end
 		if steady >= STEADY_RUN and chord >= STEADY_CHORD then sweep = sweep * STEADY_W end
+		local sc = chord == 1 and col[i] or -9
+		local sdir = (sc >= 0 and stairCol >= 0 and math.abs(sc - stairCol) == 1) and (sc - stairCol) or 0
+		if sdir ~= 0 and sdir == stairDir and dt < STAIR_GAP then sweep = sweep * STAIR_W end
+		stairCol, stairDir = sc, sdir
 		prevDt, prevChord = dt, chord
 		local cjm = 1
 		if cj then
@@ -325,7 +337,7 @@ local function noteDifficulty(t, col, parts)
 		if chord >= 3 and not cj and not same and dt < 0.2 and cavg > CS_AVG then
 			csw = max(CS_MIN, 1 - CS_SLOPE * (cavg - CS_AVG))
 		end
-		local mash = mask2 >= 0 and mask == mask2 and ov == 0 and dt < 0.2
+		local mash = mask2 >= 0 and mask == mask2 and ov == 0 and dt < 0.2 and chord <= MASH_MAX
 		local rf = sweep * (same and SAME_DENS or 1) * (cj and CJ_DENS * cjm or 1) * csw * (mash and MASH_W or 1)
 		local rw = chord ^ a * rf
 		ds, dl = ds + rw, dl + rw

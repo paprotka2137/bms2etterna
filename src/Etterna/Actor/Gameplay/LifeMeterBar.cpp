@@ -820,7 +820,7 @@ LifeMeterBar::LoadBMSGauge()
 	}
 
 	// O2Jam chart: the O2Jam hard gauge only, no auto shift
-	m_bO2Jam = OJNLoader::IsO2JamSteps(GAMESTATE->m_pCurSteps);
+	m_bO2Jam = OJNLoader::IsO2JamPlay();
 	if (m_bO2Jam) {
 		m_bBMSAutoShift = false;
 		for (auto g = 0; g < NUM_BMSGauge; g++) {
