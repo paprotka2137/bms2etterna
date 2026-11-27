@@ -328,8 +328,16 @@ end
 -- chart's table: sl, st, oj or insane ★ (Scripts/BMSClearCalc.lua). Waits for the wheel like the densities.
 local function readClearDifficulty()
 	data.easyClear, data.hardClear, data.clearPrefix, data.hardPrefix = nil, nil, nil, nil
+	data.skillsets = nil
 	if not data.steps or data.o2jam or not getBMSClearDifficulty then
 		return
+	end
+	-- the chart's main skillset (Scripts/BMSClearCalc.lua), left of the BPM
+	if getBMSMainSkillsets then
+		local okS, sk = pcall(getBMSMainSkillsets, data.steps, data.rate or 1)
+		if okS then
+			data.skillsets = sk
+		end
 	end
 	local ok, e, _, h, pe, ph = pcall(getBMSClearDifficulty, data.steps, data.rate or 1)
 	if ok then
@@ -583,8 +591,15 @@ local t = Def.ActorFrame {
 		data.density = nil
 		self:playcommand("Refresh")
 	end,
+	-- the ranking site answered with the tables the charts are in
+	BMSChartTablesMessageCommand = function(self)
+		self:playcommand("Refresh")
+	end,
 	HeavyCommand = function(self)
 		readChart()
+		if rxRequestChartTables then
+			rxRequestChartTables(data.steps)
+		end
 		readDensity()
 		readReplay()
 		readClearDifficulty()
@@ -959,9 +974,18 @@ end
 p[#p + 1] = Text(451, 233, 20, 0, 640, songOnly(function()
 	return data.song:GetGroupName() .. " >"
 end), color("#ffc040"))
-p[#p + 1] = Text(451, 284, 22, 0, 640, songOnly(function()
+p[#p + 1] = Text(451, 284, 22, 0, 320, songOnly(function()
 	return data.song:GetGenre()
 end))
+-- the tables the chart is in (Scripts/RXTables.lua, like Res Extensa), right
+-- of the genre; until the ranking site answers, the table of the chart's pack
+p[#p + 1] = Text(1131, 284, 22, 1, 340, function()
+	if not data.steps or not rxChartTablesText then
+		return nil
+	end
+	local ok, text = pcall(rxChartTablesText, data.steps, data.song)
+	return ok and text or nil
+end, color("#c8c8c8"))
 p[#p + 1] = Text(451, 338, 38, 0, 680, songOnly(function()
 	-- one line, some titles carry line breaks
 	return (data.song:GetDisplayMainTitle():gsub("[\r\n]+", " "))
@@ -993,30 +1017,38 @@ p[#p + 1] = Text(451, 421, 22, 0, 640, songOnly(function()
 	return data.song:GetDisplayArtist()
 end))
 
--- BPM: the lowest and highest, the highest alone when it never changes
-p[#p + 1] = Img("bpm.png", 741, 463, 118, 28, {
+-- BPM: the lowest and highest, the highest alone when it never changes.
+-- Moved BPM_SHIFT to the right, the chart's main skillset sits left of it.
+local BPM_SHIFT = 220
+p[#p + 1] = Img("bpm.png", 741 + BPM_SHIFT, 463, 118, 28, {
 	RefreshCommand = function(self)
 		self:visible(data.maxBpm ~= nil)
 	end,
 })
-p[#p + 1] = Num("num_bpm 10x1.png", 447, 463, 39, 28, 3, function()
+p[#p + 1] = Num("num_bpm 10x1.png", 447 + BPM_SHIFT, 463, 39, 28, 3, function()
 	return data.minBpm ~= data.maxBpm and data.minBpm or nil
 end)
-p[#p + 1] = Img("bpm_bar.png", 577, 473, 23, 10, {
+p[#p + 1] = Img("bpm_bar.png", 577 + BPM_SHIFT, 473, 23, 10, {
 	RefreshCommand = function(self)
 		self:visible(data.minBpm ~= nil and data.minBpm ~= data.maxBpm)
 	end,
 })
-p[#p + 1] = Num("num_bpm 10x1.png", 611, 463, 39, 28, 3, function()
+p[#p + 1] = Num("num_bpm 10x1.png", 611 + BPM_SHIFT, 463, 39, 28, 3, function()
 	return data.maxBpm
 end)
 -- the music rate, LR2 has none so it only shows when it is not 1.0x
-p[#p + 1] = Text(872, 477, 22, 0, 180, function()
+p[#p + 1] = Text(872 + BPM_SHIFT, 477, 22, 0, 100, function()
 	if data.rate and math.abs(data.rate - 1) > 0.001 then
 		return getRateString(notShit.round(data.rate, 3))
 	end
 	return nil
 end, color("#ffb070"))
+-- the main skillset (the pattern most of the chart's hard notes are in), in
+-- the song title's font, white like the title
+p[#p + 1] = Text(451, 477, 26, 0, BPM_SHIFT - 15, function()
+	local s = data.steps and not data.o2jam and data.skillsets and data.skillsets[1]
+	return s and s.name or nil
+end, nil, "ECFN Large")
 
 ---------------------------------------------------------------------------
 -- MAIN BPM & TOTALNOTES, densities, note counts and the notes graph
@@ -1078,10 +1110,18 @@ do
 	for k, cl in ipairs(clears) do
 		local x = 789 + 91 * (k - 1)
 		-- the SCRATCH / BSS labels painted over
-		p[#p + 1] = Box(x, 627, 82, 18, color("#141414"))
-		p[#p + 1] = Text(x + 41, 636, 16, 0.5, 78, function()
+		-- shown only with a chart selected, like the panel under it
+		p[#p + 1] = Def.Quad {
+			InitCommand = function(self)
+				self:halign(0):valign(0):xy(x, 627):zoomto(82, 18):diffuse(color("#141414"))
+			end,
+			RefreshCommand = function(self)
+				self:visible(data.steps ~= nil)
+			end,
+		}
+		p[#p + 1] = Text(x + 41, 636, 16, 0.5, 78, stepsOnly(function()
 			return cl.label
-		end, cl.c)
+		end), cl.c)
 		p[#p + 1] = Text(x + 41, 660, 18, 0.5, 78, stepsOnly(function()
 			return stars(cl.get())
 		end))

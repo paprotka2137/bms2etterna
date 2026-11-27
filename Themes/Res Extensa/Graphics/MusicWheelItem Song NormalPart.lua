@@ -123,10 +123,22 @@ if hideMSD() then
 
     local t = Def.ActorFrame {
         -- folders sit on the panel color
+        -- the wheel is curved (metrics.ini), so the bars' right ends are
+        -- staggered: the panel and the line fade out over the right part
         Def.Quad {
             Name = "Bg",
             InitCommand = function(self)
-                self:halign(0):zoomto(BW * s, (BH - 2) * s):diffuse(rxColor("panel"))
+                self:halign(0):zoomto(BW * 0.6 * s, (BH - 2) * s):diffuse(rxColor("panel"))
+            end,
+            SetCommand = function(self, params)
+                self:visible(isFolder[params.Type] or params.Type == "Sort" or false)
+            end,
+        },
+        Def.Quad {
+            Name = "BgFade",
+            InitCommand = function(self)
+                self:halign(0):x(BW * 0.6 * s):zoomto(BW * 0.4 * s, (BH - 2) * s):diffuse(rxColor("panel"))
+                self:diffuserightedge(rxColor("panel", 0))
             end,
             SetCommand = function(self, params)
                 self:visible(isFolder[params.Type] or params.Type == "Sort" or false)
@@ -136,6 +148,7 @@ if hideMSD() then
             Name = "Sep",
             InitCommand = function(self)
                 self:halign(0):valign(0):y(-BH / 2 * s):zoomto(BW * s, math.max(1, s)):diffuse(rxColor("hover"))
+                self:diffuserightedge(rxColor("hover", 0))
             end,
         },
         -- the lamp's color washing in from the left edge, so lamps read at a
@@ -171,7 +184,12 @@ if hideMSD() then
                     frame = folderLamps(params.Text).lamp
                 end
                 self:visible(params.Type ~= "Sort" and params.Type ~= "Custom")
+                -- unplayed: a faint strip, so the curve of the wheel isn't a
+                -- staircase of gray blocks
                 self:diffuse(rxLampColor(frame))
+                if frame == 0 then
+                    self:diffusealpha(0.3)
+                end
                 -- an effect, not tweens: the wheel stops placing its items while
                 -- anything in it is tweening
                 if frame >= 9 then

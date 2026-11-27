@@ -6,7 +6,8 @@ local D = BMSDan
 local tab = 11
 local frameX = 10
 local frameY = 45
-local frameWidth = capWideScale(360, 400)
+-- as wide as the other 7k windows (ECFNWindow.width)
+local frameWidth = ECFNWindow and ECFNWindow.width or capWideScale(360, 400)
 local rowH = 14
 local listY = frameY + 56
 local bottomY = SCREEN_HEIGHT - 82 -- above the window strip
@@ -65,10 +66,10 @@ end
 local t = Def.ActorFrame {
 	Name = "BMSDan",
 	BeginCommand = function(self)
-		self:visible(false):xy(-500, 0):diffusealpha(0)
+		self:visible(false):xy(-(frameWidth + 40), 0):diffusealpha(0)
 	end,
 	OffCommand = function(self)
-		self:bouncebegin(0.2):xy(-500, 0):diffusealpha(0)
+		self:bouncebegin(0.2):xy(-(frameWidth + 40), 0):diffusealpha(0)
 		self:sleep(0.04):queuecommand("Invis")
 	end,
 	InvisCommand = function(self)

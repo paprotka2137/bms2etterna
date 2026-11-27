@@ -841,6 +841,43 @@ do
 	t[#t + 1] = Text(rxFont.normal, HX, 290, 18, 0, CR - HX, b, rxColor("muted"), 350)
 end
 
+-- the rating this lamp is worth (EASY/CLEAR: the Easy value, HARD and up: the
+-- Hard value, like the profile BEST list) and every table the chart is in
+if not o2jam then
+	local ck = steps:GetChartKey()
+	local gr = BMSGoodRatingFile and BMSGoodRatingFile[ck]
+	if not gr and getBMSClearDifficulty then
+		local was = BMSClearScale
+		BMSClearScale = "insane"
+		local ok, e, _, h = pcall(getBMSClearDifficulty, steps, 1)
+		BMSClearScale = was
+		if ok and e and h then
+			gr = {e, h}
+		end
+	end
+	local rating
+	if gr and curLamp >= 4 and curLamp <= 5 then
+		rating = gr[1]
+	elseif gr and curLamp >= 6 then
+		rating = gr[2]
+	end
+	t[#t + 1] = Text(rxFont.normal, HX, 336, 14, 0, 200, "RATING", rxColor("muted"), 400)
+	t[#t + 1] = Text(rxFont.bold, HX, 372, 34, 0, 220, rating and string.format("★%.2f", rating) or "—",
+		rating and color("#ffd080") or rxColor("dim"), 400)
+	local tables
+	if rxChartTablesText then
+		if rxRequestChartTables then
+			pcall(rxRequestChartTables, steps)
+		end
+		local ok, txt = pcall(rxChartTablesText, steps, song)
+		if ok and txt and txt ~= "" then
+			tables = txt
+		end
+	end
+	t[#t + 1] = Text(rxFont.normal, HX + 260, 336, 14, 0, 200, "TABLES", rxColor("muted"), 400)
+	t[#t + 1] = Text(rxFont.semibold, HX + 260, 372, 30, 0, CR - HX - 260, tables or "—", rxColor("text"), 400)
+end
+
 -- the four numbers: EX score, rate, miss count, target
 do
 	local y0 = 420

@@ -185,7 +185,8 @@ function R.rate(board, row, notes)
 	if not n or n <= 0 then
 		return "-"
 	end
-	return string.format("%.2f%%", row.ex / (2 * n) * 100)
+	-- truncated like the result screen (79.996% shows as 79.99%, not 80.00%)
+	return string.format("%.2f%%", math.floor(row.ex * 5000 / n) / 100)
 end
 
 -- note count of the selected chart

@@ -276,13 +276,13 @@ panel[#panel + 1] = FinalBar(133, function()
 	return pbRate
 end)
 panel[#panel + 1] = Bar("bar_best.png", 134, function()
-	return (pbRate or 0) * cur.judged / total
+	return pbRate and getBMSPBPaceEx(cur.judged, pbRate) / (total * 2) or 0
 end)
 panel[#panel + 1] = FinalBar(205, function()
 	return targetRate
 end)
 panel[#panel + 1] = Bar("bar_target.png", 206, function()
-	return (targetRate or 0) * cur.judged / total
+	return getPacemakerPaceEx(cur.judged, targetRate, pbRate) / (total * 2)
 end)
 
 -- header: YOU and PACEMAKER EX scores
@@ -313,7 +313,7 @@ panel[#panel + 1] = Num("num_upper 11x1.png", 188, 802, 22, 22, 4, function()
 	return exOrNil(totalEx(pbRate))
 end, 10)
 panel[#panel + 1] = Diff(168, 832, function()
-	return pbRate and exOrNil(cur.ex - paceEx(pbRate)) or nil
+	return pbRate and exOrNil(cur.ex - round(getBMSPBPaceEx(cur.judged, pbRate))) or nil
 end)
 panel[#panel + 1] = Rate(827, function()
 	return pbRate or 0
@@ -338,7 +338,7 @@ panel[#panel + 1] = LoadFont("Common Normal") .. {
 	end,
 }
 panel[#panel + 1] = Diff(168, 899, function()
-	return exOrNil(cur.ex - paceEx(targetRate))
+	return exOrNil(cur.ex - round(getPacemakerPaceEx(cur.judged, targetRate, pbRate)))
 end)
 panel[#panel + 1] = Rate(894, function()
 	return targetRate or 0

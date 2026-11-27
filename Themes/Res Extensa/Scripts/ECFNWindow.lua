@@ -7,7 +7,9 @@
 ECFNWindow = {
 	x = 10,
 	top = 45,
-	width = 400,
+	-- as wide as fits left of the music wheel (ecfnX(1258) on a 1920x1080
+	-- layout), 400 at least, 520 at most
+	width = 520,
 	rowH = 14,
 	-- Res Extensa mono: "blue" is the picked-row light, white on the dark ground
 	white = color("#ededed"),
@@ -18,6 +20,12 @@ ECFNWindow = {
 	gold = color("#ffd91a"),
 }
 local W = ECFNWindow
+do
+	local sh, sw = SCREEN_HEIGHT or 480, SCREEN_WIDTH or 854
+	local scale = sh / 1080
+	local wheelX = (sw - 1920 * scale) / 2 + 1250 * scale
+	W.width = math.floor(math.max(400, math.min(520, wheelX - W.x - 20)))
+end
 
 function ECFNWindow.bottom()
 	return SCREEN_HEIGHT - 82
@@ -29,10 +37,10 @@ function ECFNWindow.frame(tab, name, onShow)
 		Name = name,
 		BeginCommand = function(self)
 			self.open = false
-			self:visible(false):xy(-500, 0):diffusealpha(0)
+			self:visible(false):xy(-(W.x + W.width + 20), 0):diffusealpha(0)
 		end,
 		OffCommand = function(self)
-			self:bouncebegin(0.2):xy(-500, 0):diffusealpha(0)
+			self:bouncebegin(0.2):xy(-(W.x + W.width + 20), 0):diffusealpha(0)
 			self:sleep(0.04):queuecommand("Invis")
 		end,
 		InvisCommand = function(self)

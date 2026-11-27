@@ -24,7 +24,7 @@ local P = {0.869284, 2.477, 0.327945, 0.8, 5.6, 10.1646, 0.366215, 0.06, 0.26881
 -- Save/BMSCache) is not used: the game's own calc rates the charts instead,
 -- and after an update the unranked charts' ratings on the site are sent again
 -- (BMSRanking.lua R.resendCalc)
-BMSClearCalcVersion = 44
+BMSClearCalcVersion = 46
 function BMSCalcFileCurrent(str)
 	return tonumber((str or ""):match('"calcVersion":(%d+)')) == BMSClearCalcVersion
 end
@@ -70,7 +70,10 @@ local CJ_RUN, CJ_RUN_MIN = 0.04, 0.8
 -- need less control: a chordjack row counts (CJ_SLOW / gap)^CJ_SLOW_EXP.
 -- Chordjacks mixed into other patterns (recent chordjack share under
 -- CJ_MIXED) need control: they count CJ_MIXED_W. Both in jack and density
-local CJ_SLOW, CJ_SLOW_EXP, CJ_MIXED, CJ_MIXED_W = 0.11, 0.5, 0.4, 1.15
+local CJ_SLOW, CJ_SLOW_EXP, CJ_MIXED, CJ_MIXED_W = 0.11, 0.5, 0.6, 1.15
+-- the control chordjack weight is only for chords of up to CJ_MIXED_MAX notes:
+-- a repeated block of 5+ notes is palmed, it only needs speed
+local CJ_MIXED_MAX = 4
 -- a dense chordstream: the average chord size of the recent rows (a memory
 -- of CS_MEM s) is over CS_AVG. A chord of 3+ (less than 0.2 s after the row
 -- before, not a chordjack, not the same chord) then counts
@@ -81,6 +84,10 @@ local CS_SLOPE, CS_AVG, CS_MEM, CS_MIN = 0.2, 2.6, 1.0, 0.95
 -- whose column gap before it was more than MINI_RATIO times longer, two
 -- notes and not a jack run) counts MINI_W of its jack part
 local JACK_CURVE, MINI_W, MINI_RATIO = 2, 0.7, 2
+-- a note's jack part over JACK_CAP times the rest of it (density, hand, chord)
+-- counts JACK_OVER: a quick jack in a lighter part is not as hard as its
+-- speed says (minijacks)
+local JACK_CAP, JACK_OVER = 1.0, 0.5
 -- a note in a roll / sweep row (less than SWEEP_GAP after the row before):
 -- its column comes back inside a rolling motion, its jack part counts ROLL_JACK
 local ROLL_JACK = 0.3
@@ -177,70 +184,69 @@ local HARD_MAP = {lo = 1.0000, hi = 1.0000, knots = {
 -- Overjoy = ★ + 20). sl, st, oj: that table's own levels.
 local SCALES = {
 	insane = {prefix = "sp", lo = 22.6906, hi = 3.0000, knots = {
-		{3.5534, 1.500},
-		{3.5870, 2.500},
-		{3.6323, 3.500},
-		{3.6737, 4.500},
-		{3.7016, 5.500},
-		{3.7188, 6.500},
-		{3.7410, 7.500},
-		{3.7689, 8.500},
-		{3.7907, 9.500},
-		{3.8085, 10.500},
-		{3.8368, 11.500},
-		{3.8687, 12.500},
-		{3.8811, 13.500},
-		{3.9167, 14.500},
-		{3.9283, 15.500},
-		{3.9416, 16.500},
-		{3.9679, 17.500},
-		{3.9848, 18.500},
-		{4.0064, 19.500},
-		{4.0542, 20.500},
-		{4.0933, 22.000},
-		{4.1765, 23.500},
-		{4.2009, 24.500},
-		{4.3475, 25.500},
-		{4.5555, 27.500},
+		{3.5468, 1.500},
+		{3.5828, 2.500},
+		{3.6414, 3.500},
+		{3.6726, 4.500},
+		{3.6995, 5.500},
+		{3.7153, 6.500},
+		{3.7400, 7.500},
+		{3.7677, 8.500},
+		{3.7880, 9.500},
+		{3.8052, 10.500},
+		{3.8326, 11.500},
+		{3.8629, 12.500},
+		{3.8796, 13.500},
+		{3.9163, 15.000},
+		{3.9404, 16.500},
+		{3.9650, 17.500},
+		{3.9802, 18.500},
+		{3.9940, 19.500},
+		{4.0511, 20.500},
+		{4.0841, 22.000},
+		{4.1730, 23.500},
+		{4.1846, 24.500},
+		{4.3431, 25.500},
+		{4.5391, 27.500},
 	}},
 	satellite = {prefix = "sl", lo = 9.4109, hi = 28.4352, knots = {
-		{3.4050, 0.500},
-		{3.5224, 1.500},
-		{3.6102, 2.500},
-		{3.6700, 3.500},
-		{3.7262, 4.500},
-		{3.7707, 5.500},
-		{3.8156, 6.500},
-		{3.8506, 7.500},
-		{3.8818, 8.500},
-		{3.9120, 9.500},
-		{3.9324, 10.500},
-		{3.9772, 11.500},
-		{4.0080, 12.500},
+		{3.4040, 0.500},
+		{3.5208, 1.500},
+		{3.6093, 2.500},
+		{3.6691, 3.500},
+		{3.7242, 4.500},
+		{3.7689, 5.500},
+		{3.8136, 6.500},
+		{3.8491, 7.500},
+		{3.8797, 8.500},
+		{3.9092, 9.500},
+		{3.9296, 10.500},
+		{3.9719, 11.500},
+		{4.0042, 12.500},
 	}},
 	stella = {prefix = "st", lo = 26.5218, hi = 15.8649, knots = {
-		{4.0476, 0.500},
-		{4.0752, 1.500},
-		{4.1238, 2.500},
-		{4.1652, 3.500},
-		{4.2105, 4.500},
-		{4.2484, 5.500},
-		{4.2909, 6.500},
-		{4.3332, 7.500},
-		{4.3525, 8.500},
-		{4.3986, 9.500},
-		{4.4503, 10.500},
-		{4.5407, 11.500},
-		{4.5895, 12.500},
+		{4.0454, 0.500},
+		{4.0720, 1.500},
+		{4.1185, 2.500},
+		{4.1596, 3.500},
+		{4.2053, 4.500},
+		{4.2434, 5.500},
+		{4.2862, 6.500},
+		{4.3291, 7.500},
+		{4.3480, 8.500},
+		{4.3941, 9.500},
+		{4.4426, 10.500},
+		{4.5204, 11.500},
+		{4.5678, 12.500},
 	}},
 	overjoy = {prefix = "oj", lo = 23.9571, hi = 7.5667, knots = {
-		{4.0740, 1.500},
-		{4.1080, 2.500},
-		{4.1780, 3.500},
-		{4.2288, 4.500},
-		{4.2910, 5.500},
-		{4.4205, 6.500},
-		{4.5628, 7.500},
+		{4.0661, 1.500},
+		{4.0990, 2.500},
+		{4.1636, 3.500},
+		{4.2161, 4.500},
+		{4.2808, 5.500},
+		{4.4107, 6.500},
+		{4.5529, 7.500},
 	}},
 }
 local SCALE_ORDER = {"insane", "satellite", "stella", "overjoy"}
@@ -330,7 +336,7 @@ local function noteDifficulty(t, col, parts)
 		local cjm = 1
 		if cj then
 			cjm = max(CJ_RUN_MIN, 1 - CJ_RUN * cjf)
-			if cjf < CJ_MIXED then cjm = cjm * CJ_MIXED_W end
+			if cjf < CJ_MIXED and chord <= CJ_MIXED_MAX then cjm = cjm * CJ_MIXED_W end
 			if dt > CJ_SLOW then cjm = cjm * (CJ_SLOW / dt) ^ CJ_SLOW_EXP end
 		end
 		local csw = 1
@@ -354,6 +360,8 @@ local function noteDifficulty(t, col, parts)
 			if dt < SWEEP_GAP then jack = jack * ROLL_JACK end
 			lastGap[c], lastCol[c] = gap, t[k]
 			local hand, jk, ch = hw * h / ts, jw * jack * jc, cw * (chord - 1)
+			local rest = base + hand + ch
+			if jk > JACK_CAP * rest then jk = JACK_CAP * rest + JACK_OVER * (jk - JACK_CAP * rest) end
 			d[k] = base + hand + jk + ch
 			cjNote[k] = cj
 			if parts then
@@ -843,4 +851,61 @@ function getBMSClearDebug(steps, rate)
 	dbg.noteKinds = ok and kinds or {}
 	if not ok then dbg.patternError = tostring(found) end
 	return dbg
+end
+
+---------------------------------------------------------------------------
+-- the chart's main skillset, for song select: the pattern kinds of
+-- findPatterns (stream, chordstream, jack, chordjack, chords, delay, trill)
+-- weighted by how hard each note is to the calc (squared), so the hard part
+-- of the chart decides, not its easy filler. Returns up to two
+-- {key, name, share} sorted by share (the second only when it has half the
+-- first's share or more), nil when the calc does not rate the chart.
+---------------------------------------------------------------------------
+
+local SKILLSETS = {
+	stream = "stream", chordstream = "chordstream", jack = "jack",
+	chordjack = "chordjack", chord = "chords", delay = "delay", trill = "trill",
+}
+local skillsetCache = {}
+
+function getBMSMainSkillsets(steps, rate)
+	if not isCalcSteps(steps) then return nil end
+	rate = rate or 1
+	local key = steps:GetChartKey() .. "@" .. string.format("%.2f", rate)
+	local hit = skillsetCache[key]
+	if hit ~= nil then return hit or nil end
+	skillsetCache[key] = false
+	local t, col = readNotes(steps, rate)
+	if not t or #t < 2 then return nil end
+	local okD, ld = pcall(noteDifficulty, t, col)
+	local okP, _, kinds = pcall(findPatterns, t, col, steps, rate)
+	if not okP or not kinds then return nil end
+	local sums, all = {}, 0
+	for k = 1, #t do
+		local w = 1
+		if okD and ld and ld[k] then w = exp(2 * ld[k]) end
+		all = all + w
+		for kind in pairs(kinds[k]) do
+			if SKILLSETS[kind] then sums[kind] = (sums[kind] or 0) + w end
+		end
+	end
+	if all <= 0 then return nil end
+	local list = {}
+	for kind, s in pairs(sums) do
+		list[#list + 1] = {key = kind, name = SKILLSETS[kind], share = s / all}
+	end
+	if #list == 0 then return nil end
+	table.sort(list, function(a, b) return a.share > b.share end)
+	local res = {list[1]}
+	if list[2] and list[2].share >= list[1].share * .5 then res[2] = list[2] end
+	skillsetCache[key] = res
+	return res
+end
+
+-- the color of a pattern kind (the debug view's)
+function getBMSPatternColor(key)
+	for _, k in ipairs(BMSCalcPatterns) do
+		if k.key == key then return k.color end
+	end
+	return "#ededed"
 end

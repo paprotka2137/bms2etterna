@@ -317,8 +317,16 @@ end
 -- chart's table: sl, st, oj or insane ★ (Scripts/BMSClearCalc.lua). Waits for the wheel like the densities.
 local function readClearDifficulty()
 	data.easyClear, data.hardClear, data.clearPrefix, data.hardPrefix = nil, nil, nil, nil
+	data.skillsets = nil
 	if not data.steps or data.o2jam or not getBMSClearDifficulty then
 		return
+	end
+	-- the chart's main skillset (Scripts/BMSClearCalc.lua), under the graph
+	if getBMSMainSkillsets then
+		local okS, sk = pcall(getBMSMainSkillsets, data.steps, data.rate or 1)
+		if okS then
+			data.skillsets = sk
+		end
 	end
 	local ok, e, _, h, pe, ph = pcall(getBMSClearDifficulty, data.steps, data.rate or 1)
 	if ok then
@@ -554,8 +562,9 @@ local function card(x, y, w, h)
 	p[#p + 1] = rxBox(x, y, 1, h, rxColor("white", 0.1))
 	p[#p + 1] = rxBox(x + w - 1, y, 1, h, rxColor("white", 0.1))
 end
-card(L - 20, 312, PW + 40, 236)
-card(RL - 20, 312, RR - RL + 40, 330)
+card(L - 20, 312, PW + 40, 284)
+-- the score card sits under the chart's card, in the left column
+card(L - 20, 610, PW + 40, 284)
 
 ---------------------------------------------------------------------------
 -- header: level and genre, the title big, subtitle, artist (the folder is in
@@ -745,6 +754,28 @@ do
 	p[#p + 1] = rxText(rxFont.normal, R, 456, 12, 1, 200, stepsOnly(function()
 		return not data.o2jam and "good enough rating" or nil
 	end), rxColor("dim"))
+	-- the main skillset under the graph: the pattern most of the chart's hard
+	-- notes are in, and a second one when it is close, with their shares
+	local function skillset(i)
+		return stepsOnly(function()
+			local s = not data.o2jam and data.skillsets and data.skillsets[i]
+			if not s then
+				return nil
+			end
+			return string.format("%s %d%%", s.name, math.floor(s.share * 100 + 0.5))
+		end)
+	end
+	local function skillsetColor(i)
+		return function()
+			local s = data.skillsets and data.skillsets[i]
+			return s and getBMSPatternColor and rxColor(getBMSPatternColor(s.key)) or rxColor("text")
+		end
+	end
+	p[#p + 1] = rxText(rxFont.semibold, L, 556, 22, 0, half - 16, skillset(1), skillsetColor(1))
+	p[#p + 1] = rxText(rxFont.semibold, L + half, 556, 22, 0, half - 16, skillset(2), skillsetColor(2))
+	p[#p + 1] = rxText(rxFont.normal, L, 580, 13, 0, half - 16, stepsOnly(function()
+		return not data.o2jam and data.skillsets and "MAIN SKILLSET" or nil
+	end), rxColor("muted"))
 	local scaleNames = {insane = "insane (sp)", satellite = "Satellite (sl)", stella = "Stella (st)", overjoy = "Overjoy (oj)"}
 	p[#p + 1] = rxClick(L, 396, PW, 70, function(event)
 		local dir
@@ -903,18 +934,25 @@ end
 ---------------------------------------------------------------------------
 
 do
-	local y0 = 328
-	-- the right column
-	local L, R = RL, RR
+	-- LOCAL on the card's switch (below): this profile's best
+	local lf = Def.ActorFrame {
+		RefreshCommand = function(self)
+			self:visible((BMSScoreCardMode or "local") == "local")
+		end,
+	}
+	p[#p + 1] = lf
+	local y0 = 626
+	-- the left column, under the chart's card
+	local L, R = L, R
 	local PW = R - L
-	p[#p + 1] = rxLampChip(L, y0, 150, 28, 15, function()
+	lf[#lf + 1] = rxLampChip(L, y0, 150, 28, 15, function()
 		if not data.steps then
 			return nil
 		end
 		return data.lamp or 0
 	end)
 	-- DJ level (O2Jam grade) and the way to the next one
-	p[#p + 1] = rxText(rxFont.bold, L + 172, y0 + 14, 30, 0, 120, function()
+	lf[#lf + 1] = rxText(rxFont.bold, L + 172, y0 + 14, 30, 0, 120, function()
 		if data.o2jam then
 			return data.grade
 		end
@@ -928,7 +966,7 @@ do
 	end)
 
 	-- EX rate big (DMJam score on O2Jam), the EX score beside it
-	p[#p + 1] = rxText(rxFont.large, L, y0 + 84, 56, 0, 260, function()
+	lf[#lf + 1] = rxText(rxFont.large, L, y0 + 84, 56, 0, 260, function()
 		if not data.bestEx then
 			return nil
 		end
@@ -937,13 +975,13 @@ do
 		end
 		return string.format("%.2f%%", math.max(data.bestEx, 0) / data.maxEx * 100)
 	end, rxColor("white"))
-	p[#p + 1] = rxText(rxFont.normal, L + 280, y0 + 76, 22, 0, 200, function()
+	lf[#lf + 1] = rxText(rxFont.normal, L + 280, y0 + 76, 22, 0, 200, function()
 		if not data.bestEx or data.o2jam then
 			return nil
 		end
 		return tostring(data.bestEx)
 	end, rxColor("text"))
-	p[#p + 1] = rxText(rxFont.normal, L + 280, y0 + 100, 15, 0, 300, function()
+	lf[#lf + 1] = rxText(rxFont.normal, L + 280, y0 + 100, 15, 0, 300, function()
 		if not data.dj or data.o2jam or not data.bestEx then
 			return nil
 		end
@@ -958,7 +996,7 @@ do
 	-- the EX score bar with the A, AA and AAA borders
 	local by = y0 + 136
 	local bw = PW
-	p[#p + 1] = Def.ActorFrame {
+	lf[#lf + 1] = Def.ActorFrame {
 		RefreshCommand = function(self)
 			self:visible(data.bestEx ~= nil and not data.o2jam)
 		end,
@@ -978,7 +1016,7 @@ do
 	}
 
 	-- one line: miss count, max combo, clears
-	p[#p + 1] = rxText(rxFont.normal, L, by + 36, 16, 0, PW, function()
+	lf[#lf + 1] = rxText(rxFont.normal, L, by + 36, 16, 0, PW, function()
 		if not data.bestEx then
 			return nil
 		end
@@ -999,13 +1037,440 @@ do
 	local cw = PW / 5
 	for i = 1, 5 do
 		local x = L + (i - 1) * cw
-		p[#p + 1] = rxText(rxFont.semibold, x, by + 82, 14, 0, cw - 8, function()
+		lf[#lf + 1] = rxText(rxFont.semibold, x, by + 82, 14, 0, cw - 8, function()
 			return data.bestCounts and jn[i] or nil
 		end, rxColor(jc[i]))
-		p[#p + 1] = rxText(rxFont.bold, x, by + 112, 28, 0, cw - 8, function()
+		lf[#lf + 1] = rxText(rxFont.bold, x, by + 112, 28, 0, cw - 8, function()
 			return data.bestCounts and tostring(data.bestCounts[i]) or nil
 		end, rxColor("white"))
 	end
+end
+
+---------------------------------------------------------------------------
+-- the score card's switch, top right of the card: LOCAL (this profile's
+-- best, above), IR (the ranking site's top plays on the chart, the same
+-- board as the Ranking window) and RIVALS (your rivals' best on the chart,
+-- picked out of that board by the rivals list of the Rivals window). The
+-- choice is kept while the game runs. A click on the list opens the
+-- Ranking or Rivals window.
+---------------------------------------------------------------------------
+
+BMSScoreCardMode = BMSScoreCardMode or "local"
+-- the Rivals window's data (rivals7k.lua), its list is shared
+BMSRivals = BMSRivals or {mode = "passed", vsSide = "ahead"}
+
+do
+	local y0 = 626
+	local L, R = L, R
+	local PW = R - L
+	local RK = BMSRanking
+	local N = 7 -- rows shown
+	local rowH = 26
+	local listY = y0 + 70
+	-- the board of the chart under the wheel: site key, the steps it is
+	-- for, the board (nil while the site answers)
+	local sc = {}
+
+	local function online()
+		return RK ~= nil and RK.available ~= nil and RK.available()
+	end
+	local function loggedIn()
+		return online() and RK.loggedIn()
+	end
+	local function siteKey(steps)
+		if steps and getBMSSiteChartKey then
+			return getBMSSiteChartKey(steps)
+		end
+		return steps and steps:GetChartKey() or nil
+	end
+
+	-- the rivals list from the site (op=list, like the Rivals window),
+	-- asked again after a minute
+	local function splitOn(s, sep)
+		local out = {}
+		local start = 1
+		while true do
+			local i = s:find(sep, start, true)
+			if not i then
+				out[#out + 1] = s:sub(start)
+				return out
+			end
+			out[#out + 1] = s:sub(start, i - 1)
+			start = i + #sep
+		end
+	end
+	local rivalsAsked
+	local function loadRivals()
+		local S = BMSRivals
+		if not loggedIn() then
+			return
+		end
+		local now = GetTimeSinceStart()
+		if S.list and S.listTime and now - S.listTime < 60 then
+			return
+		end
+		if rivalsAsked and now - rivalsAsked < 10 then
+			return
+		end
+		rivalsAsked = now
+		DLMAN:BMSRequest("POST", "/api/game/chat/rival", {op = "list", name = ""}, function(status, body)
+			local lines = {}
+			for _, l in ipairs(splitOn((body or ""):gsub("\r", ""), "\n")) do
+				if l ~= "" then
+					lines[#lines + 1] = splitOn(l, "\t")
+				end
+			end
+			if status ~= 200 or not lines[1] or lines[1][1] ~= "OK" then
+				sc.rivalsErr = status == 0 and "No connection to the ranking site"
+					or (lines[1] and lines[1][1] == "ERR" and lines[1][2]) or ("Site error " .. tostring(status))
+			else
+				sc.rivalsErr = nil
+				local list = {}
+				for i = 2, #lines do
+					local f = lines[i]
+					list[#list + 1] = {name = f[1] or "?", ahead = tonumber(f[2]) or 0, behind = tonumber(f[3]) or 0}
+				end
+				S.list = list
+				S.listTime = GetTimeSinceStart()
+			end
+			MESSAGEMAN:Broadcast("BMSRivalsRefresh")
+		end)
+	end
+
+	local function load(force)
+		sc.steps = data.steps
+		sc.ck = siteKey(data.steps)
+		sc.board = nil
+		sc.memo = nil
+		if BMSScoreCardMode == "local" or not sc.ck or not online() then
+			return
+		end
+		sc.board = RK.chart(sc.ck, force)
+		if BMSScoreCardMode == "rivals" then
+			loadRivals()
+		end
+	end
+
+	-- the board of this chart, nil while it loads or while the wheel moves
+	local function board()
+		if sc.steps ~= data.steps or not data.steps then
+			return nil
+		end
+		return sc.board
+	end
+
+	-- the rows shown: IR the top places (you in the last row when you are
+	-- below them), RIVALS the rivals who played it and you, by place
+	local function rows()
+		local b = board()
+		local key = tostring(b) .. BMSScoreCardMode .. tostring(BMSRivals.list)
+		if sc.memo and sc.memoKey == key then
+			return sc.memo
+		end
+		local out = {}
+		if b and not b.err then
+			if BMSScoreCardMode == "ir" then
+				for i = 1, math.min(N, #b.rows) do
+					out[i] = b.rows[i]
+				end
+				if b.me and b.me.rank > N then
+					out[N] = b.me
+				end
+			elseif BMSScoreCardMode == "rivals" then
+				local names = {}
+				for _, r in ipairs(BMSRivals.list or {}) do
+					names[string.lower(r.name)] = true
+				end
+				for _, row in ipairs(b.rows) do
+					if row == b.me or names[string.lower(row.name)] then
+						out[#out + 1] = row
+					end
+				end
+				if #out > N then
+					local mine
+					for i = N, #out do
+						if out[i] == b.me then
+							mine = b.me
+						end
+					end
+					for i = #out, N + 1, -1 do
+						out[i] = nil
+					end
+					if mine then
+						out[N] = mine
+					end
+				end
+			end
+		end
+		sc.memo, sc.memoKey = out, key
+		return out
+	end
+
+	local function rivalCount()
+		local n = 0
+		local b = board()
+		for _, row in ipairs(rows()) do
+			if not b or row ~= b.me then
+				n = n + 1
+			end
+		end
+		return n
+	end
+
+	-- the line over the list: players and your place, or why it is empty
+	local function status()
+		if not data.steps then
+			return nil
+		end
+		if not online() then
+			return "This build of the game has no ranking support"
+		end
+		if BMSScoreCardMode == "rivals" and not loggedIn() then
+			return "Log in to the ranking site (Ranking window) to see rivals"
+		end
+		local b = board()
+		if not b then
+			return "Loading..."
+		end
+		if b.err then
+			return b.err
+		end
+		if BMSScoreCardMode == "ir" then
+			if #b.rows == 0 then
+				return "No scores on this chart yet"
+			end
+			local s = string.format("%d player%s", b.players or #b.rows, (b.players or #b.rows) == 1 and "" or "s")
+			if b.me then
+				s = s .. string.format("     you #%d", b.me.rank)
+			elseif loggedIn() then
+				s = s .. "     you: not played"
+			end
+			return s
+		end
+		if sc.rivalsErr and not BMSRivals.list then
+			return sc.rivalsErr
+		end
+		if not BMSRivals.list then
+			return "Loading rivals..."
+		end
+		if #BMSRivals.list == 0 then
+			return "No rivals yet, add them in the Rivals window"
+		end
+		local n = rivalCount()
+		if n == 0 then
+			return string.format("None of your %d rival%s played this chart", #BMSRivals.list, #BMSRivals.list == 1 and "" or "s")
+		end
+		local s = string.format("%d of %d rival%s played it", n, #BMSRivals.list, #BMSRivals.list == 1 and "" or "s")
+		if b.me then
+			s = s .. string.format("     you #%d", b.me.rank)
+		end
+		return s
+	end
+
+	local function openWindow(to)
+		local from = getTabIndex()
+		if to == 10 then
+			BMSRankingMode = "ir"
+		end
+		setTabIndex(to)
+		MESSAGEMAN:Broadcast("TabChanged", {from = from, to = to})
+	end
+
+	local f = Def.ActorFrame {
+		RefreshCommand = function(self)
+			self:visible(BMSScoreCardMode ~= "local" and data.steps ~= nil)
+		end,
+		-- the wheel stopped on a chart (the chart is read by then)
+		HeavyCommand = function(self)
+			self:queuecommand("Load")
+		end,
+		LoadCommand = function(self)
+			load(false)
+			self:playcommand("Refresh")
+		end,
+		RXScoreCardModeMessageCommand = function(self)
+			self:playcommand("Load")
+		end,
+		BMSBoardLoadedMessageCommand = function(self, params)
+			if params and params.chartkey == sc.ck and RK.cache[sc.ck] then
+				sc.board = RK.cache[sc.ck].board
+				sc.memo = nil
+				self:playcommand("Refresh")
+			end
+		end,
+		BMSRivalsRefreshMessageCommand = function(self)
+			if BMSScoreCardMode == "rivals" then
+				sc.memo = nil
+				self:playcommand("Refresh")
+			end
+		end,
+		BMSLoginChangedMessageCommand = function(self)
+			BMSRivals.list, BMSRivals.listTime = nil, nil
+			self:queuecommand("Load")
+		end,
+		BMSScoreUploadedMessageCommand = function(self)
+			self:queuecommand("Load")
+		end,
+	}
+
+	f[#f + 1] = rxText(rxFont.normal, L, y0 + 14, 16, 0, PW - 230, status, function()
+		local b = board()
+		if b and b.err then
+			return color("#ff7777")
+		end
+		return rxColor("muted")
+	end)
+
+	-- columns
+	local cx = {
+		rank = L + 30, lamp = L + 42, name = L + 56, lampText = L + 300,
+		ex = L + 384, rate = L + 470, bp = R - 4,
+	}
+	local heads = {
+		{"#", cx.rank, 1}, {"PLAYER", cx.name, 0}, {"LAMP", cx.lampText, 0.5},
+		{"EX", cx.ex, 1}, {"RATE", cx.rate, 1}, {"BP", cx.bp, 1},
+	}
+	for _, h in ipairs(heads) do
+		f[#f + 1] = rxText(rxFont.normal, h[2], y0 + 50, 12, h[3], 120, function()
+			if #rows() == 0 then
+				return nil
+			end
+			-- O2Jam: the score is in the RATE column
+			if h[1] == "EX" and isO2JamPlay() then
+				return nil
+			end
+			if h[1] == "RATE" and isO2JamPlay() then
+				return "SCORE"
+			end
+			return h[1]
+		end, rxColor("muted"))
+	end
+
+	for i = 1, N do
+		local y = listY + (i - 1) * rowH
+		local function row()
+			return rows()[i]
+		end
+		local function isMe()
+			local b = board()
+			return b ~= nil and b.me ~= nil and row() == b.me
+		end
+		local function field(get)
+			return function()
+				local r = row()
+				if not r then
+					return nil
+				end
+				return get(r)
+			end
+		end
+		-- your row is lit, every other row a little
+		f[#f + 1] = Def.Quad {
+			InitCommand = function(self)
+				self:halign(0):valign(0.5):xy(L - 6, y):zoomto(PW + 12, rowH - 3)
+			end,
+			RefreshCommand = function(self)
+				local r = row()
+				self:visible(r ~= nil)
+				if r then
+					if isMe() then
+						self:diffuse(rxColor("white", 0.12))
+					else
+						self:diffuse(rxColor("white", i % 2 == 0 and 0.04 or 0))
+					end
+				end
+			end,
+		}
+		f[#f + 1] = rxText(rxFont.normal, cx.rank, y, 16, 1, 40, field(function(r)
+			return tostring(r.rank)
+		end), rxColor("muted"))
+		f[#f + 1] = Def.Quad {
+			InitCommand = function(self)
+				self:halign(0):valign(0.5):xy(cx.lamp, y):zoomto(5, rowH - 9)
+			end,
+			RefreshCommand = function(self)
+				local r = row()
+				self:visible(r ~= nil)
+				if r then
+					self:diffuse(rxSiteLampColor(r.lamp))
+				end
+			end,
+		}
+		f[#f + 1] = rxText(rxFont.semibold, cx.name, y, 17, 0, cx.lampText - 50 - cx.name, field(function(r)
+			return r.name
+		end), function()
+			return isMe() and rxColor("white") or rxColor("text")
+		end)
+		f[#f + 1] = rxText(rxFont.bold, cx.lampText, y, 13, 0.5, 90, field(function(r)
+			return getBMSLampInfo(r.lamp, 1)
+		end), function()
+			local r = row()
+			return r and rxSiteLampColor(r.lamp) or rxColor("muted")
+		end)
+		f[#f + 1] = rxText(rxFont.normal, cx.ex, y, 16, 1, 70, field(function(r)
+			if isO2JamPlay() then
+				return nil
+			end
+			return tostring(r.ex)
+		end), rxColor("text"))
+		f[#f + 1] = rxText(rxFont.semibold, cx.rate, y, 17, 1, 100, field(function(r)
+			return RK.rate(board(), r, RK.chartNotes())
+		end), rxColor("white"))
+		f[#f + 1] = rxText(rxFont.normal, cx.bp, y, 16, 1, 50, field(function(r)
+			return tostring(r.bp or "")
+		end), rxColor("muted"))
+	end
+
+	-- a click on the list opens the whole board (Ranking) or the rivals
+	f[#f + 1] = rxText(rxFont.normal, R, listY + N * rowH - 4, 12, 1, PW, function()
+		if #rows() == 0 then
+			return nil
+		end
+		return BMSScoreCardMode == "rivals" and "click for the Rivals window" or "click for the full ranking"
+	end, rxColor("muted", 0.7))
+	f[#f + 1] = rxClick(L - 6, y0 + 36, PW + 12, listY + N * rowH - y0 - 36, function(event)
+		if event ~= "DeviceButton_left mouse button" or BMSScoreCardMode == "local" then
+			return
+		end
+		openWindow(BMSScoreCardMode == "rivals" and 13 or 10)
+	end, function()
+		return noTab() or BMSScoreCardMode == "local"
+	end)
+	p[#p + 1] = f
+
+	-- the switch
+	local modes = {{"local", "LOCAL"}, {"ir", "IR"}, {"rivals", "RIVALS"}}
+	local bw, gap = 66, 4
+	for i, m in ipairs(modes) do
+		local x = R - (#modes - i + 1) * bw - (#modes - i) * gap
+		p[#p + 1] = Def.Quad {
+			InitCommand = function(self)
+				self:halign(0):valign(0):xy(x, y0):zoomto(bw, 28)
+			end,
+			RefreshCommand = function(self)
+				self:visible(data.steps ~= nil)
+				self:diffuse(BMSScoreCardMode == m[1] and rxColor("white", 0.16) or rxColor("white", 0.04))
+			end,
+		}
+		p[#p + 1] = rxText(rxFont.semibold, x + bw / 2, y0 + 14, 13, 0.5, bw - 6, function()
+			return data.steps and m[2] or nil
+		end, function()
+			return BMSScoreCardMode == m[1] and rxColor("white") or rxColor("muted")
+		end)
+		p[#p + 1] = rxClick(x, y0, bw, 28, function(event)
+			if event ~= "DeviceButton_left mouse button" or BMSScoreCardMode == m[1] then
+				return
+			end
+			BMSScoreCardMode = m[1]
+			MESSAGEMAN:Broadcast("RXScoreCardMode")
+		end, noTab)
+	end
+	-- the switch and the local score follow the mode
+	p[#p + 1] = Def.Actor {
+		RXScoreCardModeMessageCommand = function(self)
+			self:GetParent():playcommand("Refresh")
+		end,
+	}
 end
 
 -- the tab windows go over the panels

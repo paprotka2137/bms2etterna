@@ -1078,10 +1078,18 @@ do
 	for k, cl in ipairs(clears) do
 		local x = 789 + 91 * (k - 1)
 		-- the SCRATCH / BSS labels painted over
-		p[#p + 1] = Box(x, 627, 82, 18, color("#141414"))
-		p[#p + 1] = Text(x + 41, 636, 16, 0.5, 78, function()
+		-- shown only with a chart selected, like the panel under it
+		p[#p + 1] = Def.Quad {
+			InitCommand = function(self)
+				self:halign(0):valign(0):xy(x, 627):zoomto(82, 18):diffuse(color("#141414"))
+			end,
+			RefreshCommand = function(self)
+				self:visible(data.steps ~= nil)
+			end,
+		}
+		p[#p + 1] = Text(x + 41, 636, 16, 0.5, 78, stepsOnly(function()
 			return cl.label
-		end, cl.c)
+		end), cl.c)
 		p[#p + 1] = Text(x + 41, 660, 18, 0.5, 78, stepsOnly(function()
 			return stars(cl.get())
 		end))

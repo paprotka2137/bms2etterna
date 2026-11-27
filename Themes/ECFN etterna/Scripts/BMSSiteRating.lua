@@ -5,6 +5,13 @@
 -- lamps in /api/players, the same way public/app.js playerRating() does it
 -- with every table on. Asked once per song select visit; the answer comes
 -- as the BMSSiteRatingLoaded message.
+--
+-- By default the footer shows the same rating worked out from this
+-- computer's scores (S.localRating): the best lamp of every 7k chart played
+-- with BMS rules, its Easy / Hard value from calcrating.json on this computer,
+-- else the game's clear calc, and the average of the 20 best. The site's
+-- number is asked for and shown only while the Profile window's SITE switch
+-- (BMSProfileSite) is on.
 
 BMSSiteRating = BMSSiteRating or {}
 local S = BMSSiteRating
@@ -53,6 +60,99 @@ local function compute(best)
 	return sum / n
 end
 
+---------------------------------------------------------------------------
+-- the local rating
+---------------------------------------------------------------------------
+
+local GR_FILE = "/leaderboard/site/public/calcrating.json"
+-- chart key -> {easy, hard} from the site's file on this computer (shared
+-- with the Profile window: the same global)
+local function loadGR()
+	if BMSGoodRatingFile then
+		return BMSGoodRatingFile
+	end
+	local out = {}
+	local f = RageFileUtil.CreateRageFile()
+	if f:Open(GR_FILE, 1) then
+		local str = f:Read() or ""
+		f:Close()
+		if BMSCalcFileCurrent and not BMSCalcFileCurrent(str) then
+			str = ""
+		end
+		for k, e, h in str:gmatch('"([^"]+)":%[(-?[%d%.]+),(-?[%d%.]+)%]') do
+			out[k] = {tonumber(e), tonumber(h)}
+		end
+	end
+	f:destroy()
+	BMSGoodRatingFile = out
+	return out
+end
+
+-- the game's clear calc on the insane scale, kept for the whole game
+BMSLocalGRCalc = BMSLocalGRCalc or {}
+local function chartGR(ck, steps)
+	local v = loadGR()[ck]
+	if v then
+		return v
+	end
+	local c = BMSLocalGRCalc[ck]
+	if c ~= nil then
+		return c or nil
+	end
+	BMSLocalGRCalc[ck] = false
+	if steps and getBMSClearDifficulty then
+		local was = BMSClearScale
+		BMSClearScale = "insane"
+		local ok, e, _, h = pcall(getBMSClearDifficulty, steps, 1)
+		BMSClearScale = was
+		if ok and e and h then
+			BMSLocalGRCalc[ck] = {e, h}
+		end
+	end
+	return BMSLocalGRCalc[ck] or nil
+end
+
+function S.computeLocal()
+	if not (SCOREMAN and getBestBMSLamp) then
+		return nil
+	end
+	local vals, seen = {}, {}
+	SCOREMAN:SortRecentScoresForGame()
+	local n = 1
+	local hs = SCOREMAN:GetRecentScoreForGame(n)
+	while hs do
+		local ck = hs:GetChartKey()
+		if not seen[ck] and not (isO2JamScore and isO2JamScore(hs)) then
+			seen[ck] = true
+			local steps = SONGMAN:GetStepsByChartKey(ck)
+			if steps and steps:GetStepsType() == "StepsType_Kb7_Single" then
+				local lamp = getBestBMSLamp(ck)
+				if lamp and lamp >= 1 and lamp <= 5 then
+					local g = chartGR(ck, steps)
+					local v = g and (lamp <= 3 and g[2] or g[1])
+					if v then
+						vals[#vals + 1] = v
+					end
+				end
+			end
+		end
+		n = n + 1
+		hs = SCOREMAN:GetRecentScoreForGame(n)
+	end
+	table.sort(vals, function(a, b)
+		return a > b
+	end)
+	local k = math.min(#vals, RATING_TOP)
+	if k == 0 then
+		return nil
+	end
+	local sum = 0
+	for i = 1, k do
+		sum = sum + vals[i]
+	end
+	return sum / k
+end
+
 local function done()
 	MESSAGEMAN:Broadcast("BMSSiteRatingLoaded", {rating = S.rating})
 end
@@ -82,8 +182,12 @@ local function askPlayers(name)
 	end)
 end
 
--- ask the site again (the cached value stays shown until it answers)
+-- work out the local rating, and ask the site again when SITE is on (the
+-- cached value stays shown until it answers)
 function S.refresh()
+	local ok, v = pcall(S.computeLocal)
+	S.localRating = ok and v or nil
+	done()
 	if not (BMSRanking and BMSRanking.loggedIn and BMSRanking.loggedIn()) then
 		return
 	end
@@ -97,6 +201,9 @@ function S.refresh()
 	-- once per game start: after a calc update, send the unranked charts' ratings again
 	if BMSRanking.resendCalc then
 		BMSRanking.resendCalc()
+	end
+	if not BMSProfileSite then
+		return
 	end
 	-- the unranked charts' ratings change as people play them: asked every time,
 	-- calcrating.json wins where both have a chart
@@ -127,10 +234,15 @@ function S.refresh()
 	end)
 end
 
--- "12.34", or "-" before the site answered / when not logged in
+-- "12.34": the local rating, the site's while SITE is on ("-" before the
+-- site answered); "-" with no rated clears
 function S.text()
-	if S.rating == nil then
+	local v = S.localRating
+	if BMSProfileSite then
+		v = S.rating
+	end
+	if v == nil then
 		return "-"
 	end
-	return string.format("%.2f", S.rating)
+	return string.format("%.2f", v)
 end

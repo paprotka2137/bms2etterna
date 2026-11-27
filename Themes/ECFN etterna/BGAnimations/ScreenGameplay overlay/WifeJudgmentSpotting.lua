@@ -61,6 +61,8 @@ local function bmsTargetLabel()
 	return x .. " "
 end
 local bmsPBRate
+-- the PB rate the MYBEST pacemaker follows (its replay when it has one)
+local bmsPacePB
 local positive = getMainColor("positive")
 local highlight = getMainColor("highlight")
 local negative = getMainColor("negative")
@@ -319,7 +321,7 @@ local t =
 				tDiff = wifey - goal * 100
 			else
 				-- EX points behind / ahead of the goal's pace (2 per judged note)
-				tDiff = bmsEx - goal * bmsJudged * 2
+				tDiff = bmsEx - getPacemakerPaceEx(bmsJudged, goal, bmsPacePB)
 			end
 		elseif msg.WifePBGoal ~= nil and targetTrackerMode ~= 0 then
 			pbtarget = msg.WifePBGoal
@@ -387,6 +389,8 @@ if hideMSD() then
 	local _, _, text
 	bmsTarget, _, text = getPacemakerRate(bmsPBRate)
 	bmsTargetText = text
+	-- MYBEST paces along the PB's replay (Scripts/BMSPacemaker.lua)
+	bmsPacePB = bmsPBRate
 	-- the pacemaker replaces Tracker Mode on 7k (MYBEST is the PB mode)
 	bmsPBRate = nil
 end

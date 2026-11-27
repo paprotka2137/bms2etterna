@@ -2,13 +2,17 @@
 -- ECFNWindow.lua), the game's side of the ranking site's rivals (#/rivals
 -- and a profile's Rivals tab). It uses the same rivals as the site and the
 -- chat's /rival, through POST /api/game/chat/rival:
---   PASSED YOU  charts a rival passed your best EX on in the last 30 days
---               (op=beaten, the site's "Passed you" list), newest first
---   RIVALS      your rivals with how many charts each one is ahead of you /
---               behind you on (op=list); a click opens VS with that rival
+--   PASSED YOU  charts a rival passed your best EX or your best lamp on in
+--               the last 30 days (op=beaten), newest first
+--   RIVALS      your rivals with how many charts each one has the better EX
+--               and the better clear on, and you (op=list); a click opens VS
 --   VS          one rival chart by chart (op=vs): AHEAD lists the charts
---               they beat you on, BEHIND the ones you beat them on, the
---               smallest gap first, so the top rows are the easiest to take
+--               they have the better EX on, BEHIND the ones you have, the
+--               smallest gap first, so the top rows are the easiest to take;
+--               CLEARS the charts where one of you has the better lamp,
+--               theirs first
+-- Failed plays count everywhere here: a chart counts once you both played
+-- it, with each one's best EX of every play and best lamp (F = failed).
 -- "+ ADD" adds a rival by nickname, VS has REMOVE / ADD for the one shown.
 -- Clicking a chart row moves the wheel to its song (gray = not on this
 -- computer). Needs the in-game login of the ranking site (Ranking window).
@@ -90,7 +94,10 @@ local function loadList()
 		local list = {}
 		for i = 2, #lines do
 			local f = lines[i]
-			list[#list + 1] = {name = f[1] or "?", ahead = tonumber(f[2]) or 0, behind = tonumber(f[3]) or 0}
+			list[#list + 1] = {
+				name = f[1] or "?", ahead = tonumber(f[2]) or 0, behind = tonumber(f[3]) or 0,
+				lampAhead = tonumber(f[4]) or 0, lampBehind = tonumber(f[5]) or 0,
+			}
 		end
 		S.list = list
 		S.listTime = GetTimeSinceStart()
@@ -113,6 +120,9 @@ local function loadPassed()
 				out[#out + 1] = {
 					rival = f[2] or "?", ck = f[3] or "", title = f[4] or "", lv = f[5] or "", tbl = f[6] or "",
 					them = tonumber(f[7]) or 0, me = tonumber(f[8]) or 0,
+					themLamp = tonumber(f[10]), myLamp = tonumber(f[11]),
+					-- a site from before lamps only sends EX passes
+					byEx = f[12] == nil or f[12] == "1", byLamp = f[13] == "1",
 				}
 			end
 		end
@@ -125,7 +135,7 @@ local function loadVs(name)
 	S.vsName = name
 	S.vs = nil
 	request({op = "vs", name = name}, function(lines)
-		local v = {name = lines[1][2] or name, isRival = lines[1][3] == "1", ahead = {}, behind = {}}
+		local v = {name = lines[1][2] or name, isRival = lines[1][3] == "1", ahead = {}, behind = {}, clears = {}}
 		for i = 2, #lines do
 			local f = lines[i]
 			if f[1] == "C" then
@@ -134,10 +144,27 @@ local function loadVs(name)
 					them = tonumber(f[6]) or 0, me = tonumber(f[7]) or 0,
 					themLamp = tonumber(f[8]), myLamp = tonumber(f[9]),
 				}
-				local side = e.them > e.me and v.ahead or v.behind
-				side[#side + 1] = e
+				if e.them > e.me then
+					v.ahead[#v.ahead + 1] = e
+				elseif e.them < e.me then
+					v.behind[#v.behind + 1] = e
+				end
+				if e.themLamp and e.myLamp and e.themLamp ~= e.myLamp then
+					v.clears[#v.clears + 1] = e
+				end
 			end
 		end
+		-- their better clears first, the best lamp first, then yours
+		table.sort(v.clears, function(a, b)
+			local ta, tb = a.themLamp < a.myLamp, b.themLamp < b.myLamp
+			if ta ~= tb then
+				return ta
+			end
+			if ta then
+				return a.themLamp < b.themLamp or (a.themLamp == b.themLamp and a.myLamp > b.myLamp)
+			end
+			return a.myLamp < b.myLamp or (a.myLamp == b.myLamp and a.themLamp > b.themLamp)
+		end)
 		S.vsName = v.name
 		S.vs = v
 		S.vsTime = GetTimeSinceStart()
@@ -225,66 +252,104 @@ local function titleOf(e)
 	return song and song:GetDisplayMainTitle() or e.title, song and W.white or W.gray
 end
 local lvColor = color("#d080ff")
+local function okLamp(lamp)
+	return lamp and lamp >= 1 and lamp <= 6 and getBMSLampInfo ~= nil
+end
 local function lampColor(lamp)
-	if lamp and lamp >= 1 and lamp <= 6 and getBMSLampInfo then
+	if okLamp(lamp) then
 		return getBMSLampInfo(lamp, 2)
 	end
 	return W.white
+end
+-- FC, EXH, HARD, CLEAR, EASY or F in its color
+local function lampText(lamp)
+	if okLamp(lamp) then
+		return getBMSLampInfo(lamp, 1), getBMSLampInfo(lamp, 2)
+	end
+	return "-", W.gray
 end
 
 -- the columns of each view: x, align, name, max width, and the text and
 -- color of an entry
 local cols = {
 	list = {
-		{24, 0, "RIVAL", 120, function(e)
+		{24, 0, "RIVAL", 110, function(e)
 			return e.name, W.white
 		end},
-		{W.width - 150, 1, "AHEAD OF YOU", 90, function(e)
+		{W.width - 186, 1, "EX: THEM", 60, function(e)
 			return tostring(e.ahead), W.red
 		end},
-		{W.width - 60, 1, "BEHIND YOU", 90, function(e)
+		{W.width - 134, 1, "YOU", 40, function(e)
 			return tostring(e.behind), W.green
 		end},
-		{W.width - 10, 1, "", 40, function(e)
+		{W.width - 76, 1, "CLEAR: THEM", 60, function(e)
+			return tostring(e.lampAhead or 0), W.red
+		end},
+		{W.width - 42, 1, "YOU", 30, function(e)
+			return tostring(e.lampBehind or 0), W.green
+		end},
+		{W.width - 10, 1, "", 26, function(e)
 			return "VS >", W.gray
 		end},
 	},
 	passed = {
-		{24, 0, "RIVAL", 70, function(e)
+		{24, 0, "RIVAL", 50, function(e)
 			return e.rival, W.gold
 		end},
-		{100, 0, "LV", 34, function(e)
+		{80, 0, "LV", 28, function(e)
 			return e.lv, lvColor
 		end},
-		{136, 0, "TITLE", W.width - 300, titleOf},
-		{W.width - 112, 1, "RIVAL", 54, function(e)
+		{112, 0, "TITLE", W.width - 306, titleOf},
+		{W.width - 176, 0.5, "", 30, function(e)
+			return lampText(e.themLamp)
+		end},
+		{W.width - 128, 1, "RIVAL", 44, function(e)
 			return score(e.tbl, e.them), W.white
 		end},
-		{W.width - 62, 1, "YOU", 54, function(e)
+		{W.width - 106, 0.5, "", 30, function(e)
+			return lampText(e.myLamp)
+		end},
+		{W.width - 58, 1, "YOU", 44, function(e)
 			return score(e.tbl, e.me), W.gray
 		end},
-		{W.width - 10, 1, "GAP", 50, function(e)
-			return gap(e.tbl, e.them - e.me), W.red
+		{W.width - 10, 1, "PASSED", 44, function(e)
+			-- a better EX shows the gap, a better lamp only shows the lamp
+			if e.byEx then
+				return gap(e.tbl, e.them - e.me), W.red
+			end
+			return lampText(e.themLamp)
 		end},
 	},
 	vs = {
-		{24, 0, "LV", 34, function(e)
+		{24, 0, "LV", 30, function(e)
 			return e.lv, lvColor
 		end},
-		{62, 0, "TITLE", W.width - 230, titleOf},
-		{W.width - 112, 1, "RIVAL", 54, function(e)
-			return score(e.tbl, e.them), lampColor(e.themLamp)
+		{58, 0, "TITLE", W.width - 252, titleOf},
+		{W.width - 176, 0.5, "", 30, function(e)
+			return lampText(e.themLamp)
 		end},
-		{W.width - 62, 1, "YOU", 54, function(e)
-			return score(e.tbl, e.me), lampColor(e.myLamp)
+		{W.width - 128, 1, "RIVAL", 44, function(e)
+			return score(e.tbl, e.them), W.white
 		end},
-		{W.width - 10, 1, "GAP", 50, function(e)
-			local d = math.abs(e.them - e.me)
-			return gap(e.tbl, d), e.them > e.me and W.red or W.green
+		{W.width - 106, 0.5, "", 30, function(e)
+			return lampText(e.myLamp)
+		end},
+		{W.width - 58, 1, "YOU", 44, function(e)
+			return score(e.tbl, e.me), W.white
+		end},
+		{W.width - 10, 1, "GAP", 44, function(e)
+			if S.vsSide == "clears" then
+				local theirs = e.themLamp < e.myLamp
+				return theirs and "THEM" or "YOU", theirs and W.red or W.green
+			end
+			if e.them == e.me then
+				return "=", W.gray
+			end
+			return gap(e.tbl, math.abs(e.them - e.me)), e.them > e.me and W.red or W.green
 		end},
 	},
 }
-local MAXCOLS = 6
+local MAXCOLS = 8
 
 local t = W.frame(tab, "BMSRivals", function()
 	page = 0
@@ -328,6 +393,16 @@ t[#t + 1] = W.button("+ ADD RIVAL", W.width - 8 - 40, W.top + 12, 80, function()
 	end)
 end, loggedIn)
 
+-- VS: charts where they (theirs = true) or you have the better lamp
+local function clearCount(theirs)
+	local n = 0
+	for _, e in ipairs(S.vs and S.vs.clears or {}) do
+		if (e.themLamp < e.myLamp) == theirs then
+			n = n + 1
+		end
+	end
+	return n
+end
 -- second line: what the view is about, or what went wrong in red
 t[#t + 1] = W.text(8, W.top + 32, 0.32, 0) .. {
 	ShowCommand = function(self)
@@ -336,31 +411,32 @@ t[#t + 1] = W.text(8, W.top + 32, 0.32, 0) .. {
 		if not loggedIn() then
 			s = ""
 		elseif err then
-			self:settext(err):diffuse(W.red):maxwidth((W.width - (S.mode == "vs" and 200 or 16)) / 0.32)
+			self:settext(err):diffuse(W.red):maxwidth((W.width - (S.mode == "vs" and 236 or 16)) / 0.32)
 			return
 		elseif S.mode == "list" then
 			s = S.list and string.format("%d rival%s (at most 50)", #S.list, #S.list == 1 and "" or "s") or ""
 		elseif S.mode == "passed" then
 			s = S.passed and string.format("Passed you on %d chart%s in the last 30 days", #S.passed, #S.passed == 1 and "" or "s") or ""
 		elseif S.vs then
-			s = string.format("%s: ahead on %d, behind on %d", S.vs.name, #S.vs.ahead, #S.vs.behind)
+			s = string.format("%s: EX %d / %d, clears %d / %d", S.vs.name, #S.vs.ahead, #S.vs.behind,
+				clearCount(true), clearCount(false))
 		elseif S.vsName then
 			s = S.vsName
 		end
-		self:settext(s):diffuse(W.gray):maxwidth((W.width - 200) / 0.32)
+		self:settext(s):diffuse(W.gray):maxwidth((W.width - 236) / 0.32)
 	end,
 }
 -- VS: which side, and rival or not
 local function inVs()
 	return loggedIn() and S.mode == "vs" and S.vs ~= nil
 end
-local sides = {{"ahead", "AHEAD"}, {"behind", "BEHIND"}}
+local sides = {{"ahead", "AHEAD"}, {"behind", "BEHIND"}, {"clears", "CLEARS"}}
 for k, sd in ipairs(sides) do
 	t[#t + 1] = Def.ActorFrame {
 		ShowCommand = function(self)
 			self:visible(inVs())
 		end,
-		W.button(sd[2], W.width - 190 + (k - 1) * 58 + 27, W.top + 32, 54, function()
+		W.button(sd[2], W.width - 226 + (k - 1) * 52 + 24, W.top + 32, 48, function()
 			S.vsSide = sd[1]
 			page = 0
 			refresh()
@@ -480,13 +556,15 @@ end) .. {
 			if S.mode == "list" then
 				s = S.list and "No rivals yet: + ADD RIVAL, /rival nick in the chat, or + Add rival on a profile on the site" or "Loading..."
 			elseif S.mode == "passed" then
-				s = S.passed and "No rival passed you in the last 30 days" or "Loading..."
+				s = S.passed and "No rival passed your EX or lamp in the last 30 days" or "Loading..."
 			elseif not S.vs then
 				s = "Loading..."
 			elseif S.vsSide == "ahead" then
-				s = S.vs.name .. " is not ahead of you on any chart you both cleared"
+				s = S.vs.name .. " does not have a better EX than you on any chart you both played"
+			elseif S.vsSide == "behind" then
+				s = "You do not have a better EX than " .. S.vs.name .. " on any chart you both played"
 			else
-				s = "You are not ahead of " .. S.vs.name .. " on any chart you both cleared"
+				s = "You and " .. S.vs.name .. " have the same lamps on every chart you both played"
 			end
 		end
 		self:settext(s):diffuse(col)
@@ -497,11 +575,13 @@ t[#t + 1] = W.text(W.width / 2, pageY + 16, 0.26, 0.5) .. {
 		local s = ""
 		if loggedIn() then
 			if S.mode == "passed" then
-				s = "A rival uploaded a better EX than your best on a chart you cleared. Click a row to pick the song."
+				s = "A rival got a better EX or lamp than your best on a chart you played (fails count). Click a row to pick the song."
 			elseif S.mode == "list" then
-				s = "Best EX on charts you both cleared. Click a rival to compare chart by chart."
+				s = "Charts each of you has the better best EX / lamp on, of the ones you both played (fails count). Click a rival for VS."
+			elseif S.vsSide == "clears" then
+				s = "Charts you both played where the lamps differ, theirs first. Click a row to pick the song."
 			else
-				s = "Charts you both cleared, the smallest gap first. Click a row to pick the song."
+				s = "Charts you both played (fails count), the smallest gap first. Click a row to pick the song."
 			end
 		end
 		self:settext(s):diffuse(W.gray):maxwidth((W.width - 20) / 0.26)

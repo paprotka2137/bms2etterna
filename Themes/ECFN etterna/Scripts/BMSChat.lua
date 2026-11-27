@@ -451,7 +451,8 @@ function C.rival(name, op)
 			else
 				for i = 2, #lines do
 					local f = lines[i]
-					C.info(string.format("rival %s: ahead of you on %s charts, behind on %s", f[1] or "?", f[2] or "0", f[3] or "0"))
+					C.info(string.format("rival %s: better EX than you on %s charts, you on %s; better clear on %s, you on %s (fails count)",
+						f[1] or "?", f[2] or "0", f[3] or "0", f[4] or "0", f[5] or "0"))
 				end
 			end
 		else

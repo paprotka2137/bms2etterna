@@ -5,7 +5,8 @@ local R = BMSRanking
 local tab = 10
 local frameX = 10
 local frameY = 45
-local frameWidth = capWideScale(360, 400)
+-- as wide as the other 7k windows (ECFNWindow.width)
+local frameWidth = ECFNWindow and ECFNWindow.width or capWideScale(360, 400)
 local rowsShown = 15
 local rowH = 17
 local listY = frameY + 72
@@ -51,10 +52,10 @@ local col = {
 local t = Def.ActorFrame {
 	Name = "BMSRanking",
 	BeginCommand = function(self)
-		self:visible(false):xy(-500, 0):diffusealpha(0):queuecommand("Set")
+		self:visible(false):xy(-(frameWidth + 40), 0):diffusealpha(0):queuecommand("Set")
 	end,
 	OffCommand = function(self)
-		self:bouncebegin(0.2):xy(-500, 0):diffusealpha(0)
+		self:bouncebegin(0.2):xy(-(frameWidth + 40), 0):diffusealpha(0)
 		self:sleep(0.04):queuecommand("Invis")
 	end,
 	InvisCommand = function(self)

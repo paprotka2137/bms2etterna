@@ -2,8 +2,9 @@
 -- ECFNWindow.lua). BEST lists the best play of every 7k chart sorted by its
 -- Good enough rating (like the site's profile; O2Jam charts by level and
 -- lamp), RECENT the latest plays, TOP the best EX rates. Clicking a row
--- moves the wheel to its song. Logged in to the ranking site, the lists come
--- from the site (every computer's plays), else from this computer's scores.
+-- moves the wheel to its song. The lists are worked out from this computer's
+-- scores; the SITE button (when logged in to the ranking site) switches to the
+-- site's lists instead (every computer's plays).
 -- BMS / O2JAM switches between BMS charts (EX%, LR2 lamps) and O2Jam charts
 -- (.ojn: DMJam score in percent with its grade, O2Jam lamps).
 local W = ECFNWindow
@@ -13,6 +14,8 @@ local rows = 17
 local mode = "best"
 -- kept in a global so the choice stays when the screen is reloaded
 BMSProfileGame = BMSProfileGame or "bms"
+-- local scores by default, the site's lists only when SITE is switched on
+BMSProfileSite = BMSProfileSite or false
 local page = 0
 local lists = {bms = {}, o2jam = {}}
 
@@ -146,6 +149,10 @@ local function gather()
 				levelName = "Lv" .. level
 			else
 				level, levelName = getBMSLevel(song, steps)
+				-- a chart in no table (not an SPxx pack): "?", not its meter
+				if level == -2 then
+					levelName = "?"
+				end
 			end
 			all[#all + 1] = {
 				score = hs, ck = ck, song = song, steps = steps, level = level, levelName = levelName,
@@ -298,7 +305,7 @@ local function siteEntry(f)
 end
 
 local function loadSite()
-	if not (BMSRanking and BMSRanking.loggedIn and BMSRanking.loggedIn()) then
+	if not BMSProfileSite or not (BMSRanking and BMSRanking.loggedIn and BMSRanking.loggedIn()) then
 		siteLists = nil
 		return
 	end
@@ -347,6 +354,9 @@ local function loadSite()
 		for _, l in pairs(out) do
 			sortLists(l.best, l.top)
 		end
+		if not BMSProfileSite then
+			return -- switched back to local while the site answered
+		end
 		siteLists = out
 		MESSAGEMAN:Broadcast("BMSProfileRefresh")
 	end)
@@ -374,11 +384,34 @@ local t = W.frame(tab, "BMSProfile", function()
 	page = 0
 end)
 
+-- LOCAL / SITE: where the lists come from (local by default)
+t[#t + 1] = W.button("SITE", 195, W.top + 12, 50, function()
+	if BMSProfileSite then
+		BMSProfileSite = false
+		siteLists = nil
+	elseif BMSRanking and BMSRanking.loggedIn and BMSRanking.loggedIn() then
+		BMSProfileSite = true
+		siteTime = nil
+		loadSite()
+	else
+		ms.ok("Log in to the ranking site to see your site profile")
+		return
+	end
+	page = 0
+	MESSAGEMAN:Broadcast("BMSProfileRefresh")
+	-- the footer RATING follows the switch
+	if BMSSiteRating and BMSSiteRating.refresh then
+		BMSSiteRating.refresh()
+	end
+end, nil, function()
+	return BMSProfileSite
+end)
+
 -- header: name, rating and play count, the modes on the right
 t[#t + 1] = W.text(8, W.top + 12, 0.42, 0) .. {
 	ShowCommand = function(self)
 		local profile = PROFILEMAN:GetProfile(PLAYER_1)
-		self:settext(profile:GetDisplayName() .. (siteLists and "  (site)" or "")):maxwidth(150 / 0.42)
+		self:settext(profile:GetDisplayName() .. (siteLists and "  (site)" or "")):maxwidth(155 / 0.42)
 	end,
 }
 t[#t + 1] = W.text(8, W.top + 30, 0.34, 0) .. {
